@@ -446,47 +446,100 @@ pub async fn get_episode_transcript(
     Ok(transcript)
 }
 
-/// Format a seconds value as an SRT timestamp `HH:MM:SS,mmm`.
-fn srt_timestamp(seconds: f64) -> String {
-    let ms_total = (seconds * 1000.0).round() as i64;
+/// A seconds value as a cue timestamp `HH:MM:SS<sep>mmm` (`,` for SRT, `.` for WebVTT).
+fn cue_timestamp(seconds: f64, sep: char) -> String {
+    let ms_total = (seconds.max(0.0) * 1000.0).round() as i64;
     let ms = ms_total % 1000;
     let s = (ms_total / 1000) % 60;
     let m = (ms_total / 60_000) % 60;
     let h = ms_total / 3_600_000;
-    format!("{:02}:{:02}:{:02},{:03}", h, m, s, ms)
+    format!("{:02}:{:02}:{:02}{}{:03}", h, m, s, sep, ms)
 }
 
-/// Render the stored generated transcript for an episode as SRT, so it can flow through the same
-/// transcript UI as feed transcripts. Returns None if there's no completed transcript.
-pub async fn get_episode_transcript_srt(
+/// File formats a generated transcript can be downloaded as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum TranscriptFormat {
+    Srt,
+    Vtt,
+    Txt,
+}
+
+impl TranscriptFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Srt => "srt",
+            Self::Vtt => "vtt",
+            Self::Txt => "txt",
+        }
+    }
+
+    pub fn content_type(self) -> &'static str {
+        match self {
+            Self::Srt => "application/x-subrip; charset=utf-8",
+            Self::Vtt => "text/vtt; charset=utf-8",
+            Self::Txt => "text/plain; charset=utf-8",
+        }
+    }
+}
+
+/// The finished generated transcript for an episode as a file in `format`.
+/// None while there is no finished transcript.
+pub async fn export_episode_transcript(
     db_pool: &DatabasePool,
     episode_id: i32,
+    format: TranscriptFormat,
 ) -> Result<Option<String>, String> {
     let stored = match get_episode_transcript(db_pool, episode_id).await? {
         Some(t) if t.status == "complete" => t,
         _ => return Ok(None),
     };
-    let segments_json = match stored.segments {
-        Some(s) => s,
-        None => return Ok(None),
+    let segments: Vec<serde_json::Value> = match stored.segments.as_deref() {
+        Some(json) => serde_json::from_str(json).map_err(|e| e.to_string())?,
+        None => Vec::new(),
     };
-    let segments: Vec<serde_json::Value> =
-        serde_json::from_str(&segments_json).map_err(|e| e.to_string())?;
-
-    let mut srt = String::new();
-    for (i, seg) in segments.iter().enumerate() {
+    let cues = segments.iter().map(|seg| {
         let start = seg.get("start").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let end = seg.get("end").and_then(|v| v.as_f64()).unwrap_or(start);
         let text = seg.get("text").and_then(|v| v.as_str()).unwrap_or("").trim();
-        srt.push_str(&format!(
-            "{}\n{} --> {}\n{}\n\n",
-            i + 1,
-            srt_timestamp(start),
-            srt_timestamp(end),
-            text,
-        ));
-    }
-    Ok(Some(srt))
+        (start, end, text)
+    });
+
+    Ok(Some(match format {
+        TranscriptFormat::Srt => {
+            if segments.is_empty() {
+                return Ok(None);
+            }
+            cues.enumerate()
+                .map(|(i, (start, end, text))| {
+                    format!("{}\n{} --> {}\n{}\n\n", i + 1, cue_timestamp(start, ','), cue_timestamp(end, ','), text)
+                })
+                .collect()
+        }
+        TranscriptFormat::Vtt => {
+            if segments.is_empty() {
+                return Ok(None);
+            }
+            let mut vtt = String::from("WEBVTT\n\n");
+            for (start, end, text) in cues {
+                vtt.push_str(&format!("{} --> {}\n{}\n\n", cue_timestamp(start, '.'), cue_timestamp(end, '.'), text));
+            }
+            vtt
+        }
+        TranscriptFormat::Txt => match stored.full_text.filter(|t| !t.trim().is_empty()) {
+            Some(text) => format!("{}\n", text.trim()),
+            None if !segments.is_empty() => cues.map(|(_, _, text)| text).collect::<Vec<_>>().join("\n") + "\n",
+            None => return Ok(None),
+        },
+    }))
+}
+
+/// The finished generated transcript for an episode as SRT, for the in-app transcript view.
+pub async fn get_episode_transcript_srt(
+    db_pool: &DatabasePool,
+    episode_id: i32,
+) -> Result<Option<String>, String> {
+    export_episode_transcript(db_pool, episode_id, TranscriptFormat::Srt).await
 }
 
 /// Update a podcast's auto-transcribe opt-in (owner-scoped, like the silence-trim setter).

@@ -130,15 +130,10 @@ pub async fn bulk_queue_episodes(
 
     let is_youtube = request.is_youtube.unwrap_or(false);
     require_episodes_owner(&state, request.user_id, &request.episode_ids, is_youtube).await?;
-    // Bulk "add to queue" lands the batch at the top (in order), consistent with
-    // single-add "play next" semantics.
+    // The batch keeps its order, placed like a single add.
+    let placement = crate::handlers::podcasts::resolve_queue_placement(&state, request.user_id, request.position, None).await?;
     let (processed_count, failed_count) = state.db_pool
-        .bulk_queue_episodes(
-            request.episode_ids,
-            request.user_id,
-            is_youtube,
-            crate::database::QueuePlacement::Top,
-        )
+        .bulk_queue_episodes(request.episode_ids, request.user_id, is_youtube, placement)
         .await?;
 
     let message = if failed_count > 0 {

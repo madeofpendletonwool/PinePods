@@ -41,5 +41,6 @@ mod sync_core;
 mod sync_engine;
 mod sync_migrations;
 mod sync_settings;
+mod transcript_export;
 mod user_episode_state;
 mod youtube;

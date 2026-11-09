@@ -14,8 +14,16 @@ async fn setup(app: &TestApp) -> (TestUser, Vec<i32>) {
     (user, ids)
 }
 
+/// Adds to the top ("play next"); `queue_at` picks the end or the user's default.
 async fn queue(app: &TestApp, user: &TestUser, episode: i32, playing: Option<i32>) {
+    queue_at(app, user, episode, playing, Some("top")).await;
+}
+
+async fn queue_at(app: &TestApp, user: &TestUser, episode: i32, playing: Option<i32>, position: Option<&str>) {
     let mut body = json!({ "episode_id": episode, "user_id": user.id, "is_youtube": false });
+    if let Some(p) = position {
+        body["position"] = json!(p);
+    }
     if let Some(p) = playing {
         body["playing_episode_id"] = json!(p);
         body["playing_is_youtube"] = json!(false);
@@ -176,7 +184,7 @@ async fn bulk_queue_lands_the_batch_on_top_in_order() {
     queue(&app, &user, ep[4], None).await;
     app.post("/api/data/bulk_queue_episodes")
         .key(&user)
-        .json(&json!({ "episode_ids": [ep[0], ep[1], ep[2]], "user_id": user.id, "is_youtube": false }))
+        .json(&json!({ "episode_ids": [ep[0], ep[1], ep[2]], "user_id": user.id, "is_youtube": false, "position": "top" }))
         .send()
         .await
         .assert_ok();
@@ -194,4 +202,64 @@ async fn queued_flag_shows_on_episode_listings() {
     let flag = |id: i32| eps.iter().find(|e| e["Episodeid"] == id).unwrap()["queued"].clone();
     assert_eq!(flag(ep[0]), true);
     assert_eq!(flag(ep[1]), false);
+}
+
+async fn set_default(app: &TestApp, user: &TestUser, position: &str) {
+    app.put("/api/data/update_queue_add_position")
+        .key(user)
+        .json(&json!({ "user_id": user.id, "position": position }))
+        .send()
+        .await
+        .assert_ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn adding_without_a_position_goes_to_the_bottom_by_default() {
+    let app = TestApp::new().await;
+    let (user, ep) = setup(&app).await;
+    let setting = app.get(&format!("/api/data/get_queue_add_position/{}", user.id)).key(&user).send().await.ok_json();
+    assert_eq!(setting["position"], "bottom", "{setting}");
+    for &e in &ep[..3] {
+        queue_at(&app, &user, e, None, None).await;
+    }
+    assert_eq!(queued(&app, &user).await, [ep[0], ep[1], ep[2]]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_default_position_follows_the_users_setting() {
+    let app = TestApp::new().await;
+    let (user, ep) = setup(&app).await;
+    queue_at(&app, &user, ep[0], None, None).await;
+    set_default(&app, &user, "top").await;
+    let setting = app.get(&format!("/api/data/get_queue_add_position/{}", user.id)).key(&user).send().await.ok_json();
+    assert_eq!(setting["position"], "top", "{setting}");
+
+    // Top lands under what's playing; an explicit bottom still goes last.
+    queue_at(&app, &user, ep[1], Some(ep[0]), None).await;
+    queue_at(&app, &user, ep[2], Some(ep[0]), None).await;
+    queue_at(&app, &user, ep[3], Some(ep[0]), Some("bottom")).await;
+    assert_eq!(queued(&app, &user).await, [ep[0], ep[2], ep[1], ep[3]]);
+
+    set_default(&app, &user, "bottom").await;
+    app.post("/api/data/bulk_queue_episodes")
+        .key(&user)
+        .json(&json!({ "episode_ids": [ep[4]], "user_id": user.id, "is_youtube": false }))
+        .send()
+        .await
+        .assert_ok();
+    assert_eq!(queued(&app, &user).await.last(), Some(&ep[4]));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_queue_position_setting_is_private() {
+    let app = TestApp::new().await;
+    let (user, _) = setup(&app).await;
+    let other = app.user("snoop").await;
+    app.get(&format!("/api/data/get_queue_add_position/{}", user.id)).key(&other).send().await.assert_status(403);
+    app.put("/api/data/update_queue_add_position")
+        .key(&other)
+        .json(&json!({ "user_id": user.id, "position": "top" }))
+        .send()
+        .await
+        .assert_status(403);
 }

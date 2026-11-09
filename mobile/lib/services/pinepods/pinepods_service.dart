@@ -454,6 +454,8 @@ class PinepodsService {
     bool isYoutube, {
     int? playingEpisodeId,
     bool? playingIsYoutube,
+    /// 'top' or 'bottom'; null uses the user's default.
+    String? position,
   }) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
@@ -469,6 +471,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
         if (playingEpisodeId != null) 'playing_episode_id': playingEpisodeId,
         if (playingIsYoutube != null) 'playing_is_youtube': playingIsYoutube,
+        if (position != null) 'position': position,
       });
 
       final response = await _post(
@@ -927,6 +930,23 @@ class PinepodsService {
       _devLog('Error getting episode transcript: $e');
     }
     return null;
+  }
+
+  /// The generated transcript as a file body: [format] is 'srt', 'vtt' or 'txt'.
+  Future<String> exportEpisodeTranscript(int episodeId, int userId, String format) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/episode_transcript_export').replace(queryParameters: {
+      'episode_id': '$episodeId',
+      'user_id': '$userId',
+      'format': format,
+    });
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) {
+      throw Exception('Transcript download failed (${response.statusCode})');
+    }
+    return utf8.decode(response.bodyBytes);
   }
 
   // POST /api/data/transcribe_episode — trigger transcription (async).
@@ -2189,6 +2209,28 @@ class PinepodsService {
   }
 
   /// How many days of videos a channel keeps; 0 is no limit.
+  /// Where Add to queue puts an episode by default: 'top' or 'bottom'.
+  Future<String> getQueueAddPosition(int userId) async {
+    final url = Uri.parse('$_server/api/data/get_queue_add_position/$userId');
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) {
+      throw Exception('Failed to get queue position: ${response.statusCode}');
+    }
+    return (jsonDecode(response.body) as Map<String, dynamic>)['position'] as String? ?? 'bottom';
+  }
+
+  Future<void> setQueueAddPosition(int userId, String position) async {
+    final url = Uri.parse('$_server/api/data/update_queue_add_position');
+    final response = await _put(
+      url,
+      headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+      body: jsonEncode({'user_id': userId, 'position': position}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to save queue position: ${response.statusCode}');
+    }
+  }
+
   Future<int?> getFeedCutoffDays(int podcastId, int userId) async {
     final url = Uri.parse('$_server/api/data/get_feed_cutoff_days').replace(
       queryParameters: {'podcast_id': podcastId.toString(), 'user_id': userId.toString()},

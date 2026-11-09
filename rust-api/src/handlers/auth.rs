@@ -1871,6 +1871,66 @@ pub async fn update_auto_complete_seconds(
     }
 }
 
+/// Where Add to queue puts an episode when the client doesn't choose.
+#[utoipa::path(
+    get,
+    path = "/get_queue_add_position/{user_id}",
+    tag = "auth",
+    summary = "Get the default Add to queue position",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::QueueAddPositionSetting),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Another user's setting"),
+    ),
+)]
+pub async fn get_queue_add_position(
+    headers: HeaderMap,
+    Path(user_id): Path<i32>,
+    State(state): State<AppState>,
+) -> Result<Json<crate::models::QueueAddPositionSetting>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    if user_id != state.db_pool.get_user_id_from_api_key(&api_key).await? {
+        return Err(AppError::forbidden("You can only view your own queue setting"));
+    }
+    let position = state.db_pool.get_queue_add_position(user_id).await?;
+    Ok(Json(crate::models::QueueAddPositionSetting { user_id, position }))
+}
+
+/// Set where Add to queue puts an episode when the client doesn't choose.
+#[utoipa::path(
+    put,
+    path = "/update_queue_add_position",
+    tag = "auth",
+    summary = "Set the default Add to queue position",
+    request_body = crate::models::QueueAddPositionSetting,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::QueueAddPositionSetting),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Another user's setting"),
+    ),
+)]
+pub async fn update_queue_add_position(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(data): Json<crate::models::QueueAddPositionSetting>,
+) -> Result<Json<crate::models::QueueAddPositionSetting>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    if data.user_id != state.db_pool.get_user_id_from_api_key(&api_key).await? {
+        return Err(AppError::forbidden("You can only change your own queue setting"));
+    }
+    state.db_pool.set_queue_add_position(data.user_id, data.position).await?;
+    Ok(Json(data))
+}
+
 // Password reset endpoint - Always returns success for security (prevents username enumeration)
 #[utoipa::path(
     post,

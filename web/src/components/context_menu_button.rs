@@ -106,6 +106,21 @@ pub struct ContextButtonProps {
     pub active_collection_is_default: bool,
 }
 
+/// Fixed-position style placing the queue flyout beside the menu row the event came
+/// from, on the right unless that would run off screen.
+fn queue_flyout_style(e: &MouseEvent) -> Option<String> {
+    let target = e.current_target()?.dyn_into::<web_sys::Element>().ok()?;
+    let row = target.closest("li").ok().flatten()?;
+    let rect = row.get_bounding_client_rect();
+    let viewport = web_sys::window()?.inner_width().ok()?.as_f64()?;
+    let side = if rect.right() + 190.0 > viewport {
+        format!("right: {}px;", (viewport - rect.left()).round())
+    } else {
+        format!("left: {}px;", rect.right().round())
+    };
+    Some(format!("position: fixed; top: {}px; {}", rect.top().round(), side))
+}
+
 #[function_component(ContextMenuButton)]
 pub fn context_button(props: &ContextButtonProps) -> Html {
     let (i18n, _) = use_translation();
@@ -117,6 +132,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let i18n_local_download = i18n.t("context_menu_button.local_download").to_string();
     let i18n_remove_from_queue = i18n.t("context_menu_button.remove_from_queue").to_string();
     let i18n_queue_episode = i18n.t("context_menu_button.queue_episode").to_string();
+    let i18n_add_to_top = i18n.t("context_menu_button.add_to_top_of_queue").to_string();
+    let i18n_add_to_bottom = i18n.t("context_menu_button.add_to_bottom_of_queue").to_string();
     let i18n_remove_from_saved_episodes = i18n.t("context_menu_button.remove_from_saved_episodes").to_string();
     let i18n_save_episode = i18n.t("context_menu_button.save_episode").to_string();
     let i18n_mark_episode_incomplete = i18n.t("context_menu_button.mark_episode_incomplete").to_string();
@@ -384,7 +401,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     // let server_name = server_name.clone();
     let on_add_to_queue = {
         let episode = props.episode.clone();
-        Callback::from(move |_| {
+        Callback::from(move |position: Option<String>| {
             let server_name_copy = queue_server_name.clone();
             let api_key_copy = queue_api_key.clone();
             let episode_clone = episode.clone();
@@ -396,6 +413,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 is_youtube: episode.is_youtube,
                 playing_episode_id,
                 playing_is_youtube,
+                position,
             };
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
@@ -453,6 +471,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 is_youtube: episode.is_youtube,
                 playing_episode_id: None,
                 playing_is_youtube: None,
+                position: None,
             };
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
@@ -503,7 +522,33 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             if is_queued {
                 on_remove_queued_episode.emit(e);
             } else {
-                on_add_to_queue.emit(());
+                on_add_to_queue.emit(None);
+            }
+        })
+    };
+
+    // Hovering "Queue Episode" opens a flyout to pick top or bottom; a plain click
+    // uses the user's default, and the caret opens it on touch screens.
+    let queue_flyout = use_state(|| Option::<String>::None);
+    let open_queue_flyout = {
+        let queue_flyout = queue_flyout.clone();
+        Callback::from(move |e: MouseEvent| {
+            if let Some(style) = queue_flyout_style(&e) {
+                queue_flyout.set(Some(style));
+            }
+        })
+    };
+    let close_queue_flyout = {
+        let queue_flyout = queue_flyout.clone();
+        Callback::from(move |_: MouseEvent| queue_flyout.set(None))
+    };
+    // Only opens: a tap fires mouseenter first, so toggling would close it again.
+    let toggle_queue_flyout = {
+        let queue_flyout = queue_flyout.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            if let Some(style) = queue_flyout_style(&e) {
+                queue_flyout.set(Some(style));
             }
         })
     };
@@ -1032,6 +1077,37 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         })
     };
 
+    let queue_item = if is_queued {
+        html! {
+            <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
+                { &i18n_remove_from_queue }
+            </li>
+        }
+    } else {
+        let add_at = |position: &str| {
+            let on_add = on_add_to_queue.clone();
+            let position = position.to_string();
+            wrap_action(Callback::from(move |_: MouseEvent| on_add.emit(Some(position.clone()))))
+        };
+        html! {
+            <li
+                class="dropdown-option ep-context-has-flyout"
+                onclick={wrap_action(on_toggle_queue.clone())}
+                onmouseenter={open_queue_flyout.clone()}
+                onmouseleave={close_queue_flyout.clone()}
+            >
+                <span>{ &i18n_queue_episode }</span>
+                <i class="ph ph-caret-right ep-context-flyout-caret" onclick={toggle_queue_flyout.clone()}></i>
+                if let Some(style) = (*queue_flyout).clone() {
+                    <ul class="ep-context-menu ep-context-menu-list ep-context-flyout" {style}>
+                        <li class="dropdown-option" onclick={add_at("top")}>{ &i18n_add_to_top }</li>
+                        <li class="dropdown-option" onclick={add_at("bottom")}>{ &i18n_add_to_bottom }</li>
+                    </ul>
+                }
+            </li>
+        }
+    };
+
     #[cfg(feature = "server_build")]
     let download_button = html! {
         <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
@@ -1066,9 +1142,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     #[cfg(not(feature = "server_build"))]
     let local_download_options = html! {
         <>
-            <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
-                { if is_queued { &i18n_remove_from_queue } else { &i18n_queue_episode } }
-            </li>
+            { queue_item.clone() }
             <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
                 { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
             </li>
@@ -1312,9 +1386,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         PageType::Saved => html! {
             <>
                 { play_on_section.clone() }
-                <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
-                    { if is_queued { &i18n_remove_from_queue } else { &i18n_queue_episode } }
-                </li>
+                { queue_item.clone() }
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
                     { &i18n_remove_from_saved_episodes }
                 </li>
@@ -1345,9 +1417,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         PageType::Downloads => html! {
             <>
                 { play_on_section.clone() }
-                <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
-                    { if is_queued { &i18n_remove_from_queue } else { &i18n_queue_episode } }
-                </li>
+                { queue_item.clone() }
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
                     { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
                 </li>
@@ -1367,9 +1437,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         PageType::Default => html! {
             <>
                 { play_on_section.clone() }
-                <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
-                    { if is_queued { &i18n_remove_from_queue } else { &i18n_queue_episode } }
-                </li>
+                { queue_item.clone() }
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
                     { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
                 </li>

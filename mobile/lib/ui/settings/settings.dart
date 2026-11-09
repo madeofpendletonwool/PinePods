@@ -11,6 +11,7 @@ import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/settings/episode_refresh.dart';
 import 'package:pinepods_mobile/ui/settings/search_provider.dart';
+import 'package:pinepods_mobile/ui/settings/queue_position_setting.dart';
 import 'package:pinepods_mobile/ui/settings/server_download_defaults.dart';
 import 'package:pinepods_mobile/ui/settings/settings_section_label.dart';
 import 'package:pinepods_mobile/ui/settings/bottom_bar_order.dart';
@@ -251,6 +252,7 @@ class _SettingsState extends State<Settings> {
                   ),
                 ),
               ),
+              const QueuePositionSetting(),
               const SearchProviderWidget(),
               SettingsDividerLabel(label: 'Download Management'),
               const Divider(),

@@ -2313,6 +2313,7 @@ pub fn on_play_click(
                             is_youtube: episode.is_youtube,
                             playing_episode_id: None,
                             playing_is_youtube: None,
+                            position: None,
                         };
 
                         let queue_api = Option::from(queue_api_key);

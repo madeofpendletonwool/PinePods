@@ -340,7 +340,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
     _showSnackBar('Local download started for ${episode.episodeTitle}', Colors.blue);
   }
 
-  Future<void> _toggleQueueEpisode(int episodeIndex) async {
+  Future<void> _toggleQueueEpisode(int episodeIndex, {String? position}) async {
     final episode = _searchResults[episodeIndex].toPinepodsEpisode();
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
@@ -367,6 +367,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
           episode.episodeId,
           userId,
           episode.isYoutube,
+          position: position,
         );
 
         if (success && mounted) {
@@ -850,6 +851,10 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
             onQueue: () {
               Navigator.of(context).pop();
               _toggleQueueEpisode(episodeIndex);
+            },
+            onQueueAt: (position) {
+              Navigator.of(context).pop();
+              _toggleQueueEpisode(episodeIndex, position: position);
             },
             onMarkComplete: () {
               Navigator.of(context).pop();

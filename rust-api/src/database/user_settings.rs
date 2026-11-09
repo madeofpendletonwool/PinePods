@@ -633,6 +633,54 @@ impl DatabasePool {
         Ok(success)
     }
 
+    /// Where Add to queue puts an episode when the client doesn't say. Bottom unless set.
+    pub async fn get_queue_add_position(&self, user_id: i32) -> AppResult<crate::models::QueueAddPosition> {
+        let value: Option<String> = dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"SELECT queueaddposition FROM "UserSettings" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+                    .map(|row| row.try_get::<Option<String>, _>("queueaddposition"))
+                    .transpose()?
+                    .flatten()
+            },
+            mysql(pool) => {
+                sqlx::query("SELECT QueueAddPosition FROM UserSettings WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+                    .map(|row| row.try_get::<Option<String>, _>("QueueAddPosition"))
+                    .transpose()?
+                    .flatten()
+            },
+        });
+        Ok(crate::models::QueueAddPosition::from_setting(value.as_deref()))
+    }
+
+    pub async fn set_queue_add_position(&self, user_id: i32, position: crate::models::QueueAddPosition) -> AppResult<()> {
+        let value = position.as_setting();
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"INSERT INTO "UserSettings" (userid, queueaddposition, theme) VALUES ($1, $2, 'Nordic')
+                            ON CONFLICT (userid) DO UPDATE SET queueaddposition = EXCLUDED.queueaddposition"#)
+                    .bind(user_id)
+                    .bind(value)
+                    .execute(pool)
+                    .await?;
+            },
+            mysql(pool) => {
+                sqlx::query("INSERT INTO UserSettings (UserID, QueueAddPosition, Theme) VALUES (?, ?, 'Nordic')
+                             ON DUPLICATE KEY UPDATE QueueAddPosition = VALUES(QueueAddPosition)")
+                    .bind(user_id)
+                    .bind(value)
+                    .execute(pool)
+                    .await?;
+            },
+        });
+        Ok(())
+    }
+
     // Get playback speed - matches Python get_playback_speed function exactly
     pub async fn get_playback_speed(&self, user_id: i32, _is_youtube: bool, podcast_id: Option<i32>) -> AppResult<f64> {
         dialect_match!(self, {

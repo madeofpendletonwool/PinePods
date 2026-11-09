@@ -5437,6 +5437,7 @@ pub fn episode_layout() -> Html {
                                                                             episode_ids: selected_ids,
                                                                             user_id: user_id_value,
                                                                             is_youtube: None,
+                                                                            position: None,
                                                                         };
                                                                         match call_bulk_mark_episodes_completed(
                                                                             &server_name.unwrap_or_default(),
@@ -5483,6 +5484,7 @@ pub fn episode_layout() -> Html {
                                                                             episode_ids: selected_ids,
                                                                             user_id: user_id_value,
                                                                             is_youtube: None,
+                                                                            position: None,
                                                                         };
                                                                         match call_bulk_save_episodes(
                                                                             &server_name.unwrap_or_default(),
@@ -5529,6 +5531,7 @@ pub fn episode_layout() -> Html {
                                                                             episode_ids: selected_ids,
                                                                             user_id: user_id_value,
                                                                             is_youtube: None,
+                                                                            position: None,
                                                                         };
                                                                         match call_bulk_queue_episodes(
                                                                             &server_name.unwrap_or_default(),
@@ -5575,6 +5578,7 @@ pub fn episode_layout() -> Html {
                                                                             episode_ids: selected_ids,
                                                                             user_id: user_id_value,
                                                                             is_youtube: None,
+                                                                            position: None,
                                                                         };
                                                                         match call_bulk_download_episodes(
                                                                             &server_name.unwrap_or_default(),

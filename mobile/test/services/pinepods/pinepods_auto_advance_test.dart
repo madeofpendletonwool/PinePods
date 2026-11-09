@@ -104,4 +104,55 @@ void main() {
     queue([101]);
     expect(await service.handleEpisodeCompleted(), isFalse);
   });
+
+  group('with auto-play next on for the podcast', () {
+    setUp(() async {
+      when(() => api.getAutoPlayNextStatus(any(), any())).thenAnswer((_) async => true);
+      when(() => api.getNextPodcastEpisode(101, 42)).thenAnswer(
+        (_) async => buildPinepodsEpisode(episodeId: 102, episodeTitle: 'Next in podcast'),
+      );
+      queue([101, 202]);
+      await service.playPinepodsEpisode(pinepodsEpisode: buildPinepodsEpisode(episodeId: 101), resume: false);
+      await pumpEventQueue();
+      clearInteractions(audio);
+    });
+
+    test('the next episode of the podcast plays, not the queue', () async {
+      expect(await service.handleEpisodeCompleted(), isTrue);
+      expect(started().title, 'Next in podcast');
+    });
+
+    test('also when it was resolved near the end', () async {
+      positions.add(PositionState(
+        position: const Duration(seconds: 550),
+        length: const Duration(seconds: 600),
+        percentage: 91,
+      ));
+      service.prefetchNextIfNearEnd();
+      await pumpEventQueue();
+      expect(await service.handleEpisodeCompleted(), isTrue);
+      expect(started().title, 'Next in podcast');
+    });
+  });
+
+  test('auto-play next switched on while the episode plays is honoured', () async {
+    queue([101, 202]);
+    when(() => api.getNextPodcastEpisode(101, 42)).thenAnswer(
+      (_) async => buildPinepodsEpisode(episodeId: 102, episodeTitle: 'Next in podcast'),
+    );
+    positions.add(PositionState(
+      position: const Duration(seconds: 550),
+      length: const Duration(seconds: 600),
+      percentage: 91,
+    ));
+    service.prefetchNextIfNearEnd();
+    await pumpEventQueue();
+
+    // The user turns it on in the last minute and a half.
+    when(() => api.getAutoPlayNextStatus(any(), any())).thenAnswer((_) async => true);
+    service.autoPlayNextChanged(7);
+
+    expect(await service.handleEpisodeCompleted(), isTrue);
+    expect(started().title, 'Next in podcast');
+  });
 }

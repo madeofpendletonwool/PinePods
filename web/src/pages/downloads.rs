@@ -330,6 +330,7 @@ pub fn downloads() -> Html {
                         episode_ids: selected_episode_ids.clone(),
                         user_id: user_id_cloned,
                         is_youtube: Some(is_youtube),
+                        position: None,
                     };
 
                     wasm_bindgen_futures::spawn_local(async move {

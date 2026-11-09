@@ -550,8 +550,9 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
 
   Future<void> _toggleQueueEpisode(
     PinepodsEpisode episode,
-    void Function(PinepodsEpisode) onUpdated,
-  ) async {
+    void Function(PinepodsEpisode) onUpdated, {
+    String? position,
+  }) async {
     final userId = _requireUserId();
     if (userId == null) return;
     try {
@@ -560,7 +561,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
           ? await _pinepodsService.removeQueuedEpisode(
               episode.episodeId, userId, episode.isYoutube)
           : await _pinepodsService.queueEpisode(
-              episode.episodeId, userId, episode.isYoutube);
+              episode.episodeId, userId, episode.isYoutube, position: position);
       if (success) {
         onUpdated(_updateEpisodeFlags(episode, queued: !wasQueued));
         _showSnackBar(wasQueued ? 'Removed from queue' : 'Added to queue!',
@@ -726,6 +727,11 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
           _toggleQueueEpisode(
               episode, (u) => _updateServerEpisodeInState(podcastId, u));
         },
+        onQueueAt: (position) {
+          Navigator.of(context).pop();
+          _toggleQueueEpisode(
+              episode, (u) => _updateServerEpisodeInState(podcastId, u), position: position);
+        },
         onMarkComplete: () {
           Navigator.of(context).pop();
           _toggleMarkComplete(
@@ -817,6 +823,10 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
         onQueue: () {
           Navigator.of(context).pop();
           _toggleQueueEpisode(pe, (_) {});
+        },
+        onQueueAt: (position) {
+          Navigator.of(context).pop();
+          _toggleQueueEpisode(pe, (_) {}, position: position);
         },
         onMarkComplete: () {
           Navigator.of(context).pop();
