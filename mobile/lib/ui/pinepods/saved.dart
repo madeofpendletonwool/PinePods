@@ -451,6 +451,10 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
           Navigator.of(context).pop();
           _toggleQueueEpisode(episodeIndex);
         },
+        onQueueAt: (position) {
+          Navigator.of(context).pop();
+          _toggleQueueEpisode(episodeIndex, position: position);
+        },
         onMarkComplete: () {
           Navigator.of(context).pop();
           _toggleMarkComplete(episodeIndex);
@@ -649,7 +653,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     _hideContextMenu();
   }
 
-  Future<void> _toggleQueueEpisode(int episodeIndex) async {
+  Future<void> _toggleQueueEpisode(int episodeIndex, {String? position}) async {
     final episode = _episodes[episodeIndex];
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
@@ -681,6 +685,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
           episode.episodeId,
           userId,
           episode.isYoutube,
+          position: position,
         );
         if (success) {
           setState(() {

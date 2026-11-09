@@ -631,6 +631,33 @@ pub async fn check_episode_in_db(
     Ok(Json(crate::models::EpisodeInDbResponse { episode_in_db }))
 }
 
+/// Where an added episode lands. Bottom is last. Top is under the episode playing: the
+/// client's own hint when it sent one, else what any of the user's devices is playing,
+/// else the very top. `position` falls back to the user's setting.
+pub(crate) async fn resolve_queue_placement(
+    state: &AppState,
+    user_id: i32,
+    position: Option<crate::models::QueueAddPosition>,
+    playing: Option<(i32, bool)>,
+) -> Result<crate::database::QueuePlacement, AppError> {
+    use crate::database::QueuePlacement;
+    let position = match position {
+        Some(p) => p,
+        None => state.db_pool.get_queue_add_position(user_id).await?,
+    };
+    if position == crate::models::QueueAddPosition::Bottom {
+        return Ok(QueuePlacement::Bottom);
+    }
+    let anchor = match playing {
+        Some(p) => Some(p),
+        None => state.redis_client.active_session_anchor(user_id).await.ok().flatten(),
+    };
+    Ok(match anchor {
+        Some((playing_episode_id, playing_is_youtube)) => QueuePlacement::Under { playing_episode_id, playing_is_youtube },
+        None => QueuePlacement::Top,
+    })
+}
+
 // Queue episode - matches call_queue_episode from frontend
 #[utoipa::path(
     post,
@@ -663,24 +690,12 @@ pub async fn queue_episode(
     }
     require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube).await?;
 
-    // Insert under the currently-playing episode ("play next"). Prefer the client's
-    // own hint (instant local accuracy); if it didn't send one, fall back to the
-    // user's active session anchor — what any of their devices is currently playing
-    // — so a device that reports its now-playing (but can't name it at add time,
-    // e.g. mobile) still gets correct "play next" placement. Otherwise, top.
-    let placement = match request.playing_episode_id {
-        Some(playing_episode_id) => crate::database::QueuePlacement::Under {
-            playing_episode_id,
-            playing_is_youtube: request.playing_is_youtube.unwrap_or(false),
-        },
-        None => match state.redis_client.active_session_anchor(request.user_id).await {
-            Ok(Some((anchor_id, anchor_is_youtube))) => crate::database::QueuePlacement::Under {
-                playing_episode_id: anchor_id,
-                playing_is_youtube: anchor_is_youtube,
-            },
-            _ => crate::database::QueuePlacement::Top,
-        },
-    };
+    let placement = resolve_queue_placement(
+        &state,
+        request.user_id,
+        request.position,
+        request.playing_episode_id.map(|id| (id, request.playing_is_youtube.unwrap_or(false))),
+    ).await?;
 
     // Queue the episode
     state.db_pool.queue_episode(request.episode_id, request.user_id, request.is_youtube, placement).await?;

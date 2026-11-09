@@ -6,7 +6,7 @@ import 'package:pinepods_mobile/services/nowplaying/nowplaying_service.dart';
 import 'package:pinepods_mobile/ui/podcast/remote_devices_button.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
-class EpisodeContextMenu extends StatelessWidget {
+class EpisodeContextMenu extends StatefulWidget {
   final PinepodsEpisode episode;
   final VoidCallback? onSave;
   final VoidCallback? onRemoveSaved;
@@ -14,6 +14,8 @@ class EpisodeContextMenu extends StatelessWidget {
   final VoidCallback? onLocalDownload;
   final VoidCallback? onDeleteLocalDownload;
   final VoidCallback? onQueue;
+  /// Add to the 'top' or 'bottom' of the queue instead of the user's default.
+  final void Function(String position)? onQueueAt;
   final VoidCallback? onMarkComplete;
   final VoidCallback? onDismiss;
   final VoidCallback? onPodcastTap;
@@ -28,11 +30,32 @@ class EpisodeContextMenu extends StatelessWidget {
     this.onLocalDownload,
     this.onDeleteLocalDownload,
     this.onQueue,
+    this.onQueueAt,
     this.onMarkComplete,
     this.onDismiss,
     this.onPodcastTap,
     this.isDownloadedLocally = false,
   }) : super(key: key);
+
+  @override
+  State<EpisodeContextMenu> createState() => _EpisodeContextMenuState();
+}
+
+class _EpisodeContextMenuState extends State<EpisodeContextMenu> {
+  bool _queueChoicesOpen = false;
+
+  PinepodsEpisode get episode => widget.episode;
+  VoidCallback? get onSave => widget.onSave;
+  VoidCallback? get onRemoveSaved => widget.onRemoveSaved;
+  VoidCallback? get onDownload => widget.onDownload;
+  VoidCallback? get onLocalDownload => widget.onLocalDownload;
+  VoidCallback? get onDeleteLocalDownload => widget.onDeleteLocalDownload;
+  VoidCallback? get onQueue => widget.onQueue;
+  void Function(String position)? get onQueueAt => widget.onQueueAt;
+  VoidCallback? get onMarkComplete => widget.onMarkComplete;
+  VoidCallback? get onDismiss => widget.onDismiss;
+  VoidCallback? get onPodcastTap => widget.onPodcastTap;
+  bool get isDownloadedLocally => widget.isDownloadedLocally;
 
   @override
   Widget build(BuildContext context) {
@@ -131,10 +154,39 @@ class EpisodeContextMenu extends StatelessWidget {
                     
                     _buildMenuOption(
                       context,
-                      icon: episode.queued ? PhosphorIconsRegular.queue : PhosphorIconsRegular.queue,
+                      icon: PhosphorIconsRegular.queue,
                       text: episode.queued ? 'Remove from Queue' : 'Add to Queue',
                       onTap: onQueue,
+                      trailing: !episode.queued && onQueueAt != null
+                          ? IconButton(
+                              tooltip: 'Choose top or bottom',
+                              visualDensity: VisualDensity.compact,
+                              icon: Icon(
+                                _queueChoicesOpen
+                                    ? PhosphorIconsRegular.caretUp
+                                    : PhosphorIconsRegular.caretDown,
+                                size: 18,
+                              ),
+                              onPressed: () => setState(() => _queueChoicesOpen = !_queueChoicesOpen),
+                            )
+                          : null,
                     ),
+                    if (_queueChoicesOpen && !episode.queued && onQueueAt != null) ...[
+                      _buildMenuOption(
+                        context,
+                        icon: PhosphorIconsRegular.arrowLineUp,
+                        text: 'Add to top of queue',
+                        onTap: () => onQueueAt!('top'),
+                        indent: 32,
+                      ),
+                      _buildMenuOption(
+                        context,
+                        icon: PhosphorIconsRegular.arrowLineDown,
+                        text: 'Add to bottom of queue',
+                        onTap: () => onQueueAt!('bottom'),
+                        indent: 32,
+                      ),
+                    ],
                     
                     _buildMenuOption(
                       context,
@@ -192,12 +244,14 @@ class EpisodeContextMenu extends StatelessWidget {
     required String text,
     VoidCallback? onTap,
     bool enabled = true,
+    Widget? trailing,
+    double indent = 0,
   }) {
     return InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        padding: EdgeInsets.fromLTRB(8 + indent, trailing != null ? 4 : 12, 8, trailing != null ? 4 : 12),
         child: Row(
           children: [
             Icon(
@@ -219,6 +273,7 @@ class EpisodeContextMenu extends StatelessWidget {
                 ),
               ),
             ),
+            if (trailing != null) trailing,
           ],
         ),
       ),

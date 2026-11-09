@@ -2312,6 +2312,52 @@ pub async fn call_update_auto_complete_seconds(
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct QueueAddPositionSetting {
+    pub user_id: i32,
+    pub position: String,
+}
+
+/// Where Add to queue puts an episode when no side is picked: "top" or "bottom".
+pub async fn call_get_queue_add_position(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/get_queue_add_position/{}", server_name, user_id);
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+    if !response.ok() {
+        return Err(Error::msg(format!("Error getting queue position: {}", response.status_text())));
+    }
+    let setting: QueueAddPositionSetting = response.json().await?;
+    Ok(setting.position)
+}
+
+pub async fn call_update_queue_add_position(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    position: String,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/update_queue_add_position", server_name);
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&QueueAddPositionSetting { user_id, position })
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+    if !response.ok() {
+        return Err(Error::msg(format!("Error updating queue position: {}", response.status_text())));
+    }
+    Ok(())
+}
+
 pub async fn call_get_default_volume(
     server_name: String,
     api_key: String,

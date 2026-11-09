@@ -104,6 +104,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   bool _showInProgress = false;
   bool _isAutoDownloadEnabled = false;
   bool _isAutoPlayNextEnabled = false;
+  StreamSubscription<({int episodeId, bool isYoutube})>? _completedSub;
   // The scheduled refresh and Refresh all check this podcast.
   bool _isAutoRefreshEnabled = true;
   bool _isRefreshingNow = false;
@@ -138,16 +139,26 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _checkFollowStatus();
     _checkFavoriteStatus();
     _searchController.addListener(_onSearchChanged);
+    _completedSub = GlobalServices.pinepodsAudioService?.completedEpisodes.listen(_onEpisodeCompleted);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _resolveArtColor();
     });
   }
 
+  /// Per-podcast preference key: the podcast id when known, as the feed URL can
+  /// differ between the screens that open this page; else the URL.
+  String _prefKey(String kind) =>
+      _podcast.id > 0 ? '${kind}_id_${_podcast.id}' : '${kind}_${_podcast.url.hashCode}';
+
   Future<void> _loadSortPreference() async {
     final prefs = await SharedPreferences.getInstance();
-    // Use podcast URL as key for per-podcast sort preference
-    final key = 'episode_sort_${_podcast.url.hashCode}';
-    final savedSort = prefs.getString(key);
+    final savedSort = prefs.getString(_prefKey('episode_sort')) ??
+        prefs.getString('episode_sort_${_podcast.url.hashCode}');
+    final savedFilter = prefs.getString(_prefKey('episode_filter'));
+    if (savedFilter != null && mounted) {
+      final filter = _EpisodeFilter.values.where((f) => f.name == savedFilter).firstOrNull;
+      if (filter != null) _applyEpisodeFilter(filter);
+    }
     if (savedSort != null && mounted) {
       setState(() {
         switch (savedSort) {
@@ -360,6 +371,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           }),
         );
 
+        if (response.statusCode == 200) {
+          GlobalServices.pinepodsAudioService?.autoPlayNextChanged(podcastId);
+        }
         if (response.statusCode == 200 && mounted) {
           setState(() {
             _isAutoPlayNextEnabled = newValue;
@@ -912,9 +926,26 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     titleCtl.dispose();
   }
 
+  void _applyEpisodeFilter(_EpisodeFilter f) {
+    setState(() {
+      _showInProgress = f == _EpisodeFilter.inProgress;
+      _completedFilter = switch (f) {
+        _EpisodeFilter.unplayed => CompletedFilter.hide,
+        _EpisodeFilter.played => CompletedFilter.showOnly,
+        _ => CompletedFilter.showAll,
+      };
+      _filterEpisodes();
+    });
+  }
+
+  Future<void> _saveFilterPreference(_EpisodeFilter f) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefKey('episode_filter'), f.name);
+  }
+
   Future<void> _saveSortPreference() async {
     final prefs = await SharedPreferences.getInstance();
-    final key = 'episode_sort_${_podcast.url.hashCode}';
+    final key = _prefKey('episode_sort');
     String value;
     switch (_sortDirection) {
       case EpisodeSortDirection.newestFirst:
@@ -941,11 +972,22 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
   @override
   void dispose() {
+    _completedSub?.cancel();
     _searchController.dispose();
     _searchDebounce?.cancel();
     _collapsed.dispose();
     // Don't dispose global audio service - it should persist across pages
     super.dispose();
+  }
+
+  /// Tick an episode that finished playing while this page is open.
+  void _onEpisodeCompleted(({int episodeId, bool isYoutube}) done) {
+    final index = _episodes.indexWhere((e) => e.episodeId == done.episodeId && e.isYoutube == done.isYoutube);
+    if (index < 0 || !mounted) return;
+    setState(() {
+      _episodes[index] = _updateEpisodeProperty(_episodes[index], completed: true, queued: false);
+      _filterEpisodes();
+    });
   }
 
   void _onSearchChanged() {
@@ -1499,6 +1541,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           Navigator.of(context).pop();
           _queueEpisode(episodeIndex);
         },
+        onQueueAt: (position) {
+          Navigator.of(context).pop();
+          _queueEpisode(episodeIndex, position: position);
+        },
         onMarkComplete: () {
           Navigator.of(context).pop();
           _markEpisodeComplete(episodeIndex);
@@ -1685,7 +1731,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _hideEpisodeContextMenu();
   }
 
-  Future<void> _queueEpisode(int episodeIndex) async {
+  Future<void> _queueEpisode(int episodeIndex, {String? position}) async {
     final episode = _episodes[episodeIndex];
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
@@ -1718,6 +1764,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           episode.episodeId,
           userId,
           episode.isYoutube,
+          position: position,
         );
         if (success) {
           setState(() {
@@ -2289,15 +2336,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           ToolbarFilter(
             label: f.label,
             selected: f == current,
-            onTap: () => setState(() {
-              _showInProgress = f == _EpisodeFilter.inProgress;
-              _completedFilter = switch (f) {
-                _EpisodeFilter.unplayed => CompletedFilter.hide,
-                _EpisodeFilter.played => CompletedFilter.showOnly,
-                _ => CompletedFilter.showAll,
-              };
-              _filterEpisodes();
-            }),
+            onTap: () {
+              _applyEpisodeFilter(f);
+              _saveFilterPreference(f);
+            },
           ),
       ],
       sortOptions: const {

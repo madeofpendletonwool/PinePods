@@ -6,7 +6,10 @@
 // list, and a Detect-ads button. The whole block hides unless the server
 // reports the AI sidecar as available.
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
@@ -256,6 +259,23 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
             icon: const Icon(PhosphorIconsRegular.prohibit, size: 18),
             label: const Text('Detect ads'),
           ),
+        if (_transcript?.status == 'complete')
+          PopupMenuButton<String>(
+            tooltip: 'Export transcript',
+            onSelected: _exportTranscript,
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'srt', child: Text('Subtitles (.srt)')),
+              PopupMenuItem(value: 'vtt', child: Text('WebVTT (.vtt)')),
+              PopupMenuItem(value: 'txt', child: Text('Plain text (.txt)')),
+            ],
+            child: IgnorePointer(
+              child: OutlinedButton.icon(
+                onPressed: () {},
+                icon: const Icon(PhosphorIconsRegular.export, size: 18),
+                label: const Text('Export transcript'),
+              ),
+            ),
+          ),
         if (_aiStatus.transcriptionReady)
           OutlinedButton.icon(
             onPressed: _busy ? null : _transcribe,
@@ -410,6 +430,27 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
         ],
       ),
     );
+  }
+
+  /// Save the transcript as a file through the system share sheet.
+  Future<void> _exportTranscript(String format) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final box = context.findRenderObject() as RenderBox?;
+    try {
+      final body = await widget.pinepodsService
+          .exportEpisodeTranscript(widget.episode.episodeId, widget.userId, format);
+      final title = widget.episode.episodeTitle.replaceAll(RegExp(r'[/\\:*?"<>|\x00-\x1F]'), '_').trim();
+      final name = '${title.isEmpty ? 'episode-${widget.episode.episodeId}' : title} - transcript.$format';
+      final file = File('${(await getTemporaryDirectory()).path}/$name');
+      await file.writeAsString(body);
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path, mimeType: format == 'vtt' ? 'text/vtt' : 'text/plain')],
+        subject: name,
+        sharePositionOrigin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Could not export the transcript: $e')));
+    }
   }
 
   Widget _buildTranscript(ThemeData theme) {

@@ -837,6 +837,9 @@ pub struct QueuePodcastRequest {
     pub playing_episode_id: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub playing_is_youtube: Option<bool>,
+    /// "top" or "bottom"; absent uses the user's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<String>,
 }
 
 // Define a struct to match the response JSON structure
@@ -2406,6 +2409,9 @@ pub struct BulkEpisodeActionRequest {
     pub episode_ids: Vec<i32>,
     pub user_id: i32,
     pub is_youtube: Option<bool>,
+    /// bulk_queue only: "top" or "bottom"; absent uses the user's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -3753,6 +3759,25 @@ pub async fn call_get_episode_transcript(
     } else {
         Ok(None)
     }
+}
+
+/// The generated transcript as a file: format is "srt", "vtt" or "txt".
+pub async fn call_export_episode_transcript(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    episode_id: i32,
+    format: &str,
+) -> Result<String, Error> {
+    let url = format!(
+        "{}/api/data/episode_transcript_export?episode_id={}&user_id={}&format={}",
+        server_name, episode_id, user_id, format
+    );
+    let response = Request::get(&url).header("Api-Key", api_key).send().await?;
+    if !response.ok() {
+        return Err(Error::msg(format!("Transcript download failed: {}", response.status_text())));
+    }
+    Ok(response.text().await?)
 }
 
 #[derive(Serialize, Debug)]

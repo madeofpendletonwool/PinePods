@@ -3984,6 +3984,61 @@ pub async fn get_episode_transcript(
     Ok(Json(serde_json::json!({ "transcript": transcript })))
 }
 
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct EpisodeTranscriptExportQuery {
+    pub episode_id: i32,
+    pub user_id: i32,
+    /// File format: srt, vtt or txt.
+    // A String, parsed after the key check, so a bad key gets 401 rather than 400.
+    #[param(value_type = crate::services::transcription::TranscriptFormat, inline)]
+    pub format: String,
+}
+
+/// Download an episode's generated transcript as a subtitle or text file.
+#[utoipa::path(
+    get,
+    path = "/episode_transcript_export",
+    tag = "settings",
+    summary = "Download the generated transcript as SRT, WebVTT or plain text",
+    params(EpisodeTranscriptExportQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "The transcript file", content_type = "text/plain"),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 404, description = "No finished transcript for this episode"),
+    ),
+)]
+pub async fn export_episode_transcript(
+    State(state): State<AppState>,
+    Query(query): Query<EpisodeTranscriptExportQuery>,
+    headers: HeaderMap,
+) -> Result<axum::response::Response, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own episodes."));
+    }
+    crate::handlers::require_episode_owner(&state, query.user_id, query.episode_id, false).await?;
+    let format: crate::services::transcription::TranscriptFormat =
+        serde_json::from_value(serde_json::Value::String(query.format.to_ascii_lowercase()))
+            .map_err(|_| AppError::bad_request("format must be srt, vtt or txt"))?;
+
+    let body = crate::services::transcription::export_episode_transcript(&state.db_pool, query.episode_id, format)
+        .await
+        .map_err(|e| AppError::internal(&e))?
+        .ok_or_else(|| AppError::not_found("This episode has no finished transcript."))?;
+
+    let filename = format!("episode-{}-transcript.{}", query.episode_id, format.extension());
+    axum::response::Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, format.content_type())
+        .header(axum::http::header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", filename))
+        .body(axum::body::Body::from(body))
+        .map_err(|e| AppError::internal(&format!("Failed to build response: {}", e)))
+}
+
 // Per-podcast auto-transcribe opt-in (get + set)
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct AutoTranscribeRequest {
