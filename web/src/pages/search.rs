@@ -1094,6 +1094,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                                     episode_ids: sel_ids,
                                                     user_id: sel_user_id,
                                                     is_youtube: None,
+                                                    position: None,
                                                 };
                                                 match call_bulk_mark_episodes_completed(
                                                     &server_name.unwrap_or_default(),
@@ -1132,6 +1133,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                                     episode_ids: sel_ids,
                                                     user_id: sel_user_id,
                                                     is_youtube: None,
+                                                    position: None,
                                                 };
                                                 match call_bulk_save_episodes(
                                                     &server_name.unwrap_or_default(),
@@ -1170,6 +1172,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                                     episode_ids: sel_ids,
                                                     user_id: sel_user_id,
                                                     is_youtube: None,
+                                                    position: None,
                                                 };
                                                 match call_bulk_queue_episodes(
                                                     &server_name.unwrap_or_default(),
@@ -1208,6 +1211,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                                     episode_ids: sel_ids,
                                                     user_id: sel_user_id,
                                                     is_youtube: None,
+                                                    position: None,
                                                 };
                                                 match call_bulk_download_episodes(
                                                     &server_name.unwrap_or_default(),

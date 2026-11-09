@@ -7974,6 +7974,32 @@ def migration_089_transcript_search_index(conn, db_type: str) -> None:
         cursor.close()
 
 
+@register_migration("090", "user_queue_add_position", "UserSettings.QueueAddPosition: where Add to queue puts an episode, top or bottom", requires=["001"], sqlite=True)
+def migration_090_user_queue_add_position(conn, db_type: str) -> None:
+    """'top' puts an added episode next in line, under whatever is playing; 'bottom' puts it last.
+    Bottom by default."""
+    cursor = conn.cursor()
+    try:
+        if db_type == "sqlite":
+            cursor.execute('PRAGMA table_info("UserSettings")')
+            exists = any(row[1].lower() == "queueaddposition" for row in cursor.fetchall())
+        else:
+            exists = _column_exists(cursor, db_type, "UserSettings", "QueueAddPosition")
+        if not exists:
+            # SQLite reports a column by its declared name, and its schema is all lowercase.
+            table, column = {
+                "postgresql": ('"UserSettings"', "QueueAddPosition"),
+                "sqlite": ('"UserSettings"', "queueaddposition"),
+            }.get(db_type, ("UserSettings", "QueueAddPosition"))
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} VARCHAR(10) NOT NULL DEFAULT 'bottom'")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("118", "gpodder_actions_follow_merged_episodes", "Episode actions point at the shared episode their merged copy became; the copies are deleted", requires=["082", "111"])
 def migration_118_gpodder_actions_follow_merged_episodes(conn, db_type: str) -> None:
     """GpodderSyncEpisodeActions.EpisodeID of actions on an episode copy merged by 082 now points

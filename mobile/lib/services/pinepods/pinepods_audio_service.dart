@@ -64,10 +64,15 @@ class PinepodsAudioService {
   /// (NativeAudioPlayerService.setPlaylistContext is a no-op, so we track it here.)
   int? _currentPlaylistId;
 
-  /// Podcast id and auto-play-next flag of the playing episode, once known,
-  /// so the end-of-episode advance doesn't have to fetch them again.
+  final _completedEpisodes = StreamController<({int episodeId, bool isYoutube})>.broadcast();
+
+  /// Episodes that just played to the end, so open screens can show them
+  /// finished without reloading.
+  Stream<({int episodeId, bool isYoutube})> get completedEpisodes => _completedEpisodes.stream;
+
+  /// Podcast id of the playing episode, once known, so the end-of-episode
+  /// advance doesn't have to fetch it again.
   int? _currentPodcastId;
-  bool? _currentAutoPlayNext;
 
   /// Duration (seconds) the server currently has stored for the playing episode.
   /// Used to detect when the decoded length differs so we can correct it.
@@ -193,7 +198,6 @@ class PinepodsAudioService {
       _currentArtwork = pinepodsEpisode.episodeArtwork;
       final knownPodcastId = pinepodsEpisode.podcastId;
       _currentPodcastId = knownPodcastId != null && knownPodcastId > 0 ? knownPodcastId : null;
-      _currentAutoPlayNext = null;
       transcriptCues.value = const [];
       skippedAds.value = const [];
 
@@ -434,7 +438,6 @@ class PinepodsAudioService {
         bool autoPlayNext = false;
         try {
           autoPlayNext = await _pinepodsService.getAutoPlayNextStatus(podcastId, userId);
-          if (stillPlaying()) _currentAutoPlayNext = autoPlayNext;
         } catch (e) {
           log.fine('Could not check auto-play-next status: $e');
         }
@@ -492,7 +495,6 @@ class PinepodsAudioService {
     _stopPeriodicUpdates();
     _currentEpisodeId = null;
     _currentPodcastId = null;
-    _currentAutoPlayNext = null;
     transcriptCues.value = const [];
     skippedAds.value = const [];
     _currentEpisodeDuration = null;
@@ -812,6 +814,7 @@ class PinepodsAudioService {
       settings.pinepodsApiKey!,
     );
 
+    _completedEpisodes.add((episodeId: episodeId, isYoutube: _isYoutube));
     unawaited(
       _pinepodsService.markEpisodeCompleted(episodeId, userId, _isYoutube).catchError((e) {
         log.fine('Could not mark episode completed (continuing): $e');
@@ -877,6 +880,13 @@ class PinepodsAudioService {
   /// what plays next so completion can start it straight away.
   static const prefetchLead = Duration(seconds: 90);
 
+  /// Auto-play next was switched for [podcastId]: forget a next episode
+  /// already picked for the playing episode of that podcast.
+  void autoPlayNextChanged(int podcastId) {
+    if (_currentPodcastId != podcastId) return;
+    _prefetch = null;
+  }
+
   @visibleForTesting
   void prefetchNextIfNearEnd() {
     final episodeId = _currentEpisodeId;
@@ -907,8 +917,10 @@ class PinepodsAudioService {
     // PRIORITY 2: Per-podcast auto-play-next. Uses what was learned when the
     // episode started where possible.
     try {
+      // Asked again rather than reusing the value from when the episode started:
+      // auto-play next is often switched on while the episode is already playing.
       final podcastId = _currentPodcastId ?? await _pinepodsService.getPodcastIdFromEpisode(episodeId, userId, _isYoutube);
-      final autoPlayNext = _currentAutoPlayNext ?? await _pinepodsService.getAutoPlayNextStatus(podcastId, userId);
+      final autoPlayNext = await _pinepodsService.getAutoPlayNextStatus(podcastId, userId);
       if (autoPlayNext) {
         final next = await _pinepodsService.getNextPodcastEpisode(episodeId, userId);
         if (next != null) return (episode: next, playlistId: null, skipQueue: true);
@@ -1180,7 +1192,6 @@ class PinepodsAudioService {
     _currentUserId = null;
     _currentPlaylistId = null;
     _currentPodcastId = null;
-    _currentAutoPlayNext = null;
     _currentEpisodeDuration = null;
     _currentTitle = null;
     _currentArtwork = null;

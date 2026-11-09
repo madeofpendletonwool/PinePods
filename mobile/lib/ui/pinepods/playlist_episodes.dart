@@ -307,7 +307,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     // Note: Actual local download implementation would depend on download service integration
   }
 
-  Future<void> _toggleQueueEpisode(int episodeIndex) async {
+  Future<void> _toggleQueueEpisode(int episodeIndex, {String? position}) async {
     final episode = _playlistResponse!.episodes[episodeIndex];
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
@@ -334,6 +334,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
           episode.episodeId,
           userId,
           episode.isYoutube,
+          position: position,
         );
         
         if (success && mounted) {
@@ -436,6 +437,10 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
             onQueue: () {
               Navigator.of(context).pop();
               _toggleQueueEpisode(episodeIndex);
+            },
+            onQueueAt: (position) {
+              Navigator.of(context).pop();
+              _toggleQueueEpisode(episodeIndex, position: position);
             },
             onMarkComplete: () {
               Navigator.of(context).pop();

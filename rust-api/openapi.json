@@ -3196,6 +3196,69 @@
         ]
       }
     },
+    "/api/data/episode_transcript_export": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Download the generated transcript as SRT, WebVTT or plain text",
+        "operationId": "export_episode_transcript",
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "File format: srt, vtt or txt.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "File formats a generated transcript can be downloaded as.",
+              "enum": [
+                "srt",
+                "vtt",
+                "txt"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The transcript file",
+            "content": {
+              "text/plain": {}
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No finished transcript for this episode"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/extend_shared_link": {
       "put": {
         "tags": [
@@ -5022,6 +5085,49 @@
           },
           "401": {
             "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/get_queue_add_position/{user_id}": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Get the default Add to queue position",
+        "operationId": "get_queue_add_position",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueAddPositionSetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Another user's setting"
           }
         },
         "security": [
@@ -10191,6 +10297,48 @@
         ]
       }
     },
+    "/api/data/update_queue_add_position": {
+      "put": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Set the default Add to queue position",
+        "operationId": "update_queue_add_position",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueueAddPositionSetting"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueAddPositionSetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Another user's setting"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/update_services": {
       "get": {
         "tags": [
@@ -13720,6 +13868,17 @@
             "type": [
               "boolean",
               "null"
+            ]
+          },
+          "position": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/QueueAddPosition",
+                "description": "bulk_queue only: top or bottom; when absent, the user's default."
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }
@@ -17387,6 +17546,30 @@
           }
         }
       },
+      "QueueAddPosition": {
+        "type": "string",
+        "description": "Where Add to queue puts an episode: next in line (under whatever is playing) or last.",
+        "enum": [
+          "top",
+          "bottom"
+        ]
+      },
+      "QueueAddPositionSetting": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "position"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "position": {
+            "$ref": "#/components/schemas/QueueAddPosition"
+          }
+        }
+      },
       "QueuePodcastRequest": {
         "type": "object",
         "required": [
@@ -17406,13 +17589,24 @@
           "is_youtube": {
             "type": "boolean"
           },
+          "position": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/QueueAddPosition",
+                "description": "Top or bottom of the queue; when absent, the user's default (`get_queue_add_position`).\nIgnored by remove_queued_pod and queue_bump."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "playing_episode_id": {
             "type": [
               "integer",
               "null"
             ],
             "format": "int32",
-            "description": "Optional hint: the episode currently playing on the caller's device, so the\nserver can insert the new episode directly *under* it (\"play next\"). When\nabsent the episode is inserted at the top of the queue. Ignored by\nremove_queued_pod. The anchor may itself be a YouTube video, hence the\ncompanion `playing_is_youtube` flag for an unambiguous lookup."
+            "description": "Optional hint: the episode currently playing on the caller's device, so a\ntop add lands directly *under* it (\"play next\"). Without it the server uses\nthe user's active session, else the very top. The anchor may itself be a\nYouTube video, hence the companion `playing_is_youtube` flag."
           },
           "playing_is_youtube": {
             "type": [

@@ -414,6 +414,7 @@ pub fn queue_panel() -> Html {
                                                 is_youtube: is_yt,
                                                 playing_episode_id: None,
                                                 playing_is_youtube: None,
+                                                position: None,
                                             };
                                             let _ = call_remove_queued_episode(
                                                 &server, &key, &req,

@@ -223,15 +223,48 @@ pub struct QueuePodcastRequest {
     pub episode_id: i32,
     pub user_id: i32,
     pub is_youtube: bool,
-    /// Optional hint: the episode currently playing on the caller's device, so the
-    /// server can insert the new episode directly *under* it ("play next"). When
-    /// absent the episode is inserted at the top of the queue. Ignored by
-    /// remove_queued_pod. The anchor may itself be a YouTube video, hence the
-    /// companion `playing_is_youtube` flag for an unambiguous lookup.
+    /// Top or bottom of the queue; when absent, the user's default (`get_queue_add_position`).
+    /// Ignored by remove_queued_pod and queue_bump.
+    #[serde(default)]
+    pub position: Option<QueueAddPosition>,
+    /// Optional hint: the episode currently playing on the caller's device, so a
+    /// top add lands directly *under* it ("play next"). Without it the server uses
+    /// the user's active session, else the very top. The anchor may itself be a
+    /// YouTube video, hence the companion `playing_is_youtube` flag.
     #[serde(default)]
     pub playing_episode_id: Option<i32>,
     #[serde(default)]
     pub playing_is_youtube: Option<bool>,
+}
+
+/// Where Add to queue puts an episode: next in line (under whatever is playing) or last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum QueueAddPosition {
+    Top,
+    Bottom,
+}
+
+impl QueueAddPosition {
+    pub fn from_setting(value: Option<&str>) -> Self {
+        match value {
+            Some(v) if v.eq_ignore_ascii_case("top") => Self::Top,
+            _ => Self::Bottom,
+        }
+    }
+
+    pub fn as_setting(self) -> &'static str {
+        match self {
+            Self::Top => "top",
+            Self::Bottom => "bottom",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct QueueAddPositionSetting {
+    pub user_id: i32,
+    pub position: QueueAddPosition,
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -520,6 +553,9 @@ pub struct BulkEpisodeActionRequest {
     pub episode_ids: Vec<i32>,
     pub user_id: i32,
     pub is_youtube: Option<bool>,
+    /// bulk_queue only: top or bottom; when absent, the user's default.
+    #[serde(default)]
+    pub position: Option<QueueAddPosition>,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]

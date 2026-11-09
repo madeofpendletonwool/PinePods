@@ -22,6 +22,7 @@ use crate::requests::pod_req::{
     call_save_episode, DownloadEpisodeRequest, EpisodeRequest, FetchPodcasting2DataRequest,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest, Transcript,
     call_get_ai_status, call_get_episode_transcript, call_transcribe_episode, StoredTranscript,
+    call_export_episode_transcript,
     call_get_episode_skip_segments, SkipSegment, AdAudio, call_get_ai_status_full, call_detect_ads, call_adjust_ad_segment_review,
     AdSegmentReviewRequest,
 };
@@ -928,6 +929,8 @@ pub struct TranscriptTabProps {
     pub initial_query: Option<String>,
     #[prop_or_default]
     pub prefer_source: Option<String>,
+    #[prop_or_default]
+    pub episode_title: String,
 }
 
 /// Unified transcript view for the episode's Transcript tab (#726): shows the built-in transcript
@@ -1263,10 +1266,24 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
         html! {}
     };
 
+    let download = if ai_complete {
+        html! {
+            <TranscriptDownload
+                episode_id={episode_id}
+                episode_title={props.episode_title.clone()}
+                server_name={props.server_name.clone()}
+                api_key={props.api_key.clone()}
+            />
+        }
+    } else {
+        html! {}
+    };
+
     html! {
         <div class="ep-pane">
             { selector }
             { content }
+            { download }
             { action }
             { detect_action }
             { detect_choice_panel }
@@ -1277,6 +1294,90 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
 }
 
 #[derive(Properties, PartialEq)]
+pub struct TranscriptDownloadProps {
+    pub episode_id: i32,
+    pub episode_title: String,
+    pub server_name: String,
+    pub api_key: String,
+}
+
+/// Save the generated transcript as an SRT, WebVTT or text file.
+#[function_component(TranscriptDownload)]
+pub fn transcript_download(props: &TranscriptDownloadProps) -> Html {
+    let (i18n, _) = use_translation();
+    let (app, _) = use_store::<AppState>();
+    let user_id = app.user_details.as_ref().map(|ud| ud.UserID);
+    let failed = i18n.t("episode.transcript_download_failed").to_string();
+
+    let download = |format: &'static str| {
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        let episode_id = props.episode_id;
+        let title = props.episode_title.clone();
+        let failed = failed.clone();
+        Callback::from(move |_: MouseEvent| {
+            let Some(user_id) = user_id else { return };
+            let (server_name, api_key, title, failed) = (server_name.clone(), api_key.clone(), title.clone(), failed.clone());
+            spawn_local(async move {
+                match call_export_episode_transcript(&server_name, &api_key, user_id, episode_id, format).await {
+                    Ok(content) => save_text_file(&transcript_file_name(&title, episode_id, format), &content),
+                    Err(e) => Dispatch::<NotificationState>::global()
+                        .reduce_mut(|s| s.error_message = Some(format!("{}: {}", failed, e))),
+                }
+            });
+        })
+    };
+
+    html! {
+        <div class="ep-transcript-download">
+            <span class="ep-transcript-download-label">
+                <i class="ph ph-download-simple"></i>{ i18n.t("episode.download_transcript") }
+            </span>
+            <button class="ep-ai-transcript-btn" onclick={download("srt")} title="SubRip subtitles">{ "SRT" }</button>
+            <button class="ep-ai-transcript-btn" onclick={download("vtt")} title="WebVTT subtitles">{ "VTT" }</button>
+            <button class="ep-ai-transcript-btn" onclick={download("txt")} title="Plain text">{ "TXT" }</button>
+        </div>
+    }
+}
+
+/// "<episode title> - transcript.<ext>", with characters file systems reject replaced.
+fn transcript_file_name(title: &str, episode_id: i32, ext: &str) -> String {
+    let clean: String = title
+        .chars()
+        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() { '_' } else { c })
+        .collect();
+    let clean = clean.trim();
+    if clean.is_empty() {
+        format!("episode-{} - transcript.{}", episode_id, ext)
+    } else {
+        format!("{} - transcript.{}", clean, ext)
+    }
+}
+
+/// Hand `content` to the browser as a download named `file_name`.
+fn save_text_file(file_name: &str, content: &str) {
+    let parts = js_sys::Array::new();
+    parts.push(&JsValue::from_str(content));
+    let options = web_sys::BlobPropertyBag::new();
+    options.set_type("text/plain;charset=utf-8");
+    let Ok(blob) = web_sys::Blob::new_with_str_sequence_and_options(&parts, &options) else { return };
+    let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) else { return };
+    if let Some(document) = web_sys::window().and_then(|w| w.document()) {
+        if let Ok(a) = document.create_element("a") {
+            let a: web_sys::HtmlAnchorElement = a.unchecked_into();
+            a.set_href(&url);
+            a.set_download(file_name);
+            a.click();
+        }
+    }
+    // Firefox cancels the download if the URL goes away in the same tick.
+    gloo_timers::callback::Timeout::new(1_000, move || {
+        let _ = web_sys::Url::revoke_object_url(&url);
+    })
+    .forget();
+}
+
+#[derive(Properties, PartialEq)]
 pub struct MobileTranscriptActionsProps {
     pub episode_id: i32,
     pub server_name: String,
@@ -1284,6 +1385,8 @@ pub struct MobileTranscriptActionsProps {
     pub ai_available: bool,
     /// Opens the transcript modal with the given source(s).
     pub on_view: Callback<Vec<Transcript>>,
+    #[prop_or_default]
+    pub episode_title: String,
 }
 
 /// AI transcript actions for the mobile transcript section: view the AI transcript in the same
@@ -1349,9 +1452,17 @@ pub fn mobile_transcript_actions(props: &MobileTranscriptActionsProps) -> Html {
         <>
             { if ai_complete {
                 html! {
-                    <button class="ep-mobile-transcript-btn" onclick={view_ai}>
-                        <i class="ph ph-scroll"></i>{ i18n.t("episode.view_ai_transcript") }
-                    </button>
+                    <>
+                        <button class="ep-mobile-transcript-btn" onclick={view_ai}>
+                            <i class="ph ph-scroll"></i>{ i18n.t("episode.view_ai_transcript") }
+                        </button>
+                        <TranscriptDownload
+                            episode_id={episode_id}
+                            episode_title={props.episode_title.clone()}
+                            server_name={props.server_name.clone()}
+                            api_key={props.api_key.clone()}
+                        />
+                    </>
                 }
             } else { html! {} } }
             { if is_running {
@@ -2317,6 +2428,7 @@ pub fn epsiode() -> Html {
                                     is_youtube,
                                     playing_episode_id,
                                     playing_is_youtube,
+                                    position: None,
                                 };
 
                                 let future = async move {
@@ -2724,6 +2836,7 @@ pub fn epsiode() -> Html {
                                                         api_key={api_key.clone().unwrap_or_default().unwrap_or_default()}
                                                         ai_available={*ai_available}
                                                         on_view={on_view.clone()}
+                                                        episode_title={episode.episodetitle.clone()}
                                                     />
                                                 </div>
                                                 if let Some(show_modal) = episode_detail_state.show_transcript_modal {
@@ -3026,6 +3139,7 @@ pub fn epsiode() -> Html {
                                                         focus_time={transcript_link.0}
                                                         initial_query={transcript_link.1.clone()}
                                                         prefer_source={transcript_link.2.clone()}
+                                                        episode_title={episode.episodetitle.clone()}
                                                     />
                                                 },
                                                 EpisodeTab::People => html! {

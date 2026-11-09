@@ -455,7 +455,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     }
   }
 
-  Future<void> _toggleQueueEpisode(int episodeIndex, bool isContinueListening) async {
+  Future<void> _toggleQueueEpisode(int episodeIndex, bool isContinueListening, {String? position}) async {
     final episodes = isContinueListening
         ? _homeData!.inProgressEpisodes
         : _homeData!.recentEpisodes;
@@ -500,6 +500,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
           homeEpisode.episodeId,
           userId,
           homeEpisode.isYoutube,
+          position: position,
         );
         if (success) {
           setState(() {
@@ -828,6 +829,10 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               onQueue: () {
                 Navigator.of(context).pop();
                 _toggleQueueEpisode(episodeIndex, _isContextMenuForContinueListening);
+              },
+              onQueueAt: (position) {
+                Navigator.of(context).pop();
+                _toggleQueueEpisode(episodeIndex, _isContextMenuForContinueListening, position: position);
               },
               onMarkComplete: () {
                 Navigator.of(context).pop();
