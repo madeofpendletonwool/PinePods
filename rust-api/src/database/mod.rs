@@ -1,7 +1,7 @@
 //! Database access. Every query is a method on `DatabasePool`; the methods are split by area
 //! into the submodules below, with shared types and helpers kept here.
 
-use sqlx::{MySql, Pool, Postgres, Row};
+use sqlx::{MySql, Pool, Postgres, Row, Sqlite};
 use std::time::Duration;
 use crate::{config::{Config, OIDCConfig}, error::{AppError, AppResult}};
 use chrono::{DateTime, Utc};
@@ -12,6 +12,9 @@ use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
 use base64;
 use tracing::{debug, error, info, warn};
+
+pub mod dialect;
+use dialect::{dialect_fn, dialect_match, dialect_method};
 
 mod auth;
 mod mfa;
@@ -32,11 +35,14 @@ mod collections;
 mod refresh;
 mod feed_parsing;
 mod notifications;
+mod in_app_notifications;
+pub use in_app_notifications::StoredInAppNotification;
 mod downloads;
 mod youtube;
 mod rss;
 mod gpodder;
 mod backup;
+mod sqlite_backup;
 mod shared_episodes;
 mod recommendations;
 mod local_podcasts;
@@ -57,6 +63,8 @@ pub use backup::*;
 pub enum DatabasePool {
     Postgres(Pool<Postgres>),
     MySQL(Pool<MySql>),
+    /// Runs the PostgreSQL query code through [`dialect`].
+    Sqlite(Pool<Sqlite>),
 }
 
 /// A transaction rolled back because it collided with a concurrent one: a deadlock or
@@ -77,16 +85,17 @@ pub const INTERNAL_GPODDER_URL: &str = "http://localhost:8042";
 impl DatabasePool {
     /// Identifies the database this pool points at (for in-process state kept per database).
     pub fn instance_key(&self) -> String {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let o = pool.connect_options();
                 format!("pg:{}:{}/{}", o.get_host(), o.get_port(), o.get_database().unwrap_or_default())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            sqlite(pool) => format!("sqlite:{}", pool.connect_options().get_filename().display()),
+            mysql(pool) => {
                 let o = pool.connect_options();
                 format!("mysql:{}:{}/{}", o.get_host(), o.get_port(), o.get_database().unwrap_or_default())
-            }
-        }
+            },
+        })
     }
 
     pub async fn new(config: &Config) -> AppResult<Self> {
@@ -96,6 +105,23 @@ impl DatabasePool {
         let host_is_socket = db.host.starts_with('/');
 
         match db.db_type.as_str() {
+            "sqlite" => {
+                // The migration runner creates the file; WAL lets readers run beside the one
+                // writer, and the busy timeout queues writers instead of failing them.
+                let options = sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&db.name)
+                    .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+                    .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
+                    .busy_timeout(Duration::from_secs(30))
+                    .foreign_keys(true);
+                let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                    .max_connections(db.max_connections)
+                    .min_connections(db.min_connections)
+                    .acquire_timeout(Duration::from_secs(30))
+                    .connect_with(options)
+                    .await?;
+                Ok(DatabasePool::Sqlite(pool))
+            }
             "postgresql" => {
                 let mut options = sqlx::postgres::PgConnectOptions::new()
                     .username(&db.username)
@@ -148,22 +174,22 @@ impl DatabasePool {
     }
 
     pub async fn health_check(&self) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query("SELECT 1 as health")
+                    .fetch_one(pool)
+                    .await?;
+                let health: i32 = row.try_get("health")?;
+                Ok(health == 1)
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT 1 as health")
                     .fetch_one(pool)
                     .await?;
                 let health: i32 = row.try_get("health")?;
                 Ok(health == 1)
-            }
-            DatabasePool::MySQL(pool) => {
-                let row = sqlx::query("SELECT 1 as health")
-                    .fetch_one(pool)
-                    .await?;
-                let health: i32 = row.try_get("health")?;
-                Ok(health == 1)
-            }
-        }
+            },
+        })
     }
 
     // Helper function to parse categories JSON string into HashMap - matches Python version

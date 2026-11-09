@@ -13,6 +13,7 @@ async fn due_in(app: &TestApp, pod: i32) -> i64 {
     let sql = match app.backend() {
         Backend::Postgres => format!(r#"SELECT CAST(EXTRACT(EPOCH FROM (nextrefreshat - NOW())) AS BIGINT) FROM "Podcasts" WHERE podcastid = {pod}"#),
         Backend::MariaDb => format!("SELECT TIMESTAMPDIFF(SECOND, NOW(), NextRefreshAt) FROM Podcasts WHERE PodcastID = {pod}"),
+        Backend::Sqlite => format!(r#"SELECT CAST(ROUND((julianday(nextrefreshat) - julianday('now')) * 86400) AS INTEGER) FROM "Podcasts" WHERE podcastid = {pod}"#),
     };
     int(app, &sql).await.unwrap_or_else(|| panic!("podcast {pod} has no next refresh"))
 }
@@ -193,7 +194,7 @@ async fn a_manual_refresh_fetches_now_and_reschedules() {
     set_next(&app, pod, "2100-01-01 00:00:00").await;
     exec(&app, &format!(r#"UPDATE "Podcasts" SET LastRefreshSuccess = NULL WHERE PodcastID = {pod}"#)).await;
     let before = app.fixtures().hits("show.xml").len();
-    assert!(refresh::refresh_podcast_now(&app.state, user.id, pod).await.unwrap());
+    assert!(matches!(refresh::refresh_podcast_now(&app.state, user.id, pod).await.unwrap(), refresh::PodcastRefresh::Done(_)));
     assert_eq!(app.fixtures().hits("show.xml").len(), before + 1);
     assert_about(due_in(&app, pod).await, 15);
 }
@@ -201,6 +202,9 @@ async fn a_manual_refresh_fetches_now_and_reschedules() {
 #[tokio::test(flavor = "multi_thread")]
 async fn upgrading_backfills_intervals_and_spreads_the_first_refreshes() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("upgrader").await;
     let daily = subscribe(&app, &user, &app.feed("daily.xml", &spaced("Daily", 10, Duration::hours(3), Duration::days(1))), 10).await;
     let dormant = subscribe(&app, &user, &app.feed("old.xml", &spaced("Old", 4, Duration::days(200), Duration::days(7))), 4).await;

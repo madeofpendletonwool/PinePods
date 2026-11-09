@@ -2,7 +2,7 @@
 // subscribed to that couldn't be added, with what can be done about each.
 
 use crate::components::context::{AppState, NotificationState};
-use crate::requests::pod_req::{call_remove_podcasts, RemovePodcastValues};
+use crate::requests::pod_req::{call_remove_podcasts, call_set_auto_refresh, RemovePodcastValues};
 use crate::requests::setting_reqs::{
     call_dismiss_import, call_get_feed_problems, call_refresh_failing_feed, call_remove_import,
     call_retry_import, FailingFeed, FeedProblems, ImportFailure,
@@ -48,6 +48,7 @@ pub fn kind_key(kind: &str) -> &'static str {
 #[derive(Clone, Copy)]
 enum Action {
     Refresh(i32),
+    Pause(i32),
     Unsubscribe(i32, i32),
     Retry(i32),
     Remove(i32),
@@ -58,7 +59,7 @@ impl Action {
     /// The row it's for, to show it as busy.
     fn row(self) -> String {
         match self {
-            Action::Refresh(id) | Action::Unsubscribe(id, _) => format!("feed-{id}"),
+            Action::Refresh(id) | Action::Pause(id) | Action::Unsubscribe(id, _) => format!("feed-{id}"),
             Action::Retry(id) | Action::Remove(id) | Action::Dismiss(id) => format!("import-{id}"),
         }
     }
@@ -102,6 +103,7 @@ pub fn feed_problems_section() -> Html {
             spawn_local(async move {
                 let result = match action {
                     Action::Refresh(id) => call_refresh_failing_feed(&server, &key, id).await.map(|_| ()),
+                    Action::Pause(id) => call_set_auto_refresh(&server, &key, id, false).await,
                     Action::Unsubscribe(podcast_id, user_id) => {
                         let values = RemovePodcastValues { podcast_id, user_id, is_youtube: false };
                         call_remove_podcasts(&server, &Some(key), &values).await.map(|_| ())
@@ -135,6 +137,8 @@ pub fn feed_problems_section() -> Html {
         let working = busy.as_deref() == Some(Action::Refresh(f.podcast_id).row().as_str());
         let (id, name) = (f.podcast_id, f.name.clone());
         let refresh = run.reform(move |_: MouseEvent| (Action::Refresh(id), None));
+        let paused = i18n.t("feed_problems.stopped_refreshing").replace("{name}", &name);
+        let pause = run.reform(move |_: MouseEvent| (Action::Pause(id), Some(paused.clone())));
         let unsubscribe = {
             let run = run.clone();
             let question = i18n.t("feed_problems.unsubscribe_confirm").replace("{name}", &name);
@@ -160,6 +164,9 @@ pub fn feed_problems_section() -> Html {
                 <div class="settings-row-control">
                     <button class="btn btn-ghost" disabled={working} onclick={refresh}>
                         <i class={classes!("ph", if working { "ph-spinner animate-spin" } else { "ph-arrows-clockwise" })}></i>{ i18n.t("feed_problems.refresh_now") }
+                    </button>
+                    <button class="btn btn-ghost" disabled={working} onclick={pause} title={i18n.t("feed_problems.stop_refreshing_hint")}>
+                        <i class="ph ph-pause"></i>{ i18n.t("feed_problems.stop_refreshing") }
                     </button>
                     <button class="btn btn-ghost" disabled={working} onclick={unsubscribe}>
                         <i class="ph ph-trash"></i>{ i18n.t("feed_problems.unsubscribe") }

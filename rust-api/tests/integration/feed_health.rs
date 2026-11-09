@@ -185,6 +185,9 @@ async fn removing_a_failed_import_unsubscribes_the_apps_and_dismissing_only_hide
 #[tokio::test(flavor = "multi_thread")]
 async fn feeds_already_failing_count_from_their_last_attempt_after_the_upgrade() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("upgrade-health").await;
     let url = app.feed("old-fail.xml", &Feed::with_episodes("Old", 1));
     let pod = app.subscribe(&user, &url, 1).await;

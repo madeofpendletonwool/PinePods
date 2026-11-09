@@ -92,6 +92,9 @@ async fn unsubscribing_keeps_the_episodes_and_state_of_the_other_subscribers() {
 #[tokio::test(flavor = "multi_thread")]
 async fn upgrading_merges_the_copies_and_old_ids_keep_working() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let (alice, bob) = (app.user("alice").await, app.user("bob").await);
     let url = app.feed("show.xml", &Feed::with_episodes("Show", 2));
     let a = app.subscribe(&alice, &url, 2).await;
@@ -102,6 +105,7 @@ async fn upgrading_merges_the_copies_and_old_ids_keep_working() {
     match app.backend() {
         Backend::Postgres => exec(&app, "DROP INDEX idx_episodes_feedid_guid_unique").await,
         Backend::MariaDb => exec(&app, "DROP INDEX idx_episodes_feedid_guidhash_unique ON Episodes").await,
+        Backend::Sqlite => unreachable!("upgrade tests skip SQLite"),
     }
     exec(
         &app,

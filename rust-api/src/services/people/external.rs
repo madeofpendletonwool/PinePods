@@ -12,6 +12,7 @@ use super::sql::{execute, fetch_all, fetch_optional};
 use super::{Endpoints, ExternalEpisode, PersonPodcast};
 use crate::database::DatabasePool;
 use crate::error::AppResult;
+use crate::database::dialect::dialect_match;
 
 /// How long a person's external episode list is considered fresh.
 pub const TTL_HOURS: i64 = 12;
@@ -181,8 +182,8 @@ pub async fn refresh(db: &DatabasePool, api: &Endpoints, person_id: i32) -> AppR
     execute!(db, r#"DELETE FROM "PersonExternalEpisodes" WHERE personid = $1"#, [person_id]);
     for f in &found {
         let cut = |s: &Option<String>, n: usize| s.as_ref().map(|v| v.chars().take(n).collect::<String>());
-        let res = match db {
-            DatabasePool::Postgres(pool) => sqlx::query(
+        let res = dialect_match!(db, {
+            pg(pool) => q::query(
                 r#"INSERT INTO "PersonExternalEpisodes"
                    (personid, feedurl, podcasttitle, podcastartwork, podcastindexid, episodeguid, episodetitle,
                     episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration, role, source)
@@ -206,7 +207,7 @@ pub async fn refresh(db: &DatabasePool, api: &Endpoints, person_id: i32) -> AppR
             .execute(pool)
             .await
             .map(|_| ()),
-            DatabasePool::MySQL(pool) => sqlx::query(
+            mysql(pool) => sqlx::query(
                 "INSERT IGNORE INTO PersonExternalEpisodes
                  (PersonID, FeedURL, PodcastTitle, PodcastArtwork, PodcastIndexID, EpisodeGUID, EpisodeTitle,
                   EpisodeDescription, EpisodeURL, EpisodeURLHash, EpisodeArtwork, EpisodePubDate, EpisodeDuration, Role, Source)
@@ -230,7 +231,7 @@ pub async fn refresh(db: &DatabasePool, api: &Endpoints, person_id: i32) -> AppR
             .execute(pool)
             .await
             .map(|_| ()),
-        };
+        });
         if let Err(e) = res {
             tracing::debug!("Skipping external episode {} for person {}: {}", f.url, person_id, e);
         }

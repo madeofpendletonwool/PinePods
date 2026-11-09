@@ -93,6 +93,9 @@ async fn a_different_show_with_the_same_title_is_still_added() {
 #[tokio::test(flavor = "multi_thread")]
 async fn podcasts_subscribed_twice_are_merged_on_upgrade() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("merge").await;
     let old = app.feed("merge-old.xml", &Feed::with_episodes("Merged Show", 3));
     let new = app.feed("merge-new.xml", &Feed::with_episodes("Merged Show", 4));

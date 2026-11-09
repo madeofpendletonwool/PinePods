@@ -58,10 +58,12 @@ async fn main() -> AppResult<()> {
 
     // Initialize Redis client
     let redis_client = RedisClient::new(&config).await.inspect_err(|e| {
-        error!(
-            "Could not connect to Valkey/Redis at {}:{} ({}). PinePods requires Valkey: point VALKEY_URL or VALKEY_HOST/VALKEY_PORT at a running instance.",
-            config.redis.host, config.redis.port, e
-        );
+        if let Some(redis) = &config.redis {
+            error!(
+                "Could not connect to Valkey/Redis at {}:{} ({}). Point VALKEY_URL or VALKEY_HOST/VALKEY_PORT at a running instance, or set VALKEY_MODE=memory to run without it.",
+                redis.host, redis.port, e
+            );
+        }
     })?;
     info!("Redis/Valkey client initialized");
 
@@ -70,7 +72,7 @@ async fn main() -> AppResult<()> {
     let instance_id: Arc<str> = Arc::from(uuid::Uuid::new_v4().to_string().as_str());
 
     // Initialize task management
-    let task_manager = Arc::new(TaskManager::new(redis_client.clone(), instance_id.clone()));
+    let task_manager = Arc::new(TaskManager::new(redis_client.clone(), db_pool.clone(), instance_id.clone()));
     let task_spawner = Arc::new(TaskSpawner::new(task_manager.clone(), db_pool.clone()));
     let websocket_manager = Arc::new(WebSocketManager::new());
     let now_playing_manager = Arc::new(handlers::nowplaying::NowPlayingManager::new());

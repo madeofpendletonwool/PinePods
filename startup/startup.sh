@@ -17,19 +17,32 @@ export DB_PASSWORD=$DB_PASSWORD
 export DB_HOST=$DB_HOST
 export DB_NAME=$DB_NAME
 export DB_PORT=$DB_PORT
+# No database server configured: use SQLite.
+if [[ -z "$DB_TYPE" && -z "$DB_HOST" ]]; then
+    DB_TYPE=sqlite
+fi
 export DB_TYPE=$DB_TYPE
+# SQLite database file (DB_TYPE=sqlite); its directory should be a mounted volume.
+export DB_PATH=${DB_PATH:-/opt/pinepods/data/pinepods.db}
 export FULLNAME=${FULLNAME}
 export USERNAME=${USERNAME}
 export EMAIL=${EMAIL}
 export PASSWORD=${PASSWORD}
 export REVERSE_PROXY=$REVERSE_PROXY
-export SEARCH_API_URL=$SEARCH_API_URL
-export PEOPLE_API_URL=$PEOPLE_API_URL
+export SEARCH_API_URL=${SEARCH_API_URL:-'https://search.pinepods.online/api/search'}
+export PEOPLE_API_URL=${PEOPLE_API_URL:-'https://people.pinepods.online'}
 export PINEPODS_PORT=$PINEPODS_PORT
 export PROXY_PROTOCOL=$PROXY_PROTOCOL
 export DEBUG_MODE=${DEBUG_MODE:-'False'}
-export VALKEY_HOST=${VALKEY_HOST:-'valkey'}
+# Without any Valkey settings, SQLite installs keep that state in memory, and the others
+# look for a "valkey" host as they always have. VALKEY_MODE=memory or valkey picks explicitly.
+valkey_mode=$(echo "$VALKEY_MODE" | tr '[:upper:]' '[:lower:]')
+if [[ -z "$VALKEY_URL$REDIS_URL$VALKEY_HOST$REDIS_HOST" && "$DB_TYPE" != "sqlite" && "$valkey_mode" != "memory" ]]; then
+    VALKEY_HOST=valkey
+fi
+export VALKEY_HOST=$VALKEY_HOST
 export VALKEY_PORT=${VALKEY_PORT:-'6379'}
+export VALKEY_MODE=$VALKEY_MODE
 export DEFAULT_LANGUAGE=${DEFAULT_LANGUAGE:-'en'}
 # Path to the self-updating yt-dlp binary (#793). Lives on the persistent downloads volume
 # so `yt-dlp --update-to` survives container recreation; every yt-dlp caller resolves this.
@@ -144,6 +157,9 @@ mkdir -p /pinepods/cache
 mkdir -p /opt/pinepods/backups
 mkdir -p /opt/pinepods/downloads
 mkdir -p /opt/pinepods/certs
+if [[ "$DB_TYPE" == "sqlite" ]]; then
+    mkdir -p "$(dirname "$DB_PATH")"
+fi
 mkdir -p /opt/pinepods/local-media  # User-mounted media library; app writes artwork here
 mkdir -p /var/log/pinepods  # Make sure log directory exists
 
@@ -248,6 +264,10 @@ if [[ -n "$PUID" && -n "$PGID" ]]; then
                             /opt/pinepods/downloads /opt/pinepods/backups \
                             /opt/pinepods/local-media \
                             /var/run/horust 2>/dev/null || true
+    # The database setup above ran as root; the SQLite files must belong to the app.
+    if [[ "$DB_TYPE" == "sqlite" ]]; then
+        chown "${PUID}:${PGID}" "$(dirname "$DB_PATH")" "$DB_PATH" "$DB_PATH-wal" "$DB_PATH-shm" 2>/dev/null || true
+    fi
 
     # One-time recursive migration of pre-existing root-owned content, gated by a marker
     # on the persisted downloads volume. Non-fatal so an NFS/read-only mount can't block startup.

@@ -709,6 +709,10 @@ async fn publish_command(
 /// API replicas onto this instance's local sockets. Best-effort: on any failure
 /// it logs and retries; the in-process fan-out keeps working meanwhile.
 pub fn spawn_nowplaying_bridge(state: AppState) {
+    // Only replicas sharing a Valkey server have anything to bridge.
+    if !state.redis_client.is_shared() {
+        return;
+    }
     tokio::spawn(async move {
         loop {
             if let Err(e) = run_nowplaying_bridge(&state).await {

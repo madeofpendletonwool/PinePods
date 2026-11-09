@@ -1,0 +1,31 @@
+# SQLite: one container, no database server or Valkey to run. Suits a single household; for
+# many users or a busy instance, use the PostgreSQL compose file instead.
+services:
+  pinepods:
+    image: madeofpendletonwool/pinepods:latest
+    ports:
+      - "8040:8040"
+    environment:
+      # The URL you reach Pinepods at, used in RSS feed links. Optional: without it, links use
+      # the address each request came in on.
+      HOSTNAME: "http://localhost:8040"
+      # The database is one file in the data volume below. Without DB_HOST, SQLite is the
+      # default, so these two lines are optional.
+      DB_TYPE: sqlite
+      DB_PATH: /opt/pinepods/data/pinepods.db
+      # Caches, task progress and now-playing are kept in memory. To use a Valkey server
+      # instead, set VALKEY_HOST (and VALKEY_PORT) or VALKEY_URL.
+      DEBUG_MODE: false
+      PUID: ${UID:-911}
+      PGID: ${GID:-911}
+      TZ: "America/New_York"
+      DEFAULT_LANGUAGE: "en"
+    volumes:
+      # The database. Without this mount it's lost when the container is recreated.
+      - /home/user/pinepods/data:/opt/pinepods/data
+      # Mount the download and backup locations on the server
+      - /home/user/pinepods/downloads:/opt/pinepods/downloads
+      - /home/user/pinepods/backups:/opt/pinepods/backups
+      # Mount local media files to use the Add Local Podcast feature (optional)
+      - /home/user/pinepods/local-media:/opt/pinepods/local-media
+    restart: always

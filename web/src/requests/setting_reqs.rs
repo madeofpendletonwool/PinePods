@@ -1467,6 +1467,7 @@ struct AddLocalPodcastRequest {
     description: Option<String>,
     author: Option<String>,
     explicit: Option<bool>,
+    auto_refresh: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1482,6 +1483,7 @@ pub async fn call_add_local_podcast(
     description: Option<String>,
     author: Option<String>,
     explicit: Option<bool>,
+    auto_refresh: bool,
     api_key: &str,
 ) -> Result<crate::requests::pod_req::Podcast, Error> {
     let url = format!("{}/api/data/add_local_podcast", server_name);
@@ -1492,6 +1494,7 @@ pub async fn call_add_local_podcast(
         description,
         author,
         explicit,
+        auto_refresh: Some(auto_refresh),
     };
 
     let response = Request::post(&url)
@@ -1538,35 +1541,6 @@ pub async fn call_add_local_podcast_artwork(
     } else {
         let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
         Err(Error::msg(format!("Error uploading artwork: {}", error_text)))
-    }
-}
-
-pub async fn call_refresh_local_podcast(
-    server_name: &str,
-    user_id: i32,
-    podcast_id: i32,
-    api_key: &str,
-) -> Result<serde_json::Value, Error> {
-    let url = format!("{}/api/data/refresh_local_podcast", server_name);
-    let request_body = serde_json::json!({
-        "user_id": user_id,
-        "podcast_id": podcast_id,
-    });
-
-    let response = Request::post(&url)
-        .header("Content-Type", "application/json")
-        .header("Api-Key", api_key)
-        .body(serde_json::to_string(&request_body)?)?
-        .send()
-        .await
-        .map_err(Error::msg)?;
-
-    if response.ok() {
-        let response_text = response.text().await.map_err(Error::msg)?;
-        Ok(serde_json::from_str(&response_text).map_err(Error::msg)?)
-    } else {
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        Err(Error::msg(format!("Error refreshing local podcast: {}", error_text)))
     }
 }
 

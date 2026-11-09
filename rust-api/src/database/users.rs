@@ -28,9 +28,9 @@ pub struct SelfServiceStatus {
 impl DatabasePool {
     // Get user details by ID - matches Python get_user_details_id function
     pub async fn get_user_details_by_id(&self, user_id: i32) -> AppResult<crate::handlers::auth::UserDetails> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT userid, fullname, username, email, usegravatar FROM "Users" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT userid, fullname, username, email, usegravatar FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
@@ -45,8 +45,8 @@ impl DatabasePool {
                     Salt: None,
                     UseGravatar: row.try_get("usegravatar")?,
                 })
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT UserID, Fullname, Username, Email, UseGravatar FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_one(pool)
@@ -61,14 +61,14 @@ impl DatabasePool {
                     Salt: None,
                     UseGravatar: row.try_get::<bool, _>("UseGravatar")?,
                 })
-            }
-        }
+            },
+        })
     }
 
     pub async fn get_user_by_credentials(&self, username: &str) -> AppResult<Option<UserCredentials>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"SELECT userid as user_id, username as username, hashed_pw as hashed_password, email as email
                      FROM "Users" WHERE username = $1"#
                 )
@@ -86,8 +86,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(
                     "SELECT UserID as user_id, Username as username, Hashed_PW as hashed_password, Email as email
                      FROM Users WHERE Username = ?"
@@ -106,14 +106,14 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     pub async fn get_user_settings_by_user_id(&self, user_id: i32) -> AppResult<Option<UserSettings>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"SELECT us.userid, ak.apikey as api_key, us.theme, 
                               COALESCE(us.auto_download_episodes, false) as auto_download_episodes,
                               COALESCE(us.auto_delete_episodes, false) as auto_delete_episodes
@@ -136,8 +136,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(
                     "SELECT user_id, api_key, theme, auto_download_episodes, auto_delete_episodes
                      FROM UserSettings WHERE user_id = ?"
@@ -157,23 +157,23 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get self-service status - matches Python self_service_status function
     pub async fn get_self_service_status(&self) -> AppResult<SelfServiceStatus> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Get self-service status
-                let self_service_row = sqlx::query(r#"SELECT selfserviceuser FROM "AppSettings" WHERE selfserviceuser = true"#)
+                let self_service_row = q::query(r#"SELECT selfserviceuser FROM "AppSettings" WHERE selfserviceuser = true"#)
                     .fetch_optional(pool)
                     .await?;
                 
                 let self_service_enabled = self_service_row.is_some();
                 
                 // Check if admin exists (excluding background_tasks user)
-                let admin_row = sqlx::query(r#"SELECT COUNT(*) as count FROM "Users" WHERE isadmin = true AND username != 'background_tasks'"#)
+                let admin_row = q::query(r#"SELECT COUNT(*) as count FROM "Users" WHERE isadmin = true AND username != 'background_tasks'"#)
                     .fetch_one(pool)
                     .await?;
                 
@@ -184,8 +184,8 @@ impl DatabasePool {
                     status: self_service_enabled,
                     admin_exists,
                 })
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Get self-service status
                 let self_service_row = sqlx::query("SELECT SelfServiceUser FROM AppSettings WHERE SelfServiceUser = 1")
                     .fetch_optional(pool)
@@ -205,42 +205,37 @@ impl DatabasePool {
                     status: self_service_enabled,
                     admin_exists,
                 })
-            }
-        }
+            },
+        })
     }
 
     // Add admin user - matches Python add_admin_user function
     pub async fn add_admin_user(&self, fullname: &str, username: &str, email: &str, hashed_password: &str) -> AppResult<i32> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
                 
                 // Insert the admin user
-                let user_row = sqlx::query(
-                    r#"WITH inserted_user AS (
-                        INSERT INTO "Users"
-                        (fullname, username, email, hashed_pw, isadmin)
-                        VALUES ($1, $2, $3, $4, true)
-                        ON CONFLICT (username) DO NOTHING
-                        RETURNING userid
-                    )
-                    SELECT userid FROM inserted_user
-                    UNION ALL
-                    SELECT userid FROM "Users" WHERE username = $5
-                    LIMIT 1"#
+                q::query(
+                    r#"INSERT INTO "Users" (fullname, username, email, hashed_pw, isadmin)
+                       VALUES ($1, $2, $3, $4, true)
+                       ON CONFLICT (username) DO NOTHING"#
                 )
                 .bind(fullname)
                 .bind(username)
                 .bind(email)
                 .bind(hashed_password)
-                .bind(username)
-                .fetch_one(&mut *tx)
+                .execute(&mut *tx)
                 .await?;
+                let user_row = q::query(r#"SELECT userid FROM "Users" WHERE username = $1"#)
+                    .bind(username)
+                    .fetch_one(&mut *tx)
+                    .await?;
                 
                 let user_id: i32 = user_row.try_get("userid")?;
                 
                 // Add user settings
-                sqlx::query(
+                q::query(
                     r#"INSERT INTO "UserSettings" (userid, theme) VALUES ($1, $2)
                        ON CONFLICT (userid) DO NOTHING"#
                 )
@@ -250,7 +245,7 @@ impl DatabasePool {
                 .await?;
                 
                 // Add user stats
-                sqlx::query(
+                q::query(
                     r#"INSERT INTO "UserStats" (userid) VALUES ($1)
                        ON CONFLICT (userid) DO NOTHING"#
                 )
@@ -260,7 +255,7 @@ impl DatabasePool {
                 
                 // Create API key for the user
                 let api_key = self.generate_api_key();
-                sqlx::query(
+                q::query(
                     r#"INSERT INTO "APIKeys" (userid, apikey) VALUES ($1, $2)"#
                 )
                 .bind(user_id)
@@ -270,8 +265,8 @@ impl DatabasePool {
                 
                 tx.commit().await?;
                 Ok(user_id)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut tx = pool.begin().await?;
                 
                 // Insert the admin user
@@ -316,37 +311,37 @@ impl DatabasePool {
                 
                 tx.commit().await?;
                 Ok(user_id)
-            }
-        }
+            },
+        })
     }
 
     // Check if admin exists - matches Python check_admin_exists function
     pub async fn check_admin_exists(&self) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT COUNT(*) as count FROM "Users" WHERE isadmin = true AND username != 'background_tasks'"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT COUNT(*) as count FROM "Users" WHERE isadmin = true AND username != 'background_tasks'"#)
                     .fetch_one(pool)
                     .await?;
                 
                 let count: i64 = row.try_get("count")?;
                 Ok(count > 0)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT COUNT(*) as count FROM Users WHERE IsAdmin = 1 AND Username != 'background_tasks'")
                     .fetch_one(pool)
                     .await?;
                 
                 let count: i64 = row.try_get("count")?;
                 Ok(count > 0)
-            }
-        }
+            },
+        })
     }
 
     // First login done - matches Python first_login_done function
     pub async fn first_login_done(&self, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT firstlogin FROM "Users" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT firstlogin FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -355,8 +350,8 @@ impl DatabasePool {
                     Some(row) => Ok(row.try_get("firstlogin").unwrap_or(false)),
                     None => Err(AppError::not_found("User not found")),
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT FirstLogin FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -366,15 +361,15 @@ impl DatabasePool {
                     Some(row) => Ok(row.try_get("FirstLogin").unwrap_or(false)),
                     None => Err(AppError::not_found("User not found")),
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get all users info - matches Python get_user_info function exactly
     pub async fn get_user_info(&self) -> AppResult<Vec<crate::handlers::settings::UserInfo>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT userid, fullname, username, email, CASE WHEN isadmin THEN true ELSE false END AS isadmin FROM "Users""#
                 )
                 .fetch_all(pool)
@@ -391,8 +386,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(users)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     "SELECT UserID as userid, Fullname as fullname, Username as username, Email as email, IsAdmin as isadmin FROM Users"
                 )
@@ -410,15 +405,15 @@ impl DatabasePool {
                     });
                 }
                 Ok(users)
-            }
-        }
+            },
+        })
     }
 
     // Get specific user info - matches Python get_my_user_info function exactly
     pub async fn get_my_user_info(&self, user_id: i32) -> AppResult<Option<serde_json::Value>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"SELECT userid, fullname, username, email, CASE WHEN isadmin THEN 1 ELSE 0 END AS isadmin, timezone, timeformat, dateformat, language FROM "Users" WHERE userid = $1"#
                 )
                 .bind(user_id)
@@ -440,8 +435,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(
                     "SELECT UserID as userid, Fullname as fullname, Username as username, Email as email, IsAdmin as isadmin, TimeZone as timezone, TimeFormat as timeformat, DateFormat as dateformat, Language as language FROM Users WHERE UserID = ?"
                 )
@@ -464,15 +459,15 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Add user - matches Python add_user function exactly
     pub async fn add_user(&self, fullname: &str, username: &str, email: &str, hashed_pw: &str) -> AppResult<i32> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"INSERT INTO "Users" (fullname, username, email, hashed_pw, isadmin) VALUES ($1, $2, $3, $4, false) RETURNING userid"#
                 )
                 .bind(fullname)
@@ -485,14 +480,14 @@ impl DatabasePool {
                 let user_id: i32 = row.try_get("userid")?;
 
                 // Add user settings like Python version
-                sqlx::query(r#"INSERT INTO "UserSettings" (userid, theme) VALUES ($1, $2)"#)
+                q::query(r#"INSERT INTO "UserSettings" (userid, theme) VALUES ($1, $2)"#)
                     .bind(user_id)
                     .bind("Nordic")
                     .execute(pool)
                     .await?;
 
                 // Stats row (the stats page and every stats counter depend on it).
-                sqlx::query(r#"INSERT INTO "UserStats" (userid) VALUES ($1) ON CONFLICT (userid) DO NOTHING"#)
+                q::query(r#"INSERT INTO "UserStats" (userid) VALUES ($1) ON CONFLICT (userid) DO NOTHING"#)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
@@ -504,8 +499,8 @@ impl DatabasePool {
                 }
 
                 Ok(user_id)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query(
                     "INSERT INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin) VALUES (?, ?, ?, ?, 0)"
                 )
@@ -538,49 +533,49 @@ impl DatabasePool {
                 }
 
                 Ok(user_id)
-            }
-        }
+            },
+        })
     }
 
     // Set fullname - matches Python set_fullname function exactly
     pub async fn set_fullname(&self, user_id: i32, new_name: &str) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET fullname = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET fullname = $1 WHERE userid = $2"#)
                     .bind(new_name)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET Fullname = ? WHERE UserID = ?")
                     .bind(new_name)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Set password - matches Python set_password function exactly
     pub async fn set_password(&self, user_id: i32, hash_pw: &str) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET hashed_pw = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET hashed_pw = $1 WHERE userid = $2"#)
                     .bind(hash_pw)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET Hashed_PW = ? WHERE UserID = ?")
                     .bind(hash_pw)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -588,43 +583,43 @@ impl DatabasePool {
     pub async fn delete_user(&self, user_id: i32) -> AppResult<()> {
         // Podcasts own episodes and videos through NO ACTION foreign keys; reuse the
         // unsubscribe path, which already deletes their dependents in a valid order.
-        let podcast_ids: Vec<i32> = match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query_scalar(r#"SELECT podcastid FROM "Podcasts" WHERE userid = $1"#)
+        let podcast_ids: Vec<i32> = dialect_match!(self, {
+            pg(pool) => {
+                q::query_scalar(r#"SELECT podcastid FROM "Podcasts" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_all(pool)
                     .await?
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query_scalar("SELECT PodcastID FROM Podcasts WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_all(pool)
                     .await?
-            }
-        };
+            },
+        });
         for podcast_id in podcast_ids {
             self.remove_podcast_id(podcast_id, user_id, crate::services::sync::SyncOrigin::Unlogged).await?;
         }
 
         // Tables that reference Users without ON DELETE CASCADE.
         // Everything else cascades from the final DELETE.
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 for table in [
                     "UserEpisodeHistory", "UserVideoHistory", "SavedEpisodes", "SavedVideos",
                     "DownloadedEpisodes", "DownloadedVideos", "EpisodeQueue", "UserSettings", "UserStats",
                 ] {
-                    sqlx::query(sqlx::AssertSqlSafe(format!(r#"DELETE FROM "{table}" WHERE userid = $1"#)))
+                    q::query(sqlx::AssertSqlSafe(format!(r#"DELETE FROM "{table}" WHERE userid = $1"#)))
                         .bind(user_id)
                         .execute(pool)
                         .await?;
                 }
-                sqlx::query(r#"DELETE FROM "Users" WHERE userid = $1"#)
+                q::query(r#"DELETE FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 for table in [
                     "UserEpisodeHistory", "UserVideoHistory", "SavedEpisodes", "SavedVideos",
                     "DownloadedEpisodes", "DownloadedVideos", "EpisodeQueue", "UserSettings", "UserStats",
@@ -638,86 +633,86 @@ impl DatabasePool {
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Set email - matches Python set_email function exactly
     pub async fn set_email(&self, user_id: i32, new_email: &str) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET email = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET email = $1 WHERE userid = $2"#)
                     .bind(new_email)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET Email = ? WHERE UserID = ?")
                     .bind(new_email)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Set username - matches Python set_username function exactly
     pub async fn set_username(&self, user_id: i32, new_username: &str) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET username = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET username = $1 WHERE userid = $2"#)
                     .bind(new_username)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET Username = ? WHERE UserID = ?")
                     .bind(new_username)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Set isadmin - matches Python set_isadmin function exactly
     pub async fn set_isadmin(&self, user_id: i32, isadmin: bool) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET isadmin = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET isadmin = $1 WHERE userid = $2"#)
                     .bind(isadmin)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET IsAdmin = ? WHERE UserID = ?")
                     .bind(isadmin as i32)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Final admin check - matches Python final_admin function exactly
     pub async fn final_admin(&self, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Count total admins
-                let admin_count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Users" WHERE isadmin = TRUE"#)
+                let admin_count: i64 = q::query_scalar(r#"SELECT COUNT(*) FROM "Users" WHERE isadmin = TRUE"#)
                     .fetch_one(pool)
                     .await?;
 
                 if admin_count == 1 {
                     // Check if this user is admin
-                    let is_admin: Option<bool> = sqlx::query_scalar(r#"SELECT isadmin FROM "Users" WHERE userid = $1"#)
+                    let is_admin: Option<bool> = q::query_scalar(r#"SELECT isadmin FROM "Users" WHERE userid = $1"#)
                         .bind(user_id)
                         .fetch_optional(pool)
                         .await?;
@@ -726,8 +721,8 @@ impl DatabasePool {
                 } else {
                     Ok(false)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Count total admins
                 let admin_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM Users WHERE IsAdmin = 1")
                     .fetch_one(pool)
@@ -744,21 +739,21 @@ impl DatabasePool {
                 } else {
                     Ok(false)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get self service status - matches Python self_service_status function exactly
     pub async fn self_service_status(&self) -> AppResult<SelfServiceStatus> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Get self-service status
-                let self_service_result: Option<bool> = sqlx::query_scalar(r#"SELECT selfserviceuser FROM "AppSettings" WHERE selfserviceuser = TRUE"#)
+                let self_service_result: Option<bool> = q::query_scalar(r#"SELECT selfserviceuser FROM "AppSettings" WHERE selfserviceuser = TRUE"#)
                     .fetch_optional(pool)
                     .await?;
 
                 // Get admin count
-                let admin_count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Users" WHERE isadmin = TRUE"#)
+                let admin_count: i64 = q::query_scalar(r#"SELECT COUNT(*) FROM "Users" WHERE isadmin = TRUE"#)
                     .fetch_one(pool)
                     .await?;
 
@@ -766,8 +761,8 @@ impl DatabasePool {
                     status: self_service_result.unwrap_or(false),
                     admin_exists: admin_count > 0,
                 })
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Get self-service status
                 let self_service_result: Option<i32> = sqlx::query_scalar("SELECT SelfServiceUser FROM AppSettings WHERE SelfServiceUser = 1")
                     .fetch_optional(pool)
@@ -782,15 +777,15 @@ impl DatabasePool {
                     status: self_service_result.unwrap_or(0) == 1,
                     admin_exists: admin_count > 0,
                 })
-            }
-        }
+            },
+        })
     }
 
     // Get all users with podcasts - for admin refresh
     pub async fn get_all_users_with_podcasts(&self) -> AppResult<Vec<i32>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"SELECT DISTINCT userid FROM "Podcasts" ORDER BY userid"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(r#"SELECT DISTINCT userid FROM "Podcasts" ORDER BY userid"#)
                     .fetch_all(pool)
                     .await?;
                 
@@ -799,8 +794,8 @@ impl DatabasePool {
                     users.push(row.try_get("userid")?);
                 }
                 Ok(users)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query("SELECT DISTINCT UserID FROM Podcasts ORDER BY UserID")
                     .fetch_all(pool)
                     .await?;
@@ -810,15 +805,15 @@ impl DatabasePool {
                     users.push(row.try_get("UserID")?);
                 }
                 Ok(users)
-            }
-        }
+            },
+        })
     }
 
     // Get user by email - matches Python get_user_by_email function EXACTLY  
     pub async fn get_user_by_email(&self, email: &str) -> AppResult<Option<(i32, String, Option<String>, Option<String>, bool)>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"
                     SELECT userid, email, username, fullname, isadmin
                     FROM "Users"
                     WHERE email = $1
@@ -839,7 +834,7 @@ impl DatabasePool {
                     Ok(None)
                 }
             },
-            DatabasePool::MySQL(pool) => {
+            mysql(pool) => {
                 let result = sqlx::query(r#"
                     SELECT UserID, Email, Username, Fullname, IsAdmin
                     FROM Users
@@ -861,57 +856,57 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Check if username exists - matches Python check_usernames function EXACTLY
     pub async fn check_usernames(&self, username: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"SELECT COUNT(*) as count FROM "Users" WHERE username = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"SELECT COUNT(*) as count FROM "Users" WHERE username = $1"#)
                     .bind(username)
                     .fetch_one(pool)
                     .await?;
                 let count: i64 = result.try_get("count")?;
                 Ok(count > 0)
             },
-            DatabasePool::MySQL(pool) => {
+            mysql(pool) => {
                 let result = sqlx::query(r#"SELECT COUNT(*) as count FROM Users WHERE Username = ?"#)
                     .bind(username)
                     .fetch_one(pool)
                     .await?;
                 let count: i64 = result.try_get("count")?;
                 Ok(count > 0)
-            }
-        }
+            },
+        })
     }
 
     // Check if username exists - helper for OIDC user creation
     pub async fn username_exists(&self, username: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"SELECT 1 FROM "Users" WHERE username = $1 LIMIT 1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"SELECT 1 FROM "Users" WHERE username = $1 LIMIT 1"#)
                     .bind(username)
                     .fetch_optional(pool)
                     .await?;
                 Ok(result.is_some())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("SELECT 1 FROM Users WHERE Username = ? LIMIT 1")
                     .bind(username)
                     .fetch_optional(pool)
                     .await?;
                 Ok(result.is_some())
-            }
-        }
+            },
+        })
     }
 
     // Get all admin user IDs - matches Python add_news_feed_if_not_added logic
     pub async fn get_all_admin_user_ids(&self) -> AppResult<Vec<i32>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"SELECT userid FROM "Users" WHERE isadmin = TRUE"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(r#"SELECT userid FROM "Users" WHERE isadmin = TRUE"#)
                     .fetch_all(pool)
                     .await?;
                 
@@ -920,8 +915,8 @@ impl DatabasePool {
                     .collect::<Result<Vec<_>, _>>()?;
                 
                 Ok(user_ids)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query("SELECT UserID FROM Users WHERE IsAdmin = 1")
                     .fetch_all(pool)
                     .await?;
@@ -931,7 +926,7 @@ impl DatabasePool {
                     .collect::<Result<Vec<_>, _>>()?;
                 
                 Ok(user_ids)
-            }
-        }
+            },
+        })
     }
 }

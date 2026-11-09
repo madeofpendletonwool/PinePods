@@ -51,6 +51,24 @@ pub fn restore_server() -> Html {
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID);
 
+    // SQLite servers have no database password to ask for.
+    let is_sqlite = use_state(|| false);
+    {
+        let is_sqlite = is_sqlite.clone();
+        use_effect_with((api_key.clone(), server_name.clone()), move |(api_key, server_name)| {
+            if let (Some(Some(api_key)), Some(server_name), Some(user_id)) =
+                (api_key.clone(), server_name.clone(), user_id)
+            {
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(response) = call_list_backup_files(&server_name, &api_key, user_id).await {
+                        is_sqlite.set(response.get("database_type").and_then(|t| t.as_str()) == Some("sqlite"));
+                    }
+                });
+            }
+            || ()
+        });
+    }
+
     // Load backup files when switching to select mode
     {
         let backup_files = backup_files.clone();
@@ -122,6 +140,7 @@ pub fn restore_server() -> Html {
         let api_key = api_key.clone().unwrap_or_default();
         let server_name = server_name.clone().unwrap_or_default();
         let database_password = (*database_password).clone();
+        let is_sqlite = *is_sqlite;
         let selected_file = selected_file.clone();
         let dispatch = dispatch.clone();
         let is_loading = is_loading.clone();
@@ -138,7 +157,7 @@ pub fn restore_server() -> Html {
                 return;
             }
 
-            if database_password.trim().is_empty() {
+            if database_password.trim().is_empty() && !is_sqlite {
                 Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Some("Database password is required".to_string());
                 });
@@ -331,21 +350,25 @@ pub fn restore_server() -> Html {
 
                             <div class="settings-row" style="flex-wrap: wrap;">
                                 <div class="settings-row-label">
-                                    <div>{ &i18n_database_password }</div>
+                                    if !*is_sqlite {
+                                        <div>{ &i18n_database_password }</div>
+                                    }
                                 </div>
                                 <div class="settings-row-control" style="flex: 1 1 200px; min-width: 0;">
-                                    <input
-                                        type="password"
-                                        id="db_pw"
-                                        disabled={*is_loading}
-                                        oninput={Callback::from(move |e: InputEvent| {
-                                            let input: HtmlInputElement = e.target_unchecked_into();
-                                            database_password.set(input.value());
-                                        })}
-                                        class="input"
-                                        placeholder="Database password"
-                                        style="flex: 1; min-width: 0;"
-                                    />
+                                    if !*is_sqlite {
+                                        <input
+                                            type="password"
+                                            id="db_pw"
+                                            disabled={*is_loading}
+                                            oninput={Callback::from(move |e: InputEvent| {
+                                                let input: HtmlInputElement = e.target_unchecked_into();
+                                                database_password.set(input.value());
+                                            })}
+                                            class="input"
+                                            placeholder="Database password"
+                                            style="flex: 1; min-width: 0;"
+                                        />
+                                    }
                                     <button
                                         onclick={onclick_restore}
                                         disabled={*is_loading}

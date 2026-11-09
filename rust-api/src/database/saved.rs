@@ -5,11 +5,11 @@ use super::*;
 impl DatabasePool {
     // Save episode - matches Python save_episode function
     pub async fn save_episode(&self, episode_id: i32, user_id: i32, is_youtube: bool) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 if is_youtube {
                     // Check if already saved
-                    let existing = sqlx::query(
+                    let existing = q::query(
                         r#"SELECT "SaveID" FROM "SavedVideos" WHERE "VideoID" = $1 AND "UserID" = $2"#
                     )
                     .bind(episode_id)
@@ -18,7 +18,7 @@ impl DatabasePool {
                     .await?;
 
                     if existing.is_none() {
-                        sqlx::query(
+                        q::query(
                             r#"INSERT INTO "SavedVideos" ("VideoID", "UserID") VALUES ($1, $2)"#
                         )
                         .bind(episode_id)
@@ -27,14 +27,14 @@ impl DatabasePool {
                         .await?;
 
                         // Update UserStats table - increment EpisodesSaved count
-                        sqlx::query(r#"UPDATE "UserStats" SET episodessaved = episodessaved + 1 WHERE userid = $1"#)
+                        q::query(r#"UPDATE "UserStats" SET episodessaved = episodessaved + 1 WHERE userid = $1"#)
                             .bind(user_id)
                             .execute(pool)
                             .await?;
                     }
                 } else {
                     // Check if already saved
-                    let existing = sqlx::query(
+                    let existing = q::query(
                         r#"SELECT saveid FROM "SavedEpisodes" WHERE episodeid = $1 AND userid = $2"#
                     )
                     .bind(episode_id)
@@ -43,7 +43,7 @@ impl DatabasePool {
                     .await?;
 
                     if existing.is_none() {
-                        sqlx::query(
+                        q::query(
                             r#"INSERT INTO "SavedEpisodes" (episodeid, userid) VALUES ($1, $2)"#
                         )
                         .bind(episode_id)
@@ -52,15 +52,15 @@ impl DatabasePool {
                         .await?;
 
                         // Update UserStats table - increment EpisodesSaved count
-                        sqlx::query(r#"UPDATE "UserStats" SET episodessaved = episodessaved + 1 WHERE userid = $1"#)
+                        q::query(r#"UPDATE "UserStats" SET episodessaved = episodessaved + 1 WHERE userid = $1"#)
                             .bind(user_id)
                             .execute(pool)
                             .await?;
                     }
                 }
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 if is_youtube {
                     // Check if already saved
                     let existing = sqlx::query(
@@ -113,16 +113,16 @@ impl DatabasePool {
                     }
                 }
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     // Remove saved episode - matches Python remove_saved_episode function
     pub async fn remove_saved_episode(&self, episode_id: i32, user_id: i32, is_youtube: bool) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 if is_youtube {
-                    let result = sqlx::query(
+                    let result = q::query(
                         r#"DELETE FROM "SavedVideos" WHERE "VideoID" = $1 AND "UserID" = $2"#
                     )
                     .bind(episode_id)
@@ -132,13 +132,13 @@ impl DatabasePool {
 
                     // Only update UserStats if a row was actually deleted
                     if result.rows_affected() > 0 {
-                        sqlx::query(r#"UPDATE "UserStats" SET episodessaved = episodessaved - 1 WHERE userid = $1"#)
+                        q::query(r#"UPDATE "UserStats" SET episodessaved = episodessaved - 1 WHERE userid = $1"#)
                             .bind(user_id)
                             .execute(pool)
                             .await?;
                     }
                 } else {
-                    let result = sqlx::query(
+                    let result = q::query(
                         r#"DELETE FROM "SavedEpisodes" WHERE episodeid = $1 AND userid = $2"#
                     )
                     .bind(episode_id)
@@ -148,15 +148,15 @@ impl DatabasePool {
 
                     // Only update UserStats if a row was actually deleted
                     if result.rows_affected() > 0 {
-                        sqlx::query(r#"UPDATE "UserStats" SET episodessaved = episodessaved - 1 WHERE userid = $1"#)
+                        q::query(r#"UPDATE "UserStats" SET episodessaved = episodessaved - 1 WHERE userid = $1"#)
                             .bind(user_id)
                             .execute(pool)
                             .await?;
                     }
                 }
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 if is_youtube {
                     let result = sqlx::query(
                         "DELETE FROM SavedVideos WHERE VideoID = ? AND UserID = ?"
@@ -191,8 +191,8 @@ impl DatabasePool {
                     }
                 }
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     // Get saved episodes - matches Python saved_episode_list function
@@ -218,8 +218,8 @@ impl DatabasePool {
             _             => "",
         };
 
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let sql = format!(
                     r#"SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
@@ -301,7 +301,7 @@ impl DatabasePool {
                     LIMIT $8 OFFSET $9"#
                 );
 
-                let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                let rows = q::query(sqlx::AssertSqlSafe(sql.as_str()))
                     .bind(user_id)
                     .bind(user_id)
                     .bind(user_id)
@@ -345,8 +345,8 @@ impl DatabasePool {
                     });
                 }
                 Ok((episodes, total))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // MySQL uses ? placeholders; COUNT(*) OVER() requires MySQL 8+
                 let mysql_filter = match filter {
                     "completed"   => " WHERE completed = 1",
@@ -478,8 +478,8 @@ impl DatabasePool {
                     });
                 }
                 Ok((episodes, total))
-            }
-        }
+            },
+        })
     }
 
     pub async fn bulk_save_episodes(&self, episode_ids: Vec<i32>, user_id: i32, is_youtube: bool) -> AppResult<(i32, i32)> {
@@ -490,14 +490,14 @@ impl DatabasePool {
         let mut processed = 0;
         let mut failed = 0;
 
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
                 
                 if is_youtube {
                     for episode_id in episode_ids {
                         // Check if already saved to avoid duplicates
-                        let existing = sqlx::query(
+                        let existing = q::query(
                             r#"SELECT "SaveID" FROM "SavedVideos" WHERE "VideoID" = $1 AND "UserID" = $2"#
                         )
                         .bind(episode_id)
@@ -506,7 +506,7 @@ impl DatabasePool {
                         .await?;
                         
                         if existing.is_none() {
-                            match sqlx::query(
+                            match q::query(
                                 r#"INSERT INTO "SavedVideos" ("VideoID", "UserID") VALUES ($1, $2)"#
                             )
                             .bind(episode_id)
@@ -521,7 +521,7 @@ impl DatabasePool {
                 } else {
                     for episode_id in episode_ids {
                         // Check if already saved to avoid duplicates  
-                        let existing = sqlx::query(
+                        let existing = q::query(
                             r#"SELECT saveid FROM "SavedEpisodes" WHERE episodeid = $1 AND userid = $2"#
                         )
                         .bind(episode_id)
@@ -530,7 +530,7 @@ impl DatabasePool {
                         .await?;
                         
                         if existing.is_none() {
-                            match sqlx::query(
+                            match q::query(
                                 r#"INSERT INTO "SavedEpisodes" (episodeid, userid) VALUES ($1, $2)"#
                             )
                             .bind(episode_id)
@@ -545,8 +545,8 @@ impl DatabasePool {
                 }
                 
                 tx.commit().await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut tx = pool.begin().await?;
                 
                 if is_youtube {
@@ -598,8 +598,8 @@ impl DatabasePool {
                 }
                 
                 tx.commit().await?;
-            }
-        }
+            },
+        });
 
         Ok((processed, failed))
     }

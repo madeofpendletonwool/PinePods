@@ -38,10 +38,10 @@ impl DatabasePool {
         is_youtube: bool,
         placement: QueuePlacement,
     ) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // First check if already queued
-                let existing = sqlx::query(
+                let existing = q::query(
                     r#"SELECT queueid FROM "EpisodeQueue"
                        WHERE episodeid = $1 AND userid = $2 AND is_youtube = $3"#
                 )
@@ -55,13 +55,13 @@ impl DatabasePool {
                     return Ok(()); // Already queued, don't duplicate
                 }
 
-                let mut tx = pool.begin().await?;
+                let mut tx = q::begin(pool).await?;
 
                 // Resolve the target position for this placement.
                 let insert_pos: i32 = match placement {
                     QueuePlacement::Top => 1,
                     QueuePlacement::Bottom => {
-                        let max_pos: i32 = sqlx::query(
+                        let max_pos: i32 = q::query(
                             r#"SELECT COALESCE(MAX(queueposition), 0) as max_pos FROM "EpisodeQueue" WHERE userid = $1"#
                         )
                         .bind(user_id)
@@ -71,7 +71,7 @@ impl DatabasePool {
                         max_pos + 1
                     }
                     QueuePlacement::Under { playing_episode_id, playing_is_youtube } => {
-                        let anchor: Option<i32> = sqlx::query(
+                        let anchor: Option<i32> = q::query(
                             r#"SELECT queueposition FROM "EpisodeQueue"
                                WHERE episodeid = $1 AND userid = $2 AND is_youtube = $3"#
                         )
@@ -88,7 +88,7 @@ impl DatabasePool {
                 };
 
                 // Make room: shift everything at/after the insert position down by one.
-                sqlx::query(
+                q::query(
                     r#"UPDATE "EpisodeQueue" SET queueposition = queueposition + 1
                        WHERE userid = $1 AND queueposition >= $2"#
                 )
@@ -98,7 +98,7 @@ impl DatabasePool {
                 .await?;
 
                 // Insert new queued episode
-                sqlx::query(
+                q::query(
                     r#"INSERT INTO "EpisodeQueue" (episodeid, userid, queueposition, is_youtube)
                        VALUES ($1, $2, $3, $4)"#
                 )
@@ -111,8 +111,8 @@ impl DatabasePool {
 
                 tx.commit().await?;
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // First check if already queued
                 let existing = sqlx::query(
                     "SELECT QueueID FROM EpisodeQueue
@@ -183,8 +183,8 @@ impl DatabasePool {
 
                 tx.commit().await?;
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     /// Move an episode to the top of a user's queue (position 1), or insert it there
@@ -197,11 +197,11 @@ impl DatabasePool {
         user_id: i32,
         is_youtube: bool,
     ) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
 
-                let current_pos: Option<i32> = sqlx::query(
+                let current_pos: Option<i32> = q::query(
                     r#"SELECT queueposition FROM "EpisodeQueue"
                        WHERE episodeid = $1 AND userid = $2 AND is_youtube = $3"#
                 )
@@ -216,7 +216,7 @@ impl DatabasePool {
                 match current_pos {
                     Some(pos) if pos > 1 => {
                         // Shift the block above it down, then move it to the top.
-                        sqlx::query(
+                        q::query(
                             r#"UPDATE "EpisodeQueue" SET queueposition = queueposition + 1
                                WHERE userid = $1 AND queueposition < $2"#
                         )
@@ -224,7 +224,7 @@ impl DatabasePool {
                         .bind(pos)
                         .execute(&mut *tx)
                         .await?;
-                        sqlx::query(
+                        q::query(
                             r#"UPDATE "EpisodeQueue" SET queueposition = 1
                                WHERE episodeid = $1 AND userid = $2 AND is_youtube = $3"#
                         )
@@ -237,14 +237,14 @@ impl DatabasePool {
                     Some(_) => { /* already at position 1 — nothing to do */ }
                     None => {
                         // Not queued yet: make room at the top and insert.
-                        sqlx::query(
+                        q::query(
                             r#"UPDATE "EpisodeQueue" SET queueposition = queueposition + 1
                                WHERE userid = $1"#
                         )
                         .bind(user_id)
                         .execute(&mut *tx)
                         .await?;
-                        sqlx::query(
+                        q::query(
                             r#"INSERT INTO "EpisodeQueue" (episodeid, userid, queueposition, is_youtube)
                                VALUES ($1, $2, 1, $3)"#
                         )
@@ -258,8 +258,8 @@ impl DatabasePool {
 
                 tx.commit().await?;
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut tx = pool.begin().await?;
 
                 let current_pos: Option<i32> = sqlx::query(
@@ -317,16 +317,16 @@ impl DatabasePool {
 
                 tx.commit().await?;
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     // Remove queued episode - matches Python remove_queued_pod function
     pub async fn remove_queued_episode(&self, episode_id: i32, user_id: i32, is_youtube: bool) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Get the queue position of the episode to be removed
-                let position_row = sqlx::query(
+                let position_row = q::query(
                     r#"SELECT queueposition FROM "EpisodeQueue" 
                        WHERE episodeid = $1 AND userid = $2 AND is_youtube = $3"#
                 )
@@ -340,7 +340,7 @@ impl DatabasePool {
                     let removed_position: i32 = row.try_get("queueposition")?;
 
                     // Delete the episode from queue
-                    sqlx::query(
+                    q::query(
                         r#"DELETE FROM "EpisodeQueue" 
                            WHERE episodeid = $1 AND userid = $2 AND is_youtube = $3"#
                     )
@@ -351,7 +351,7 @@ impl DatabasePool {
                     .await?;
 
                     // Update positions of all episodes that were after the removed one
-                    sqlx::query(
+                    q::query(
                         r#"UPDATE "EpisodeQueue" SET queueposition = queueposition - 1 
                            WHERE userid = $1 AND queueposition > $2"#
                     )
@@ -362,8 +362,8 @@ impl DatabasePool {
                 }
 
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Get the queue position of the episode to be removed
                 let position_row = sqlx::query(
                     "SELECT QueuePosition FROM EpisodeQueue 
@@ -401,34 +401,34 @@ impl DatabasePool {
                 }
 
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     pub async fn clear_queue(&self, user_id: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"DELETE FROM "EpisodeQueue" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"DELETE FROM "EpisodeQueue" WHERE userid = $1"#)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("DELETE FROM EpisodeQueue WHERE UserID = ?")
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     // Get queued episodes - matches Python get_queued_episodes function
     pub async fn get_queued_episodes(&self, user_id: i32) -> AppResult<Vec<crate::models::QueuedEpisode>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT * FROM (
                         SELECT
                             "Episodes".episodetitle as episodetitle,
@@ -542,8 +542,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(episodes)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     "SELECT * FROM (
                         SELECT
@@ -658,8 +658,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(episodes)
-            }
-        }
+            },
+        })
     }
 
     // Reorder queue - matches Python reorder_queued_episodes function
@@ -674,15 +674,15 @@ impl DatabasePool {
         user_id: i32,
         items: Vec<(i32, Option<bool>)>,
     ) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
 
                 for (index, (episode_id, is_youtube)) in items.iter().enumerate() {
                     let new_position = (index + 1) as i32;
                     match is_youtube {
                         Some(flag) => {
-                            sqlx::query(
+                            q::query(
                                 r#"UPDATE "EpisodeQueue" SET queueposition = $1
                                    WHERE episodeid = $2 AND userid = $3 AND is_youtube = $4"#
                             )
@@ -694,7 +694,7 @@ impl DatabasePool {
                             .await?;
                         }
                         None => {
-                            sqlx::query(
+                            q::query(
                                 r#"UPDATE "EpisodeQueue" SET queueposition = $1
                                    WHERE episodeid = $2 AND userid = $3"#
                             )
@@ -709,8 +709,8 @@ impl DatabasePool {
 
                 tx.commit().await?;
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut tx = pool.begin().await?;
 
                 for (index, (episode_id, is_youtube)) in items.iter().enumerate() {
@@ -744,8 +744,8 @@ impl DatabasePool {
 
                 tx.commit().await?;
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     /// Bulk-add episodes to a user's queue at the requested placement, preserving
@@ -766,15 +766,15 @@ impl DatabasePool {
         let mut processed = 0;
         let mut failed = 0;
 
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
 
                 // Resolve the position the first new item should occupy.
                 let mut next_pos: i32 = match placement {
                     QueuePlacement::Top => 1,
                     QueuePlacement::Bottom => {
-                        let max_pos: i32 = sqlx::query(
+                        let max_pos: i32 = q::query(
                             r#"SELECT COALESCE(MAX(queueposition), 0) as max_pos FROM "EpisodeQueue" WHERE userid = $1"#
                         )
                         .bind(user_id)
@@ -784,7 +784,7 @@ impl DatabasePool {
                         max_pos + 1
                     }
                     QueuePlacement::Under { playing_episode_id, playing_is_youtube } => {
-                        let anchor: Option<i32> = sqlx::query(
+                        let anchor: Option<i32> = q::query(
                             r#"SELECT queueposition FROM "EpisodeQueue"
                                WHERE episodeid = $1 AND userid = $2 AND is_youtube = $3"#
                         )
@@ -801,7 +801,7 @@ impl DatabasePool {
 
                 for episode_id in episode_ids {
                     // Check if already queued to avoid duplicates
-                    let existing = sqlx::query(
+                    let existing = q::query(
                         r#"SELECT queueid FROM "EpisodeQueue" WHERE episodeid = $1 AND userid = $2 AND is_youtube = $3"#
                     )
                     .bind(episode_id)
@@ -812,7 +812,7 @@ impl DatabasePool {
 
                     if existing.is_none() {
                         // Make room at next_pos, then insert there.
-                        sqlx::query(
+                        q::query(
                             r#"UPDATE "EpisodeQueue" SET queueposition = queueposition + 1
                                WHERE userid = $1 AND queueposition >= $2"#
                         )
@@ -820,7 +820,7 @@ impl DatabasePool {
                         .bind(next_pos)
                         .execute(&mut *tx)
                         .await?;
-                        match sqlx::query(
+                        match q::query(
                             r#"INSERT INTO "EpisodeQueue" (episodeid, userid, queueposition, is_youtube) VALUES ($1, $2, $3, $4)"#
                         )
                         .bind(episode_id)
@@ -836,8 +836,8 @@ impl DatabasePool {
                 }
 
                 tx.commit().await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut tx = pool.begin().await?;
 
                 let mut next_pos: i32 = match placement {
@@ -903,8 +903,8 @@ impl DatabasePool {
                 }
 
                 tx.commit().await?;
-            }
-        }
+            },
+        });
 
         Ok((processed, failed))
     }

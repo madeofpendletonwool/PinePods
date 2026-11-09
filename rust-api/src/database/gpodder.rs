@@ -72,10 +72,10 @@ impl DatabasePool {
 
     // Get encryption key from app settings
     pub(crate) async fn get_encryption_key(&self) -> AppResult<String> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Try as string first (new format), fallback to bytes (old format)
-                let row = sqlx::query(r#"SELECT encryptionkey FROM "AppSettings" LIMIT 1"#)
+                let row = q::query(r#"SELECT encryptionkey FROM "AppSettings" LIMIT 1"#)
                     .fetch_optional(pool)
                     .await?;
                 
@@ -95,8 +95,8 @@ impl DatabasePool {
                 } else {
                     Err(AppError::internal("App settings not found"))
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT EncryptionKey FROM AppSettings LIMIT 1")
                     .fetch_optional(pool)
                     .await?;
@@ -107,15 +107,15 @@ impl DatabasePool {
                 } else {
                     Err(AppError::internal("App settings not found"))
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get gPodder settings - matches Python get_gpodder_settings function exactly
     pub async fn get_gpodder_settings(&self, user_id: i32) -> AppResult<Option<serde_json::Value>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT gpodderurl, gpodderloginname, pod_sync_type FROM "Users" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT gpodderurl, gpodderloginname, pod_sync_type FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -137,8 +137,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT GpodderUrl, GpodderLoginName, Pod_Sync_Type FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -161,15 +161,15 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Check gPodder settings - matches Python check_gpodder_settings function exactly
     pub async fn check_gpodder_settings(&self, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT gpodderurl, gpodderloginname FROM "Users" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT gpodderurl, gpodderloginname FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -181,8 +181,8 @@ impl DatabasePool {
                 } else {
                     Ok(false)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT GpodderUrl, GpodderLoginName FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -195,15 +195,15 @@ impl DatabasePool {
                 } else {
                     Ok(false)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Find episode ID by URL for user
     pub(super) async fn find_episode_by_url(&self, user_id: i32, episode_url: &str) -> AppResult<Option<i32>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"
                     SELECT e.episodeid 
                     FROM "Episodes" e 
                     JOIN "Podcasts" p ON e.feedid = p.feedid 
@@ -219,8 +219,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("
                     SELECT e.EpisodeID 
                     FROM Episodes e 
@@ -237,15 +237,15 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get gPodder status - matches Python get_user_gpodder_status function exactly
     pub async fn gpodder_get_status(&self, user_id: i32) -> AppResult<GpodderStatus> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT pod_sync_type, gpodderurl FROM "Users" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT pod_sync_type, gpodderurl FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -266,8 +266,8 @@ impl DatabasePool {
                         gpodder_url: None,
                     })
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT Pod_Sync_Type, GpodderUrl FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -289,8 +289,8 @@ impl DatabasePool {
                         gpodder_url: None,
                     })
                 }
-            }
-        }
+            },
+        })
     }
 
     // Decrypt password using Fernet - matches Python encryption
@@ -313,16 +313,16 @@ impl DatabasePool {
     /// already refused at login; this only stops the table growing (the day of slack covers
     /// clock/timezone skew between the writer and the database). Returns the rows deleted.
     pub async fn cleanup_expired_gpodder_sessions(&self) -> AppResult<u64> {
-        let deleted = match self {
-            DatabasePool::Postgres(pool) => sqlx::query(r#"DELETE FROM "GpodderSessions" WHERE ExpiresAt < NOW() - INTERVAL '1 day'"#)
+        let deleted = dialect_match!(self, {
+            pg(pool) => q::query(r#"DELETE FROM "GpodderSessions" WHERE ExpiresAt < NOW() - INTERVAL '1 day'"#)
                 .execute(pool)
                 .await?
                 .rows_affected(),
-            DatabasePool::MySQL(pool) => sqlx::query("DELETE FROM GpodderSessions WHERE ExpiresAt < NOW() - INTERVAL 1 DAY")
+            mysql(pool) => sqlx::query("DELETE FROM GpodderSessions WHERE ExpiresAt < NOW() - INTERVAL 1 DAY")
                 .execute(pool)
                 .await?
                 .rows_affected(),
-        };
+        });
         tracing::debug!("Cleaned up {} expired gpodder sessions", deleted);
         Ok(deleted)
     }
@@ -333,22 +333,22 @@ impl DatabasePool {
     // log so clients get it on their first sync.
     pub async fn set_gpodder_internal_sync(&self, user_id: i32) -> AppResult<serde_json::Value> {
         let device_name = self.sync_ensure_pinepods_device(user_id).await?;
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET gpodderserverenabled = TRUE, defaultgpodderdevice = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET gpodderserverenabled = TRUE, defaultgpodderdevice = $1 WHERE userid = $2"#)
                     .bind(&device_name)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET GpodderServerEnabled = TRUE, DefaultGpodderDevice = ? WHERE UserID = ?")
                     .bind(&device_name)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         self.sync_mirror_sync_type(user_id).await?;
         crate::services::sync::invalidate_sync_enabled(user_id);
 
@@ -366,20 +366,20 @@ impl DatabasePool {
 
     // Turn off the PinePods gpodder server. An external target keeps syncing.
     pub async fn disable_gpodder_internal_sync(&self, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET gpodderserverenabled = FALSE WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET gpodderserverenabled = FALSE WHERE userid = $1"#)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET GpodderServerEnabled = FALSE WHERE UserID = ?")
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         self.sync_mirror_sync_type(user_id).await?;
         crate::services::sync::invalidate_sync_enabled(user_id);
         Ok(true)
@@ -387,28 +387,28 @@ impl DatabasePool {
 
     // Remove GPodder sync settings for a user - matches Python remove_gpodder_settings function exactly
     pub async fn remove_gpodder_settings(&self, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
                 
                 // First delete any device records
-                sqlx::query(r#"DELETE FROM "GpodderDevices" WHERE userid = $1"#)
+                q::query(r#"DELETE FROM "GpodderDevices" WHERE userid = $1"#)
                     .bind(user_id)
                     .execute(&mut *tx)
                     .await?;
                 
-                sqlx::query(r#"DELETE FROM "GpodderSyncState" WHERE userid = $1"#)
+                q::query(r#"DELETE FROM "GpodderSyncState" WHERE userid = $1"#)
                     .bind(user_id)
                     .execute(&mut *tx)
                     .await?;
 
-                sqlx::query(r#"DELETE FROM "SyncTargets" WHERE userid = $1"#)
+                q::query(r#"DELETE FROM "SyncTargets" WHERE userid = $1"#)
                     .bind(user_id)
                     .execute(&mut *tx)
                     .await?;
                 
                 // Then clear GPodder settings from user record
-                sqlx::query(r#"
+                q::query(r#"
                     UPDATE "Users"
                     SET gpodderurl = '', gpodderloginname = '', gpoddertoken = '', pod_sync_type = 'None', gpodderserverenabled = FALSE
                     WHERE userid = $1
@@ -420,8 +420,8 @@ impl DatabasePool {
                 tx.commit().await?;
                 crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
                 Ok(true)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut tx = pool.begin().await?;
                 
                 // First delete any device records
@@ -453,7 +453,7 @@ impl DatabasePool {
                 tx.commit().await?;
                 crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
                 Ok(true)
-            }
-        }
+            },
+        })
     }
 }

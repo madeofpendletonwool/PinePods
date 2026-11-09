@@ -1,4 +1,5 @@
-//! Write a query once, in PostgreSQL form, and run it on either backend.
+//! Write a query once, in PostgreSQL form, and run it on any backend (SQLite through
+//! `database::dialect`).
 //!
 //! The MySQL form is derived mechanically: identifier quotes are dropped (`"Persons"` ->
 //! `Persons`) and `$1, $2, ...` become `?`. So the rules are: quote only table names, alias every
@@ -70,6 +71,11 @@ macro_rules! fetch_all {
                 let rows = $crate::services::people::sql::bind_all!(q, $($binds)*).fetch_all(pool).await?;
                 rows.iter().map(|$row| -> Result<_, sqlx::Error> { Ok($map) }).collect::<Result<Vec<_>, sqlx::Error>>()?
             }
+            $crate::database::DatabasePool::Sqlite(pool) => {
+                let q = $crate::database::dialect::lite::query(sqlx::AssertSqlSafe($sql.to_string()));
+                let rows = $crate::services::people::sql::bind_all!(q, $($binds)*).fetch_all(pool).await?;
+                rows.iter().map(|$row| -> Result<_, sqlx::Error> { Ok($map) }).collect::<Result<Vec<_>, sqlx::Error>>()?
+            }
             $crate::database::DatabasePool::MySQL(pool) => {
                 let q = sqlx::query(sqlx::AssertSqlSafe($crate::services::people::sql::my(&$sql)));
                 let rows = $crate::services::people::sql::bind_all!(q, $($binds)*).fetch_all(pool).await?;
@@ -99,6 +105,10 @@ macro_rules! execute {
         match $db {
             $crate::database::DatabasePool::Postgres(pool) => {
                 let q = sqlx::query(sqlx::AssertSqlSafe($sql.to_string()));
+                $crate::services::people::sql::bind_all!(q, $($binds)*).execute(pool).await?.rows_affected()
+            }
+            $crate::database::DatabasePool::Sqlite(pool) => {
+                let q = $crate::database::dialect::lite::query(sqlx::AssertSqlSafe($sql.to_string()));
                 $crate::services::people::sql::bind_all!(q, $($binds)*).execute(pool).await?.rows_affected()
             }
             $crate::database::DatabasePool::MySQL(pool) => {
@@ -135,6 +145,7 @@ macro_rules! row_ext {
                 Ok(self.opt_str(col)?.unwrap_or_default())
             }
             fn opt_str(&self, col: &str) -> Result<Option<String>, sqlx::Error> {
+                #[allow(unused_imports)]
                 use sqlx::Row;
                 self.try_get::<Option<String>, _>(col)
             }
@@ -142,6 +153,7 @@ macro_rules! row_ext {
                 Ok(self.opt_int(col)?.unwrap_or_default())
             }
             fn opt_int(&self, col: &str) -> Result<Option<i64>, sqlx::Error> {
+                #[allow(unused_imports)]
                 use sqlx::Row;
                 match self.try_get::<Option<i64>, _>(col) {
                     Ok(v) => Ok(v),
@@ -152,6 +164,7 @@ macro_rules! row_ext {
                 }
             }
             fn flag(&self, col: &str) -> Result<bool, sqlx::Error> {
+                #[allow(unused_imports)]
                 use sqlx::Row;
                 match self.try_get::<Option<bool>, _>(col) {
                     Ok(v) => Ok(v.unwrap_or(false)),
@@ -162,6 +175,7 @@ macro_rules! row_ext {
                 }
             }
             fn ts(&self, col: &str) -> Result<Option<chrono::NaiveDateTime>, sqlx::Error> {
+                #[allow(unused_imports)]
                 use sqlx::Row;
                 match self.try_get::<Option<chrono::NaiveDateTime>, _>(col) {
                     Ok(v) => Ok(v),
@@ -180,6 +194,7 @@ macro_rules! row_ext {
 
 row_ext!(sqlx::postgres::PgRow, false);
 row_ext!(sqlx::mysql::MySqlRow, true);
+row_ext!(crate::database::dialect::lite::LiteRow, false);
 
 /// `($1, $2, $3), ($4, $5, $6), ...` for a multi-row insert.
 pub fn values_placeholders(rows: usize, cols: usize) -> String {
