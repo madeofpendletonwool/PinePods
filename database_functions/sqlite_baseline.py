@@ -201,6 +201,8 @@ def generate(dsn: str) -> str:
         "AND indexname NOT IN (SELECT conname FROM pg_constraint) ORDER BY tablename, indexname"
     )
     for (idx,) in cur.fetchall():
+        if "to_tsvector" in idx:
+            continue  # PostgreSQL full-text index; SQLite searches without one
         idx = idx.replace("public.", "")
         idx = re.sub(r" USING (btree|hash|gin|gist)", "", idx)
         idx = translate_expr(idx)

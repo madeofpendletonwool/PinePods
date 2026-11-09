@@ -7944,6 +7944,36 @@ def migration_088_in_app_notifications(conn, db_type: str) -> None:
         cursor.close()
 
 
+@register_migration("089", "transcript_search_index", "Full-text index over transcript text, for searching inside transcripts", requires=["051"], sqlite=True)
+def migration_089_transcript_search_index(conn, db_type: str) -> None:
+    """A full-text index on EpisodeTranscripts.TranscriptText: GIN over to_tsvector('simple', ...)
+    on PostgreSQL (the search query repeats that expression exactly), FULLTEXT on MariaDB/MySQL.
+    SQLite searches the text without an index."""
+    if db_type == "sqlite":
+        return
+    cursor = conn.cursor()
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_episode_transcripts_fts ON "EpisodeTranscripts"
+                USING GIN (to_tsvector('simple', COALESCE(transcripttext, '')))
+            """)
+        else:
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'EpisodeTranscripts'
+                  AND INDEX_NAME = 'idx_episode_transcripts_fts'
+            """)
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("ALTER TABLE EpisodeTranscripts ADD FULLTEXT INDEX idx_episode_transcripts_fts (TranscriptText)")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("090", "user_queue_add_position", "UserSettings.QueueAddPosition: where Add to queue puts an episode, top or bottom", requires=["001"], sqlite=True)
 def migration_090_user_queue_add_position(conn, db_type: str) -> None:
     """'top' puts an added episode next in line, under whatever is playing; 'bottom' puts it last.

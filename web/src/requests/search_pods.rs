@@ -868,3 +868,57 @@ pub async fn call_youtube_channel_details(
         )))
     }
 }
+
+// Inside transcripts
+
+/// A place in a transcript where the search terms were said.
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct TranscriptMoment {
+    /// Seconds into the episode; None for transcripts without timings.
+    pub start: Option<f64>,
+    pub text: String,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct TranscriptHit {
+    pub episode: Episode,
+    /// `generated` or `feed`.
+    pub source: String,
+    pub mentions: usize,
+    pub moments: Vec<TranscriptMoment>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct TranscriptSearchPage {
+    pub results: Vec<TranscriptHit>,
+    pub total: i64,
+    pub terms: Vec<String>,
+    pub searchable_episodes: i64,
+}
+
+pub async fn call_search_transcripts(
+    server_name: &str,
+    api_key: &str,
+    query: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<TranscriptSearchPage, Error> {
+    let url = format!(
+        "{}/api/data/transcripts/search?q={}&limit={}&offset={}",
+        server_name,
+        urlencoding::encode(query),
+        limit,
+        offset
+    );
+    let response = Request::get(&url).header("Api-Key", api_key).send().await?;
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to search transcripts: {}",
+            response.status_text()
+        )));
+    }
+    response
+        .json::<TranscriptSearchPage>()
+        .await
+        .map_err(|e| anyhow::Error::msg(format!("Deserialization failed: {}", e)))
+}

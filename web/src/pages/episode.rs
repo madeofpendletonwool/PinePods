@@ -11,6 +11,7 @@ use crate::components::gen_funcs::{
 use crate::components::loading::Loading;
 use crate::components::people::{AddPeopleSheet, PeopleLayout, PeopleStrip};
 use crate::components::safehtml::SafeHtml;
+use crate::components::transcript_hits::{highlight_terms, play_from};
 use crate::requests::people_req::{call_get_episode_people, CreditedPerson};
 use crate::requests::pod_req;
 use crate::requests::pod_req::{
@@ -205,6 +206,18 @@ pub struct TranscriptInlineProps {
     /// Detected ad time ranges (seconds) to highlight within the transcript (#790).
     #[prop_or_default]
     pub ad_ranges: Vec<(f64, f64)>,
+    /// The episode, to follow along while it plays.
+    #[prop_or_default]
+    pub episode_id: i32,
+    /// Play from a cue's time; defaults to seeking whatever is playing.
+    #[prop_or_default]
+    pub on_seek: Option<Callback<(f64, MouseEvent)>>,
+    /// Scroll to the cue at this time (seconds) when the transcript loads.
+    #[prop_or_default]
+    pub focus_time: Option<f64>,
+    /// Start with this text in the find box.
+    #[prop_or_default]
+    pub initial_query: Option<String>,
 }
 
 /// One timed transcript cue parsed from SRT/VTT.
@@ -379,12 +392,15 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
         },
     );
 
-    // Seek the global player to a transcript timestamp when a cue is clicked.
+    // Play from a cue: the page's handler, else seek whatever is playing.
     let (ui_state, _) = use_store::<UIState>();
     let seek = {
         let ui_state = ui_state.clone();
-        Callback::from(move |t: f64| {
-            if let Some(me) = ui_state.media_element.as_ref() {
+        let on_seek = props.on_seek.clone();
+        Callback::from(move |(t, e): (f64, MouseEvent)| {
+            if let Some(cb) = on_seek.as_ref() {
+                cb.emit((t, e));
+            } else if let Some(me) = ui_state.media_element.as_ref() {
                 me.set_current_time(t);
             } else if let Some(ae) = ui_state.audio_element.as_ref() {
                 ae.set_current_time(t);
@@ -392,6 +408,146 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
         })
     };
     let ad_ranges = props.ad_ranges.clone();
+    let cues = use_memo(transcript_content.clone(), |content| {
+        content.as_ref().map(|c| parse_transcript_cues(c)).unwrap_or_default()
+    });
+
+    // Find in transcript.
+    let (i18n, _) = use_translation();
+    let find = use_state(|| props.initial_query.clone().unwrap_or_default());
+    let find_pos = use_state(|| 0usize);
+    let needle = find.trim().to_lowercase();
+    let find_terms: Vec<String> = if needle.is_empty() { vec![] } else { vec![needle.clone()] };
+    let found: Vec<usize> = if needle.is_empty() {
+        vec![]
+    } else {
+        cues.iter().enumerate().filter(|(_, c)| c.text.to_lowercase().contains(&needle)).map(|(i, _)| i).collect()
+    };
+    let found_pos = if found.is_empty() { 0 } else { (*find_pos).min(found.len() - 1) };
+    let found_cue = found.get(found_pos).copied();
+
+    // The cue a deep link points at, and the one playing now.
+    let cue_at = |t: f64| cues.iter().rposition(|c| c.start <= t + 0.5);
+    let focus_cue = props.focus_time.and_then(cue_at);
+    let playing_here = ui_state.currently_playing.as_ref().is_some_and(|c| c.episode_id == props.episode_id && props.episode_id != 0);
+    let current_cue = if playing_here { cue_at(ui_state.current_time_seconds) } else { None };
+
+    // Scroll to the linked cue once the transcript is in; after that, to find results the
+    // listener moves to (or, without a linked cue, to the first result straight away).
+    // Deferred, so it lands after the page's own scroll-to-top on navigation.
+    let scroll_to = |i: usize| {
+        spawn_local(async move {
+            gloo_timers::future::TimeoutFuture::new(400).await;
+            if let Some(el) = window().and_then(|w| w.document()).and_then(|d| d.get_element_by_id(&format!("ep-cue-{i}"))) {
+                let opts = web_sys::ScrollIntoViewOptions::new();
+                opts.set_block(web_sys::ScrollLogicalPosition::Center);
+                opts.set_behavior(web_sys::ScrollBehavior::Smooth);
+                el.scroll_into_view_with_scroll_into_view_options(&opts);
+            }
+        });
+    };
+    let follow_find = use_mut_ref(|| props.focus_time.is_none());
+    {
+        let focused = use_mut_ref(|| false);
+        use_effect_with((cues.len(), focus_cue), move |(n, focus)| {
+            let done = *focused.borrow();
+            if let (true, Some(i), false) = (*n > 0, *focus, done) {
+                *focused.borrow_mut() = true;
+                scroll_to(i);
+            }
+            || ()
+        });
+    }
+    {
+        let follow_find = follow_find.clone();
+        use_effect_with(found_cue, move |hit| {
+            if let (Some(i), true) = (*hit, *follow_find.borrow()) {
+                scroll_to(i);
+            }
+            || ()
+        });
+    }
+
+    let step = {
+        let find_pos = find_pos.clone();
+        let follow_find = follow_find.clone();
+        let count = found.len();
+        Callback::from(move |delta: i64| {
+            *follow_find.borrow_mut() = true;
+            if count > 0 {
+                let next = (found_pos as i64 + delta).rem_euclid(count as i64) as usize;
+                find_pos.set(next);
+            }
+        })
+    };
+    let find_bar = if cues.is_empty() {
+        html! {}
+    } else {
+        let on_input = {
+            let find = find.clone();
+            let find_pos = find_pos.clone();
+            let follow_find = follow_find.clone();
+            Callback::from(move |e: InputEvent| {
+                *follow_find.borrow_mut() = true;
+                find.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+                find_pos.set(0);
+            })
+        };
+        let on_key = {
+            let step = step.clone();
+            let find = find.clone();
+            Callback::from(move |e: KeyboardEvent| match e.key().as_str() {
+                "Enter" => {
+                    e.prevent_default();
+                    step.emit(if e.shift_key() { -1 } else { 1 });
+                }
+                "Escape" => find.set(String::new()),
+                _ => {}
+            })
+        };
+        let prev = { let step = step.clone(); Callback::from(move |_: MouseEvent| step.emit(-1)) };
+        let next = { let step = step.clone(); Callback::from(move |_: MouseEvent| step.emit(1)) };
+        let count = if needle.is_empty() {
+            String::new()
+        } else if found.is_empty() {
+            i18n.t("episode.transcript_find_none")
+        } else {
+            format!("{} / {}", found_pos + 1, found.len())
+        };
+        html! {
+            <div class="ep-transcript-find">
+                <i class="ph ph-magnifying-glass"></i>
+                <input
+                    type="search"
+                    value={(*find).clone()}
+                    placeholder={i18n.t("episode.transcript_find")}
+                    aria-label={i18n.t("episode.transcript_find")}
+                    oninput={on_input}
+                    onkeydown={on_key}
+                />
+                <span class="ep-transcript-find-count">{ count }</span>
+                <button onclick={prev} disabled={found.is_empty()} aria-label={i18n.t("episode.transcript_find_prev")}><i class="ph ph-caret-up"></i></button>
+                <button onclick={next} disabled={found.is_empty()} aria-label={i18n.t("episode.transcript_find_next")}><i class="ph ph-caret-down"></i></button>
+            </div>
+        }
+    };
+
+    // A deep link from search: where it landed, and a way to play from there.
+    let jump_banner = match (props.focus_time, focus_cue) {
+        (Some(t), Some(i)) if !playing_here => {
+            let seek = seek.clone();
+            let start = cues[i].start;
+            let onclick = Callback::from(move |e: MouseEvent| seek.emit((start, e)));
+            html! {
+                <div class="ep-transcript-jump">
+                    <i class="ph ph-arrow-bend-down-right"></i>
+                    <span>{ i18n.t("episode.transcript_jumped_to").replace("{time}", &format_time(t as i32)) }</span>
+                    <button {onclick}><i class="ph-fill ph-play"></i>{ i18n.t("episode.transcript_play_from_here") }</button>
+                </div>
+            }
+        }
+        _ => html! {},
+    };
 
     html! {
         <div class="ep-transcript-content space-y-4 item_container-text prose dark:prose-invert max-w-none">
@@ -403,27 +559,36 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
                 <div class="text-red-500 dark:text-red-400 p-2">{err}</div>
             } else if let Some(content) = &*transcript_content {
                 {{
-                    let cues = parse_transcript_cues(content);
                     if !cues.is_empty() {
                         // Timecoded, clickable transcript with ad ranges highlighted (#790).
                         html! {
+                            <>
+                            { jump_banner }
+                            { find_bar }
                             <div class="ep-transcript-cues">
-                                { for cues.iter().map(|cue| {
+                                { for cues.iter().enumerate().map(|(i, cue)| {
                                     let is_ad = ad_ranges.iter().any(|(s, e)| cue.start < *e && cue.end > *s);
                                     let start = cue.start;
                                     let seek = seek.clone();
-                                    let onclick = Callback::from(move |_: MouseEvent| seek.emit(start));
-                                    let cls = if is_ad { "ep-transcript-cue is-ad" } else { "ep-transcript-cue" };
+                                    let onclick = Callback::from(move |e: MouseEvent| seek.emit((start, e)));
+                                    let cls = classes!(
+                                        "ep-transcript-cue",
+                                        is_ad.then_some("is-ad"),
+                                        (current_cue == Some(i)).then_some("is-current"),
+                                        (focus_cue == Some(i)).then_some("is-focus"),
+                                        (found_cue == Some(i)).then_some("is-found"),
+                                    );
                                     html! {
-                                        <div class={cls}>
-                                            <button class="ep-transcript-cue-ts" {onclick} title="Jump to this point">
+                                        <div class={cls} id={format!("ep-cue-{i}")} key={i}>
+                                            <button class="ep-transcript-cue-ts" {onclick} title={i18n.t("episode.transcript_jump_here")}>
                                                 { format_time(start as i32) }
                                             </button>
-                                            <span class="ep-transcript-cue-text">{ &cue.text }</span>
+                                            <span class="ep-transcript-cue-text">{ highlight_terms(&cue.text, &find_terms) }</span>
                                         </div>
                                     }
                                 }) }
                             </div>
+                            </>
                         }
                     } else if content.contains('<') && content.contains('>') {
                         html! { <div class="transcript-content" ref={content_ref}/> }
@@ -754,6 +919,16 @@ pub struct TranscriptTabProps {
     pub ai_available: bool,
     #[prop_or_default]
     pub downloaded: bool,
+    /// Play the episode from a time (seconds).
+    #[prop_or_default]
+    pub on_seek: Option<Callback<(f64, MouseEvent)>>,
+    /// From a search hit: the time to open at, the words to find, and which transcript matched.
+    #[prop_or_default]
+    pub focus_time: Option<f64>,
+    #[prop_or_default]
+    pub initial_query: Option<String>,
+    #[prop_or_default]
+    pub prefer_source: Option<String>,
     #[prop_or_default]
     pub episode_title: String,
 }
@@ -768,7 +943,8 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
     let user_id = app.user_details.as_ref().map(|ud| ud.UserID);
 
     let ai_transcript = use_state(|| Option::<StoredTranscript>::None);
-    let selected = use_state(|| 0usize);
+    // None until the listener picks a source.
+    let selected = use_state(|| Option::<usize>::None);
     let submitting = use_state(|| false);
     let episode_id = props.episode_id;
 
@@ -872,7 +1048,9 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
         })
     };
 
-    let sel_idx = (*selected).min(sources.len().saturating_sub(1));
+    // A search hit in the AI transcript opens that one.
+    let preferred = if props.prefer_source.as_deref() == Some("generated") && ai_complete { sources.len().saturating_sub(1) } else { 0 };
+    let sel_idx = (*selected).unwrap_or(preferred).min(sources.len().saturating_sub(1));
 
     // Source selector — only when there's a real choice.
     let selector = if sources.len() > 1 {
@@ -880,7 +1058,7 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
             <div class="ep-transcript-sources">
                 { for sources.iter().enumerate().map(|(i, (label, _))| {
                     let selected = selected.clone();
-                    let onclick = Callback::from(move |_: MouseEvent| selected.set(i));
+                    let onclick = Callback::from(move |_: MouseEvent| selected.set(Some(i)));
                     let cls = if i == sel_idx { "ep-transcript-source-btn active" } else { "ep-transcript-source-btn" };
                     html! { <button class={cls} {onclick}>{ label.clone() }</button> }
                 }) }
@@ -897,6 +1075,10 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
                 server_name={props.server_name.clone()}
                 api_key={props.api_key.clone()}
                 ad_ranges={ad_ranges.clone()}
+                episode_id={episode_id}
+                on_seek={props.on_seek.clone()}
+                focus_time={props.focus_time}
+                initial_query={props.initial_query.clone()}
             />
         }
     } else {
@@ -1317,6 +1499,12 @@ pub fn epsiode() -> Html {
     let ep_query_key = use_location()
         .map(|loc| loc.query_str().to_string())
         .unwrap_or_default();
+    // A search hit's link: `t` (seconds), `q` (the search) and `source` (which transcript).
+    let transcript_link: (Option<f64>, Option<String>, Option<String>) = {
+        let params = UrlSearchParams::new_with_str(&ep_query_key).ok();
+        let get = |k: &str| params.as_ref().and_then(|p| p.get(k)).filter(|v| !v.is_empty());
+        (get("t").and_then(|t| t.parse().ok()), get("q"), get("source"))
+    };
 
     // let error = use_state(|| None);
     let shared_url = use_state(|| Option::<String>::None);
@@ -1765,6 +1953,17 @@ pub fn epsiode() -> Html {
     }
 
     let active_tab = use_state(|| EpisodeTab::Notes);
+    // Opened from a transcript search hit: start on the transcript.
+    {
+        let active_tab = active_tab.clone();
+        let from_search = transcript_link.0.is_some() || transcript_link.1.is_some();
+        use_effect_with(ep_query_key.clone(), move |_| {
+            if from_search {
+                active_tab.set(EpisodeTab::Transcript);
+            }
+            || ()
+        });
+    }
     let completion_status = use_state(|| false);
     let queue_status = use_state(|| false);
     let save_status = use_state(|| false);
@@ -2933,6 +3132,13 @@ pub fn epsiode() -> Html {
                                                         api_key={api_key.clone().unwrap_or_default().unwrap_or_default()}
                                                         ai_available={*ai_available}
                                                         downloaded={*download_status}
+                                                        on_seek={{
+                                                            let episode = episode.clone();
+                                                            Some(Callback::from(move |(t, e): (f64, MouseEvent)| play_from(episode.clone(), t, e)))
+                                                        }}
+                                                        focus_time={transcript_link.0}
+                                                        initial_query={transcript_link.1.clone()}
+                                                        prefer_source={transcript_link.2.clone()}
                                                         episode_title={episode.episodetitle.clone()}
                                                     />
                                                 },

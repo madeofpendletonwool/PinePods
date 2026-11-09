@@ -420,7 +420,14 @@
     "ad_accuracy_mismatch": "Your server download is a different copy from the one these ads were found on, so their times may be off. Detect ads again to match your download.",
     "ad_accuracy_streaming": "You're streaming this episode. If the podcast inserts ads dynamically, they can sit at different times than detected; Pinepods only skips them when the stream's length matches the analyzed copy. Download it to the server for exact skips.",
     "ad_skip_this": "Skip this ad",
-    "ad_keep_this": "Keep this ad"
+    "ad_keep_this": "Keep this ad",
+    "transcript_find": "Find in transcript",
+    "transcript_find_none": "No matches",
+    "transcript_find_prev": "Previous match",
+    "transcript_find_next": "Next match",
+    "transcript_jumped_to": "Found at {time}",
+    "transcript_play_from_here": "Play from here",
+    "transcript_jump_here": "Jump to this point"
   },
   "failed_to_find_podcast_metadata": "Failed to find podcast's metadata.",
   "episode_list_item": {
@@ -1497,7 +1504,26 @@
     "mark_complete": "Mark Complete",
     "save": "Save",
     "queue": "Queue",
-    "download": "Download"
+    "download": "Download",
+    "transcripts_toggle": "Search inside transcripts",
+    "transcripts_toggle_hint": "Also find episodes where your search was said, in feed and AI transcripts",
+    "transcripts_heading": "Said in episodes",
+    "transcripts_one_episode": "1 episode",
+    "transcripts_episodes": "{count} episodes",
+    "transcripts_failed": "Couldn't search transcripts. Try again in a moment.",
+    "transcripts_none_yet": "No transcripts to search yet",
+    "transcripts_none_yet_body": "Transcripts come from podcasts that publish them (they're fetched in the background after a refresh) and from AI transcription, if it's set up in Settings.",
+    "transcripts_no_match": "Not said in any transcript",
+    "transcripts_searched": "Searched {count} episodes with transcripts.",
+    "transcripts_more_episodes": "Show more episodes",
+    "transcripts_source_ai": "AI transcript",
+    "transcripts_source_feed": "Podcast's transcript",
+    "transcripts_one_mention": "1 mention",
+    "transcripts_mentions": "{count} mentions",
+    "transcripts_play_from": "Play from here",
+    "transcripts_more_moments": "{count} more moments",
+    "transcripts_fewer_moments": "Show fewer",
+    "no_title_matches": "No matches in episode titles or show notes."
   },
   "search_new": {
     "search_new": "Search New"

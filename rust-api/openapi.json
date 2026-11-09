@@ -9891,6 +9891,71 @@
         ]
       }
     },
+    "/api/data/transcripts/search": {
+      "get": {
+        "tags": [
+          "episodes"
+        ],
+        "summary": "Search inside transcripts",
+        "operationId": "search_transcripts",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Words, \"quoted phrases\" and -excluded words. Every word that isn't excluded must appear.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Episodes per page (default 20, at most 50).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching episodes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptSearchResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/update_auto_complete_seconds": {
       "put": {
         "tags": [
@@ -16201,6 +16266,27 @@
           }
         }
       },
+      "Moment": {
+        "type": "object",
+        "description": "A place in a transcript where the search terms were said.",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "start": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Seconds into the episode; null for transcripts without timings."
+          },
+          "text": {
+            "type": "string",
+            "description": "The words around the match."
+          }
+        }
+      },
       "MsgSeverity": {
         "type": "string",
         "description": "Durable in-app notification severity. Mirrored on the frontend\n(`web/src/components/context.rs`). `warning`/`error` count toward the bell\nbadge; `info`/`success` do not.",
@@ -19482,6 +19568,160 @@
           },
           "force": {
             "type": "boolean"
+          }
+        }
+      },
+      "TranscriptSearchEpisode": {
+        "type": "object",
+        "description": "An episode whose transcript matched, in the shape the episode lists use.",
+        "required": [
+          "podcastid",
+          "podcastname",
+          "artworkurl",
+          "author",
+          "feedurl",
+          "userid",
+          "episodeid",
+          "episodetitle",
+          "episodedescription",
+          "episodeurl",
+          "episodeartwork",
+          "episodepubdate",
+          "episodeduration",
+          "listenduration",
+          "completed",
+          "saved",
+          "queued",
+          "downloaded",
+          "is_youtube"
+        ],
+        "properties": {
+          "podcastid": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "podcastname": {
+            "type": "string"
+          },
+          "artworkurl": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string"
+          },
+          "feedurl": {
+            "type": "string"
+          },
+          "userid": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "episodeid": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "episodetitle": {
+            "type": "string"
+          },
+          "episodedescription": {
+            "type": "string"
+          },
+          "episodeurl": {
+            "type": "string"
+          },
+          "episodeartwork": {
+            "type": "string"
+          },
+          "episodepubdate": {
+            "type": "string",
+            "description": "`YYYY-MM-DDTHH:MM:SS`, empty when unknown."
+          },
+          "episodeduration": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "listenduration": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "completed": {
+            "type": "boolean"
+          },
+          "saved": {
+            "type": "boolean"
+          },
+          "queued": {
+            "type": "boolean"
+          },
+          "downloaded": {
+            "type": "boolean"
+          },
+          "is_youtube": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TranscriptSearchHit": {
+        "type": "object",
+        "required": [
+          "episode",
+          "source",
+          "mentions",
+          "moments"
+        ],
+        "properties": {
+          "episode": {
+            "$ref": "#/components/schemas/TranscriptSearchEpisode"
+          },
+          "source": {
+            "type": "string",
+            "description": "`generated` (made on this server) or `feed` (published by the podcast)."
+          },
+          "mentions": {
+            "type": "integer",
+            "description": "How many times the search terms appear in the transcript.",
+            "minimum": 0
+          },
+          "moments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Moment"
+            },
+            "description": "Where they appear, in order, close mentions merged."
+          }
+        }
+      },
+      "TranscriptSearchResponse": {
+        "type": "object",
+        "required": [
+          "results",
+          "total",
+          "terms",
+          "searchable_episodes"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TranscriptSearchHit"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Matching episodes in all pages."
+          },
+          "terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The words and phrases clients should highlight, lowercased."
+          },
+          "searchable_episodes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many of your episodes have a searchable transcript."
           }
         }
       },

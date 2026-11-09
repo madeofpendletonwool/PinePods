@@ -22,6 +22,7 @@ pub mod feed;
 pub mod local_podcast;
 pub mod nowplaying;
 pub mod people;
+pub mod transcript_search;
 
 // Common handler utilities
 use axum::http::HeaderMap;
