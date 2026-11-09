@@ -25,7 +25,7 @@ from datetime import datetime, date
 BASELINE_PATH = os.path.join(os.path.dirname(__file__), "sqlite_baseline.sql")
 
 # Seed values that must differ per install; the generator writes these placeholders instead.
-SECRET_COLUMNS = {
+INSTALL_PLACEHOLDERS = {
     ("AppSettings", "encryptionkey"): ":encryption_key",
     ("APIKeys", "apikey"): ":bg_api_key",
     ("Users", "hashed_pw"): ":bg_password_hash",
@@ -192,7 +192,7 @@ def generate(dsn: str) -> str:
                     if v is None and defaults.get(n) is None:
                         continue
                     ins_cols.append(n)
-                    vals.append(SECRET_COLUMNS.get((t, n), sql_literal(v)))
+                    vals.append(INSTALL_PLACEHOLDERS.get((t, n), sql_literal(v)))
                 seeds.append(f'INSERT INTO "{t}" (' + ", ".join(ins_cols) + ") VALUES (" + ", ".join(vals) + ");")
     out.append("")
 
