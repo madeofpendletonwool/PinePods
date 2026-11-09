@@ -163,7 +163,8 @@ pub async fn run_reporting(
             .decrypt_password(&target.encrypted_secret)
             .await
             .map_err(|_| AppError::internal("The stored password for the sync server can't be decrypted; enter it again"))?;
-        run_locked(db, tasks, &target, &secret, mode, progress).await
+        // Boxed: a sync run's state machine is large enough to overflow a 2 MiB thread stack.
+        Box::pin(run_locked(db, tasks, &target, &secret, mode, progress)).await
     }
     .await;
 
@@ -260,7 +261,7 @@ async fn run_locked(
         subs.remove.iter().filter(|u| !unpushed.contains(*u) && local.contains(&feed_url_key(u))).cloned().collect()
     };
     if !add.is_empty() || !remove.is_empty() {
-        let applied = apply_subscription_changes(db, tasks, user_id, &add, &remove, origin).await?;
+        let applied = Box::pin(apply_subscription_changes(db, tasks, user_id, &add, &remove, origin)).await?;
         summary.subscriptions_queued = applied.queued;
         summary.subscriptions_removed = applied.removed;
     }
