@@ -7113,6 +7113,145 @@
         ]
       }
     },
+    "/api/data/podcast/{podcast_id}/auto_refresh": {
+      "get": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Whether a podcast refreshes automatically",
+        "operationId": "get_auto_refresh",
+        "parameters": [
+          {
+            "name": "podcast_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoRefresh"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such podcast"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Turn a podcast's automatic refreshes on or off",
+        "description": "Off: the scheduled refresh and Refresh all skip the podcast, and it leaves the feed problems list. Refreshing it on its own still works.",
+        "operationId": "set_auto_refresh",
+        "parameters": [
+          {
+            "name": "podcast_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoRefresh"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoRefresh"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such podcast"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/podcast/{podcast_id}/refresh": {
+      "post": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Refresh one podcast now",
+        "description": "Checks the podcast for new episodes straight away: reads its feed or YouTube channel, or looks for new files in its local folder. Works whether or not its automatic refreshes are on.",
+        "operationId": "refresh_podcast",
+        "parameters": [
+          {
+            "name": "podcast_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodcastRefreshResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such podcast"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/podcast_download_summary/{user_id}": {
       "get": {
         "tags": [
@@ -13084,6 +13223,13 @@
               "boolean",
               "null"
             ]
+          },
+          "auto_refresh": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Check the folder for new files on the refresh schedule (default true)."
           }
         }
       },
@@ -13430,6 +13576,18 @@
         "properties": {
           "auto_queue": {
             "type": "boolean"
+          }
+        }
+      },
+      "AutoRefresh": {
+        "type": "object",
+        "required": [
+          "auto_refresh"
+        ],
+        "properties": {
+          "auto_refresh": {
+            "type": "boolean",
+            "description": "The scheduled refresh and Refresh all check this podcast."
           }
         }
       },
@@ -16926,6 +17084,33 @@
           "podcast_id": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "PodcastRefreshResult": {
+        "type": "object",
+        "required": [
+          "status",
+          "new_episodes"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "`refreshed`, `throttled` (the feed's host asked Pinepods to wait) or `failed`."
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What went wrong, when it failed."
+          },
+          "new_episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Episode"
+            },
+            "description": "The episodes it added. YouTube channels report none here; their videos show on the\npodcast's page."
           }
         }
       },

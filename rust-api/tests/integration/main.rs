@@ -22,6 +22,7 @@ mod opml;
 mod people;
 mod playback;
 mod podcast_details;
+mod podcast_refresh;
 mod podcasting20;
 mod podcasts;
 mod podping;

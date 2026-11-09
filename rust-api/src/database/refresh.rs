@@ -161,7 +161,8 @@ impl DatabasePool {
                         feedcontenthash as content_hash,
                         refreshintervalminutes as refresh_interval,
                         (lastrefreshsuccess IS NOT NULL AND lastrefreshsuccess > NOW() - INTERVAL '2 minutes') as recently_refreshed,
-                        (refreshnotbefore IS NOT NULL AND refreshnotbefore > NOW()) as throttled
+                        (refreshnotbefore IS NOT NULL AND refreshnotbefore > NOW()) as throttled,
+                        COALESCE(refreshpodcast, TRUE) as auto_refresh
                     FROM "Podcasts" 
                     WHERE userid = $1"#
                 )
@@ -190,6 +191,7 @@ impl DatabasePool {
                         refresh_interval: row.try_get("refresh_interval").ok().flatten(),
                         recently_refreshed: row.try_get("recently_refreshed").unwrap_or(false),
                         throttled: row.try_get("throttled").unwrap_or(false),
+                        auto_refresh: row.try_get("auto_refresh").unwrap_or(true),
                     });
                 }
                 Ok(podcasts)
@@ -214,7 +216,8 @@ impl DatabasePool {
                         FeedContentHash as content_hash,
                         RefreshIntervalMinutes as refresh_interval,
                         (LastRefreshSuccess IS NOT NULL AND LastRefreshSuccess > NOW() - INTERVAL 2 MINUTE) as recently_refreshed,
-                        (RefreshNotBefore IS NOT NULL AND RefreshNotBefore > NOW()) as throttled
+                        (RefreshNotBefore IS NOT NULL AND RefreshNotBefore > NOW()) as throttled,
+                        COALESCE(RefreshPodcast, 1) as auto_refresh
                     FROM Podcasts 
                     WHERE UserID = ?"
                 )
@@ -243,6 +246,7 @@ impl DatabasePool {
                         refresh_interval: row.try_get("refresh_interval").ok().flatten(),
                         recently_refreshed: row.try_get::<i64, _>("recently_refreshed").unwrap_or(0) != 0,
                         throttled: row.try_get::<i64, _>("throttled").unwrap_or(0) != 0,
+                        auto_refresh: row.try_get::<i64, _>("auto_refresh").map(|v| v != 0).unwrap_or(true),
                     });
                 }
                 Ok(podcasts)

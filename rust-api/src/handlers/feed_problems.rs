@@ -70,7 +70,8 @@ pub async fn refresh_failing_feed(
     headers: HeaderMap,
 ) -> Result<Json<FeedProblems>, AppError> {
     let user_id = caller(&state, &headers).await?;
-    if !crate::handlers::refresh::refresh_podcast_now(&state, user_id, podcast_id).await? {
+    // A failure is recorded with the podcast, which the list below shows.
+    if let crate::handlers::refresh::PodcastRefresh::NotFound = crate::handlers::refresh::refresh_podcast_now(&state, user_id, podcast_id).await? {
         return Err(AppError::not_found("Podcast not found"));
     }
     get_feed_problems(State(state), headers).await

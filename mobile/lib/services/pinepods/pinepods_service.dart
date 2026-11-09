@@ -593,6 +593,56 @@ class PinepodsService {
     }
   }
 
+  // Check one podcast for new episodes now: its feed, YouTube channel or
+  // local folder. Returns how many episodes it added (YouTube channels
+  // report none; reload the list). Throws with the server's reason when the
+  // check failed or the host asked Pinepods to wait.
+  Future<int> refreshPodcast(int podcastId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/podcast/$podcastId/refresh');
+    final response = await _client
+        .post(url, headers: {'Api-Key': _apiKey!})
+        .timeout(const Duration(seconds: 90));
+    final body = response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw Exception(body['detail'] ?? body['message'] ?? 'HTTP ${response.statusCode}');
+    }
+    if (body['status'] != 'refreshed') {
+      throw Exception(body['detail'] ?? body['status']);
+    }
+    return (body['new_episodes'] as List?)?.length ?? 0;
+  }
+
+  // Whether the scheduled refresh and Refresh all check this podcast.
+  Future<bool> getAutoRefresh(int podcastId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/podcast/$podcastId/auto_refresh');
+    final response = await _client.get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) {
+      throw Exception('HTTP ${response.statusCode}');
+    }
+    return (jsonDecode(response.body) as Map<String, dynamic>)['auto_refresh'] as bool? ?? true;
+  }
+
+  Future<void> setAutoRefresh(int podcastId, bool enabled) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/podcast/$podcastId/auto_refresh');
+    final response = await _client.put(
+      url,
+      headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+      body: jsonEncode({'auto_refresh': enabled}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('HTTP ${response.statusCode}');
+    }
+  }
+
   // Get a podcast's favorite status.
   Future<bool> getPodcastFavoriteStatus(int podcastId, int userId) async {
     if (_server == null || _apiKey == null) {

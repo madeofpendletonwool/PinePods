@@ -10,6 +10,7 @@ pub mod notifications;
 // pub mod async_tasks_examples;  // File was deleted
 pub mod refresh;
 pub mod feed_problems;
+pub mod podcast_refresh;
 pub mod update_services;
 pub mod proxy;
 pub mod settings;

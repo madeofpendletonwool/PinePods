@@ -6,9 +6,10 @@ use axum::{
 use chrono::{DateTime, NaiveDateTime, Utc};
 use id3::TagLike;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use uuid::Uuid;
-use tracing::{info};
+use tracing::{debug, info};
 
 use crate::{
     error::AppError,
@@ -28,6 +29,8 @@ pub struct AddLocalPodcastRequest {
     pub description: Option<String>,
     pub author: Option<String>,
     pub explicit: Option<bool>,
+    /// Check the folder for new files on the refresh schedule (default true).
+    pub auto_refresh: Option<bool>,
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]
@@ -84,10 +87,10 @@ fn save_artwork_bytes(data: &[u8], artwork_dir: &Path) -> Option<String> {
     if data.is_empty() {
         return None;
     }
-    // Use a UUID filename to avoid collisions
-    let filename = format!("{}.jpg", Uuid::new_v4());
+    // Named by content, so scanning the same image again reuses its file.
+    let filename = format!("{}.jpg", &hex::encode(Sha256::digest(data))[..32]);
     let path = artwork_dir.join(&filename);
-    if std::fs::write(&path, data).is_ok() {
+    if path.exists() || (std::fs::create_dir_all(artwork_dir).is_ok() && std::fs::write(&path, data).is_ok()) {
         Some(format!("/{}/{}/{}", "api/local-media", ARTWORK_DIR, filename))
     } else {
         None
@@ -115,11 +118,14 @@ fn find_cover_art_in_dir(dir: &Path, artwork_dir: &Path) -> Option<String> {
     None
 }
 
-pub fn scan_local_directory(dir: &Path) -> Result<Vec<LocalEpisodeCandidate>, AppError> {
-    let artwork_dir = ensure_artwork_dir()?;
+/// The audio files in `dir` (not its subfolders) as episodes, skipping the paths in `known`
+/// before their tags are read.
+pub fn scan_local_directory(dir: &Path, known: &HashSet<String>) -> Result<Vec<LocalEpisodeCandidate>, AppError> {
+    // Created when there's an image to save.
+    let artwork_dir = PathBuf::from(LOCAL_MEDIA_ROOT).join(ARTWORK_DIR);
 
-    // Look for a cover art file in the directory once
-    let dir_artwork = find_cover_art_in_dir(dir, &artwork_dir);
+    // The folder's cover, looked up once and only when there's a new file.
+    let mut dir_artwork: Option<Option<String>> = None;
 
     let mut candidates: Vec<LocalEpisodeCandidate> = Vec::new();
 
@@ -149,6 +155,9 @@ pub fn scan_local_directory(dir: &Path) -> Result<Vec<LocalEpisodeCandidate>, Ap
         }
 
         let path_str = path.to_string_lossy().to_string();
+        if known.contains(&path_str) {
+            continue;
+        }
 
         // Try to read ID3 tags (works for MP3/M4A/most formats)
         let (title, description, pub_date, duration, track_num, episode_artwork) =
@@ -232,7 +241,8 @@ pub fn scan_local_directory(dir: &Path) -> Result<Vec<LocalEpisodeCandidate>, Ap
                 (title, String::new(), pub_date, duration, None, None)
             };
 
-        let artwork_url = episode_artwork.or_else(|| dir_artwork.clone());
+        let artwork_url = episode_artwork
+            .or_else(|| dir_artwork.get_or_insert_with(|| find_cover_art_in_dir(dir, &artwork_dir)).clone());
 
         candidates.push(LocalEpisodeCandidate {
             file_path: path_str,
@@ -302,7 +312,10 @@ pub async fn add_local_podcast(
         return Err(AppError::bad_request("A local podcast for this directory already exists"));
     }
 
-    let candidates = scan_local_directory(&canonical_path)?;
+    let scan_path = canonical_path.clone();
+    let candidates = tokio::task::spawn_blocking(move || scan_local_directory(&scan_path, &HashSet::new()))
+        .await
+        .map_err(|e| AppError::internal(format!("Scanning the folder failed: {}", e)))??;
     if candidates.is_empty() {
         return Err(AppError::bad_request(
             "No audio files found in the specified directory. Supported formats: mp3, m4a, ogg, flac, wav, aac, opus",
@@ -331,6 +344,9 @@ pub async fn add_local_podcast(
         .db_pool
         .add_local_episodes(podcast_id, request.user_id, &candidates)
         .await?;
+    if request.auto_refresh == Some(false) {
+        state.db_pool.set_auto_refresh(podcast_id, request.user_id, false).await?;
+    }
 
     let podcast_details = state
         .db_pool
@@ -372,53 +388,77 @@ pub async fn refresh_local_podcast(
         return Err(AppError::forbidden("You can only refresh your own podcasts"));
     }
 
-    // Look up the podcast and verify it is a local podcast
     let feed_url = state
         .db_pool
         .get_feed_url_for_podcast(request.podcast_id, request.user_id)
         .await?
         .ok_or_else(|| AppError::not_found("Podcast not found"))?;
-
     if !feed_url.starts_with("local://") {
         return Err(AppError::bad_request("This is not a local podcast"));
     }
 
-    let dir_path = feed_url.strip_prefix("local://").unwrap_or(&feed_url);
-    let canonical_path = Path::new(dir_path);
-    if !canonical_path.exists() {
-        return Err(AppError::bad_request("Local media directory no longer exists"));
-    }
-
-    let candidates = scan_local_directory(canonical_path)?;
-
-    // Get existing episode file paths to avoid duplicates
-    let existing_paths = state
-        .db_pool
-        .get_local_episode_paths(request.podcast_id)
-        .await?;
-
-    let new_candidates: Vec<LocalEpisodeCandidate> = candidates
-        .into_iter()
-        .filter(|c| !existing_paths.contains(&c.file_path))
-        .collect();
-
-    let new_count = new_candidates.len();
-    if !new_candidates.is_empty() {
-        state
-            .db_pool
-            .add_local_episodes(request.podcast_id, request.user_id, &new_candidates)
-            .await?;
-    }
-
-    info!(
-        "🔄 Refreshed local podcast {}: {} new episodes",
-        request.podcast_id, new_count
-    );
-
+    use crate::handlers::refresh::{refresh_podcast_now, PodcastRefresh};
+    let new_count = match refresh_podcast_now(&state, request.user_id, request.podcast_id).await? {
+        PodcastRefresh::Done(new_episodes) => new_episodes.len(),
+        PodcastRefresh::Failed(e) => return Err(e),
+        PodcastRefresh::NotFound | PodcastRefresh::Throttled => return Err(AppError::not_found("Podcast not found")),
+    };
     Ok(Json(serde_json::json!({
         "detail": format!("Refresh complete: {} new episode(s) added", new_count),
         "new_episodes": new_count
     })))
+}
+
+/// Add the audio files that appeared in a local podcast's folder since its last scan as
+/// episodes, and return them. Fails when the folder is gone.
+pub async fn rescan_local_podcast(
+    state: &AppState,
+    podcast_id: i32,
+    user_id: i32,
+    feed_url: &str,
+) -> Result<Vec<crate::handlers::podcasts::Episode>, AppError> {
+    let dir = PathBuf::from(feed_url.strip_prefix("local://").unwrap_or(feed_url));
+    if !dir.is_dir() {
+        return Err(AppError::not_found(format!("Local folder {} is missing", dir.display())));
+    }
+
+    let known: HashSet<String> = state.db_pool.get_local_episode_paths(podcast_id).await?.into_iter().collect();
+    let candidates = tokio::task::spawn_blocking(move || scan_local_directory(&dir, &known))
+        .await
+        .map_err(|e| AppError::internal(format!("Scanning the folder failed: {}", e)))??;
+    if candidates.is_empty() {
+        debug!("No new files for local podcast {}", podcast_id);
+        return Ok(Vec::new());
+    }
+
+    let inserted = state.db_pool.add_local_episodes(podcast_id, user_id, &candidates).await?;
+    if !inserted.is_empty() {
+        info!("Local podcast {}: {} new episodes", podcast_id, inserted.len());
+    }
+    Ok(inserted
+        .into_iter()
+        .map(|(index, episode_id)| {
+            let c = &candidates[index];
+            crate::handlers::podcasts::Episode {
+                podcastid: podcast_id,
+                podcastname: String::new(),
+                episodetitle: c.title.clone(),
+                episodepubdate: c.pub_date.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                episodedescription: c.description.clone(),
+                episodeartwork: c.artwork_url.clone().unwrap_or_default(),
+                episodeurl: format!("local://{}", c.file_path),
+                episodeduration: c.duration,
+                listenduration: None,
+                episodeid: episode_id,
+                completed: false,
+                saved: false,
+                queued: false,
+                downloaded: true,
+                is_youtube: false,
+                is_video: false,
+            }
+        })
+        .collect())
 }
 
 #[utoipa::path(
@@ -590,8 +630,10 @@ pub async fn detect_local_cover(
 
     // Reuse the same scan the add flow uses, then pick the first available artwork —
     // exactly how add_local_podcast chooses the podcast artwork.
-    let artwork_url = scan_local_directory(&canonical_path)
+    let artwork_url = tokio::task::spawn_blocking(move || scan_local_directory(&canonical_path, &HashSet::new()))
+        .await
         .ok()
+        .and_then(Result::ok)
         .and_then(|candidates| candidates.iter().find_map(|c| c.artwork_url.clone()));
 
     Ok(Json(serde_json::json!({ "artwork_url": artwork_url })))

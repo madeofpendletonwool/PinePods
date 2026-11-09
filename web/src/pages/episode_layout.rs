@@ -32,7 +32,8 @@ use crate::requests::pod_req::{
     call_get_rss_key, call_merge_podcasts, call_remove_category, call_remove_podcasts_name,
     call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_favorite,
     call_toggle_podcast_notifications,
-    call_refresh_podcast_details, call_unmerge_podcast, call_update_feed_cutoff_days,
+    call_refresh_podcast_details, call_refresh_podcast, call_get_auto_refresh, call_set_auto_refresh,
+    call_unmerge_podcast, call_update_feed_cutoff_days,
     call_update_podcast_info,
     call_get_podcast_auto_delete_days, call_set_podcast_auto_delete_days,
     call_clear_podcast_auto_delete_days,
@@ -907,6 +908,8 @@ pub fn episode_layout() -> Html {
     let download_status = use_state(|| false);
     let auto_play_next_status = use_state(|| false);
     let auto_queue_status = use_state(|| false);
+    let auto_refresh_status = use_state(|| true);
+    let refreshing_podcast = use_state(|| false);
     let podcast_id = use_state(|| 0);
     // Bumped after the podcast's details are read from its feed again, to reload its episodes.
     let details_reload = use_state(|| 0u32);
@@ -1874,6 +1877,112 @@ pub fn episode_layout() -> Html {
                         }
                     }
                 }
+            });
+        })
+    };
+
+    // Whether the scheduled refresh and Refresh all check this podcast.
+    {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let auto_refresh_status = auto_refresh_status.clone();
+        use_effect_with((*podcast_id, *is_added), move |(pid, added)| {
+            if let (true, true, Some(Some(api_key)), Some(server_name)) = (*pid > 0, *added, api_key.clone(), server_name.clone()) {
+                let pid = *pid;
+                spawn_local(async move {
+                    if let Ok(enabled) = call_get_auto_refresh(&server_name, &api_key, pid).await {
+                        auto_refresh_status.set(enabled);
+                    }
+                });
+            }
+            || ()
+        });
+    }
+
+    let toggle_auto_refresh = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let auto_refresh_status = auto_refresh_status.clone();
+        let podcast_id = podcast_id.clone();
+        let i18n_failed = i18n.t("episodes_layout.auto_refresh_failed").to_string();
+        Callback::from(move |_| {
+            let (Some(Some(api_key)), Some(server_name)) = (api_key.clone(), server_name.clone()) else {
+                return;
+            };
+            let auto_refresh_status = auto_refresh_status.clone();
+            let enabled = !*auto_refresh_status;
+            let pid = *podcast_id;
+            let i18n_failed = i18n_failed.clone();
+            spawn_local(async move {
+                match call_set_auto_refresh(&server_name, &api_key, pid, enabled).await {
+                    Ok(()) => auto_refresh_status.set(enabled),
+                    Err(e) => Dispatch::<NotificationState>::global()
+                        .reduce_mut(|state| state.error_message = Some(format!("{i18n_failed}: {e}"))),
+                }
+            });
+        })
+    };
+
+    // Check this podcast for new episodes now, then show them.
+    let refresh_now = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        let podcast_id = podcast_id.clone();
+        let details_reload = details_reload.clone();
+        let refreshing_podcast = refreshing_podcast.clone();
+        // YouTube channels don't report their new videos; the reloaded list shows them.
+        let is_youtube = clicked_podcast_info.as_ref().and_then(|i| i.is_youtube).unwrap_or(false);
+        let i18n_none = i18n.t("episodes_layout.refresh_no_new_episodes").to_string();
+        let i18n_new = i18n.t("episodes_layout.refresh_new_episodes").to_string();
+        let i18n_done = i18n.t("episodes_layout.refresh_checked").to_string();
+        let i18n_failed = i18n.t("episodes_layout.refresh_failed").to_string();
+        Callback::from(move |_: MouseEvent| {
+            let (Some(Some(api_key)), Some(server_name), Some(user_id)) =
+                (api_key.clone(), server_name.clone(), user_id)
+            else {
+                return;
+            };
+            let pid = *podcast_id;
+            if pid == 0 || *refreshing_podcast {
+                return;
+            }
+            refreshing_podcast.set(true);
+            let details_reload = details_reload.clone();
+            let refreshing_podcast = refreshing_podcast.clone();
+            let (i18n_none, i18n_new, i18n_done, i18n_failed) =
+                (i18n_none.clone(), i18n_new.clone(), i18n_done.clone(), i18n_failed.clone());
+            spawn_local(async move {
+                let notify = Dispatch::<NotificationState>::global();
+                match call_refresh_podcast(&server_name, &api_key, pid).await {
+                    Ok(result) if result.status == "refreshed" => {
+                        if let Ok(d) = call_get_podcast_details(&server_name, &api_key, user_id, pid).await {
+                            Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
+                                if let Some(info) = state.clicked_podcast_info.as_mut() {
+                                    info.episodecount = d.episodecount;
+                                }
+                            });
+                        }
+                        details_reload.set(*details_reload + 1);
+                        let n = result.new_episodes.len();
+                        let message = if n > 0 {
+                            i18n_new.replace("{count}", &n.to_string())
+                        } else if is_youtube {
+                            i18n_done
+                        } else {
+                            i18n_none
+                        };
+                        notify.reduce_mut(|state| state.info_message = Some(message));
+                    }
+                    Ok(result) => {
+                        let detail = result.detail.unwrap_or(result.status);
+                        notify.reduce_mut(|state| state.error_message = Some(format!("{i18n_failed}: {detail}")));
+                    }
+                    Err(e) => {
+                        notify.reduce_mut(|state| state.error_message = Some(format!("{i18n_failed}: {e}")));
+                    }
+                }
+                refreshing_podcast.set(false);
             });
         })
     };
@@ -2957,6 +3066,14 @@ pub fn episode_layout() -> Html {
                                 <label for="auto_queue" class="block mb-2 text-sm font-medium">{ &i18n_auto_queue_new_episodes }</label>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input type="checkbox" checked={*auto_queue_status} class="sr-only peer" onclick={toggle_auto_queue} />
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div>
+                                <label for="auto_refresh" class="block mb-1 text-sm font-medium">{ &i18n.t("episodes_layout.auto_refresh") }</label>
+                                <p class="mb-2 text-xs item_container-text opacity-75">{ &i18n.t("episodes_layout.auto_refresh_description") }</p>
+                                <label class="inline-flex relative items-center cursor-pointer">
+                                    <input id="auto_refresh" type="checkbox" checked={*auto_refresh_status} class="sr-only peer" onclick={toggle_auto_refresh} />
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                 </label>
                             </div>
@@ -4769,6 +4886,9 @@ pub fn episode_layout() -> Html {
                                                                 >
                                                                     { rss_icon }
                                                                 </button>
+                                                                <button onclick={refresh_now.clone()} disabled={*refreshing_podcast} title={i18n.t("episodes_layout.refresh_podcast").to_string()} class="ep-mobile-action-btn">
+                                                                    <i class={classes!("ph", "ph-arrows-clockwise", "text-2xl", refreshing_podcast.then_some("animate-spin"))}></i>
+                                                                </button>
                                                                 <button onclick={toggle_settings} title="Podcast settings" class="ep-mobile-action-btn">
                                                                     { setting_content }
                                                                 </button>
@@ -4914,6 +5034,13 @@ pub fn episode_layout() -> Html {
                                                                         title="Visit external podcast website" class="pd-icon-btn">
                                                                         { website_icon }
                                                                     </button>
+                                                                    { if subscribed {
+                                                                        html! {
+                                                                            <button onclick={refresh_now.clone()} disabled={*refreshing_podcast} title={i18n.t("episodes_layout.refresh_podcast").to_string()} class="pd-icon-btn">
+                                                                                <i class={classes!("ph", "ph-arrows-clockwise", "text-2xl", refreshing_podcast.then_some("animate-spin"))}></i>
+                                                                            </button>
+                                                                        }
+                                                                    } else { html! {} } }
                                                                     { if subscribed {
                                                                         html! {
                                                                             <button onclick={toggle_settings} title={i18n.t("episodes_layout.podcast_specific_settings").to_string()} class="pd-icon-btn">

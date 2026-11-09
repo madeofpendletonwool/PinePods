@@ -104,6 +104,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   bool _showInProgress = false;
   bool _isAutoDownloadEnabled = false;
   bool _isAutoPlayNextEnabled = false;
+  // The scheduled refresh and Refresh all check this podcast.
+  bool _isAutoRefreshEnabled = true;
+  bool _isRefreshingNow = false;
 
   // AI features (#726/#790) per-podcast settings. Only surfaced when the server
   // reports the AI sidecar as available.
@@ -120,6 +123,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   PinepodsEpisode? _pendingEpisode;
 
   bool get _isYoutube => isYoutubeChannelUrl(_podcast.url);
+  bool get _isLocal => _podcast.url.startsWith('local://');
 
   @override
   void initState() {
@@ -129,6 +133,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _loadSortPreference();
     _loadAutoDownloadPreference();
     _loadAutoPlayNextPreference();
+    _loadAutoRefreshPreference();
     _loadAiPreferences();
     _checkFollowStatus();
     _checkFavoriteStatus();
@@ -227,6 +232,62 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     }
   }
 
+  bool _useServer() {
+    final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    if (settings.pinepodsServer == null || settings.pinepodsApiKey == null) return false;
+    _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+    return true;
+  }
+
+  Future<void> _loadAutoRefreshPreference() async {
+    final podcastId = _podcast.id;
+    if (podcastId <= 0 || !_useServer()) return;
+    try {
+      final enabled = await _pinepodsService.getAutoRefresh(podcastId);
+      if (mounted) setState(() => _isAutoRefreshEnabled = enabled);
+    } catch (e) {
+      debugPrint('Error loading auto-refresh preference: $e');
+    }
+  }
+
+  Future<void> _toggleAutoRefresh() async {
+    final podcastId = _podcast.id;
+    if (podcastId <= 0 || !_useServer()) return;
+    final newValue = !_isAutoRefreshEnabled;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _pinepodsService.setAutoRefresh(podcastId, newValue);
+      if (!mounted) return;
+      setState(() => _isAutoRefreshEnabled = newValue);
+      messenger.showSnackBar(SnackBar(
+        content: Text(newValue ? 'Refreshing automatically' : 'Automatic refresh off'),
+        duration: const Duration(seconds: 2),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text("Couldn't change automatic refresh: $e")));
+    }
+  }
+
+  // Check this podcast (feed, channel or local folder) for new episodes now.
+  Future<void> _refreshNow() async {
+    final podcastId = _podcast.id;
+    if (podcastId <= 0 || _isRefreshingNow || !_useServer()) return;
+    setState(() => _isRefreshingNow = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final added = await _pinepodsService.refreshPodcast(podcastId);
+      await _loadPodcastFeed();
+      final message = added > 0
+          ? '$added new episode${added == 1 ? '' : 's'} added'
+          : (_isYoutube ? 'Checked the channel for new videos' : 'No new episodes');
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text("Couldn't check for new episodes: $e")));
+    } finally {
+      if (mounted) setState(() => _isRefreshingNow = false);
+    }
+  }
+
   // Read the feed again so a rebrand (new name, artwork, hosts) shows now.
   Future<void> _refreshDetails() async {
     final podcastId = _podcast.id;
@@ -265,8 +326,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         _resolveArtColor();
       }
       await _loadPodcastFeed();
-      messenger.showSnackBar(SnackBar(
-          content: Text(_isYoutube ? 'Checked the channel for new videos' : 'Podcast details refreshed from the feed')));
+      messenger.showSnackBar(const SnackBar(content: Text('Podcast details refreshed from the feed')));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text("Couldn't refresh from the feed: $e")));
     } finally {
@@ -2056,6 +2116,12 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           case 'follow':
             _toggleFollow();
             break;
+          case 'refresh_now':
+            _refreshNow();
+            break;
+          case 'auto_refresh':
+            _toggleAutoRefresh();
+            break;
           case 'refresh_details':
             _refreshDetails();
             break;
@@ -2097,14 +2163,29 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
               ),
             ),
           PopupMenuItem<String>(
-            value: 'refresh_details',
-            enabled: !_isRefreshingDetails,
+            value: 'refresh_now',
+            enabled: !_isRefreshingNow,
             child: ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(PhosphorIconsRegular.arrowsClockwise),
-              title: Text(_isYoutube ? 'Check for new videos' : 'Refresh from feed'),
+              title: Text(_isYoutube ? 'Check for new videos' : 'Check for new episodes'),
             ),
           ),
+          CheckedPopupMenuItem<String>(
+            value: 'auto_refresh',
+            checked: _isAutoRefreshEnabled,
+            child: const Text('Refresh automatically'),
+          ),
+          if (!_isYoutube && !_isLocal)
+            PopupMenuItem<String>(
+              value: 'refresh_details',
+              enabled: !_isRefreshingDetails,
+              child: const ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(PhosphorIconsRegular.article),
+                title: Text('Refresh details from feed'),
+              ),
+            ),
           if (_aiAvailable)
             const PopupMenuItem<String>(
               value: 'ai',
