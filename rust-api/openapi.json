@@ -19207,6 +19207,7 @@
           "episodedescription",
           "episodeurl",
           "episodeartwork",
+          "episodepubdate",
           "episodeduration",
           "listenduration",
           "completed",
@@ -19253,10 +19254,8 @@
             "type": "string"
           },
           "episodepubdate": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "description": "`YYYY-MM-DDTHH:MM:SS`, empty when unknown."
           },
           "episodeduration": {
             "type": "integer",
