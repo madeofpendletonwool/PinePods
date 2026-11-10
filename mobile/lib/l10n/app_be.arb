@@ -1,0 +1,18 @@
+{
+  "@@locale": "be",
+  "cancel_button_label": "Скасаваць",
+  "cancel_option_label": "Скасаваць",
+  "podcast_details_refreshed": "Звесткі пра падкаст абноўлены са стужкі",
+  "title_contains": "Назва змяшчае",
+  "save": "Захаваць",
+  "unsubscribe": "Адпісацца",
+  "copy": "Капіяваць",
+  "remove": "Выдаліць",
+  "refresh": "Абнавіць",
+  "search_failed": "Не ўдалося выканаць пошук",
+  "try_again": "Паўтарыць",
+  "server_url": "URL сервера",
+  "username": "Імя карыстальніка",
+  "password": "Пароль",
+  "sync_now": "Сінхранізаваць зараз"
+}

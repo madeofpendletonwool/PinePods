@@ -9,6 +9,8 @@ on:
     paths:
       - "web/src/**/*.rs"
       - "web/src/translations/en.json"
+      - "mobile/lib/**/*.dart"
+      - ".github/scripts/check_i18n_dart.py"
   workflow_dispatch:
     inputs:
       mode:
@@ -87,3 +89,37 @@ jobs:
           git fetch origin main
           git diff origin/main...HEAD -- 'web/src/**/*.rs' \
             | python3 .github/scripts/check_i18n_coverage.py --diff
+
+  check-hardcoded-strings-mobile:
+    name: Check for hardcoded UI strings (mobile)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # ARB integrity (blank values, unknown keys, placeholders) is covered by
+      # mobile/test/l10n/l10n_test.dart in the Mobile Tests workflow.
+      - name: Check new hardcoded strings (PR diff)
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git diff origin/${{ github.base_ref }}...HEAD -- 'mobile/lib/**/*.dart' \
+            | python3 .github/scripts/check_i18n_dart.py --diff
+
+      - name: Full scan for hardcoded strings
+        if: >
+          github.event_name == 'workflow_dispatch' &&
+          inputs.mode == 'full'
+        run: python3 .github/scripts/check_i18n_dart.py mobile/lib/ui
+
+      - name: Diff scan for hardcoded strings
+        if: >
+          github.event_name == 'workflow_dispatch' &&
+          inputs.mode == 'diff'
+        run: |
+          git fetch origin main
+          git diff origin/main...HEAD -- 'mobile/lib/**/*.dart' \
+            | python3 .github/scripts/check_i18n_dart.py --diff

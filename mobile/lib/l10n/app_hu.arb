@@ -1,0 +1,18 @@
+{
+  "@@locale": "hu",
+  "cancel_button_label": "Mégse",
+  "cancel_option_label": "Mégse",
+  "podcast_details_refreshed": "A podcast adatai frissítve a hírcsatornából",
+  "title_contains": "A cím tartalmazza",
+  "save": "Mentés",
+  "unsubscribe": "Leiratkozás",
+  "copy": "Másolás",
+  "remove": "Eltávolítás",
+  "refresh": "Frissítés",
+  "search_failed": "A keresés sikertelen",
+  "try_again": "Újra",
+  "server_url": "Szerver URL",
+  "username": "Felhasználónév",
+  "password": "Jelszó",
+  "sync_now": "Szinkronizálás most"
+}

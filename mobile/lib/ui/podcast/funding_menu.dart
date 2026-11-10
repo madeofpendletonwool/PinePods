@@ -136,7 +136,7 @@ class _CupertinoFundingMenu extends StatelessWidget {
                               ).then((value) {
                                 settingsBloc.setExternalLinkConsent(value);
                                 if (context.mounted) {
-                                  Navigator.of(context).pop('Cancel');
+                                  Navigator.of(context).pop(L.of(context)!.cancel_button_label);
                                 }
                               });
                             },
@@ -147,7 +147,7 @@ class _CupertinoFundingMenu extends StatelessWidget {
                       cancelButton: CupertinoActionSheetAction(
                         isDefaultAction: true,
                         onPressed: () {
-                          Navigator.pop(context, 'Cancel');
+                          Navigator.pop(context, L.of(context)!.cancel_button_label);
                         },
                         child: Text(L.of(context)!.cancel_option_label),
                       ),

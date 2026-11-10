@@ -1,0 +1,18 @@
+{
+  "@@locale": "lt",
+  "cancel_button_label": "Atšaukti",
+  "cancel_option_label": "Atšaukti",
+  "podcast_details_refreshed": "Tinklalaidės duomenys atnaujinti iš kanalo",
+  "title_contains": "Pavadinime yra",
+  "save": "Įrašyti",
+  "unsubscribe": "Atsisakyti prenumeratos",
+  "copy": "Kopijuoti",
+  "remove": "Pašalinti",
+  "refresh": "Atnaujinti",
+  "search_failed": "Paieška nepavyko",
+  "try_again": "Bandyti dar kartą",
+  "server_url": "Serverio URL",
+  "username": "Naudotojo vardas",
+  "password": "Slaptažodis",
+  "sync_now": "Sinchronizuoti dabar"
+}

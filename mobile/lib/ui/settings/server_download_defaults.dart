@@ -10,6 +10,8 @@ import 'package:pinepods_mobile/core/download_cleanup.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/utils/l10n_labels.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class ServerDownloadDefaults extends StatefulWidget {
   const ServerDownloadDefaults({super.key});
@@ -62,11 +64,9 @@ class _ServerDownloadDefaultsState extends State<ServerDownloadDefaults> {
         MergeSemantics(
           child: ListTile(
             leading: const Icon(PhosphorIconsRegular.checks),
-            title: const Text('Delete server downloads when finished'),
-            subtitle: const Text(
-                "Remove an episode's server download about an hour after you "
-                'finish it. With server auto-download, the server keeps only '
-                "what you haven't heard."),
+            title: Text(L.of(context)!.delete_server_downloads_when_finished),
+            subtitle: Text(
+                L.of(context)!.delete_server_downloads_when_finished_description),
             trailing: Switch.adaptive(
               value: _deleteWhenFinished,
               onChanged: (value) async {
@@ -80,8 +80,8 @@ class _ServerDownloadDefaultsState extends State<ServerDownloadDefaults> {
         MergeSemantics(
           child: ListTile(
             leading: const Icon(PhosphorIconsRegular.clockCountdown),
-            title: const Text('Delete server downloads after'),
-            subtitle: const Text('Remove server downloads older than this.'),
+            title: Text(L.of(context)!.delete_server_downloads_after),
+            subtitle: Text(L.of(context)!.delete_server_downloads_after_description),
             trailing: DropdownButton<int>(
               value: _deleteAfterDays,
               onChanged: (value) async {
@@ -92,7 +92,7 @@ class _ServerDownloadDefaultsState extends State<ServerDownloadDefaults> {
               },
               items: [
                 for (final d in {...deleteAfterDayChoices, _deleteAfterDays})
-                  DropdownMenuItem(value: d, child: Text(deleteAfterDaysLabel(d))),
+                  DropdownMenuItem(value: d, child: Text(deleteAfterDaysLabel(context, d))),
               ],
             ),
           ),

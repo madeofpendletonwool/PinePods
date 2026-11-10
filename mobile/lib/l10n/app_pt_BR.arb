@@ -1,0 +1,18 @@
+{
+  "@@locale": "pt_BR",
+  "cancel_button_label": "Cancelar",
+  "cancel_option_label": "Cancelar",
+  "podcast_details_refreshed": "Dados do podcast atualizados pelo feed",
+  "title_contains": "O título contém",
+  "save": "Salvar",
+  "unsubscribe": "Cancelar inscrição",
+  "copy": "Copiar",
+  "remove": "Remover",
+  "refresh": "Atualizar",
+  "search_failed": "A busca falhou",
+  "try_again": "Tentar de novo",
+  "server_url": "URL do servidor",
+  "username": "Usuário",
+  "password": "Senha",
+  "sync_now": "Sincronizar agora"
+}

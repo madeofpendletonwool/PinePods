@@ -16,6 +16,7 @@ import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// Episodes fetched per person, and the most shown in the combined list.
 const int _perPerson = 20;
@@ -60,7 +61,7 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
   Future<void> _load() async {
     final service = signedInService(context);
     if (service == null) {
-      setState(() => _error = 'Not connected to a PinePods server');
+      setState(() => _error = L.of(context)!.not_connected_to_a_pinepods_server);
       return;
     }
     try {
@@ -159,7 +160,7 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
       setState(() => _opening = false);
     }
     if (id == null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Couldn\'t open ${hit.name}')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L.of(context)!.couldnt_open_name(hit.name))));
       return;
     }
     await _open(id, hit.name);
@@ -172,7 +173,7 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
       await playPinepodsEpisodeWithOptionalFullScreen(context, audio, episode, resume: episode.isStarted);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to play episode: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L.of(context)!.failed_to_play_episode(e.toString()))));
     }
   }
 
@@ -207,11 +208,11 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
         textInputAction: TextInputAction.search,
         onChanged: _onSearchChanged,
         decoration: InputDecoration(
-          hintText: 'Find hosts and guests',
+          hintText: L.of(context)!.find_hosts_and_guests,
           prefixIcon: const Icon(PhosphorIconsRegular.userFocus),
           suffixIcon: _searchController.text.isEmpty
               ? null
-              : IconButton(icon: const Icon(PhosphorIconsRegular.x), tooltip: 'Clear', onPressed: _clearSearch),
+              : IconButton(icon: const Icon(PhosphorIconsRegular.x), tooltip: L.of(context)!.clear, onPressed: _clearSearch),
         ),
       ),
     );
@@ -233,7 +234,7 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
           child: Padding(
             padding: const EdgeInsets.all(32),
             child: Text(
-              'Nobody found. People are added from podcast and episode pages.',
+              L.of(context)!.nobody_found,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium,
             ),
@@ -274,7 +275,7 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
                       children: [
                         Text(_error!, textAlign: TextAlign.center),
                         const SizedBox(height: 12),
-                        OutlinedButton(onPressed: _load, child: const Text('Retry')),
+                        OutlinedButton(onPressed: _load, child: Text(L.of(context)!.retry)),
                       ],
                     ),
             ),
@@ -291,11 +292,10 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
               children: [
                 Icon(PhosphorIconsRegular.users, size: 64, color: theme.colorScheme.onSurfaceVariant),
                 const SizedBox(height: 16),
-                Text('Not following anyone yet', style: theme.textTheme.titleMedium),
+                Text(L.of(context)!.not_following_anyone, style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
-                const Text(
-                  'Search above, or tap a host or guest on a podcast or episode, then Follow. '
-                  'Their new episodes on any show will show up here.',
+                Text(
+                  L.of(context)!.not_following_anyone_body,
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -311,7 +311,7 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Text(
-            'Following · ${people.length}',
+            L.of(context)!.following_count(people.length),
             style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.bold),
           ),
         ),
@@ -353,7 +353,7 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text('Latest episodes', style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.bold)),
+          child: Text(L.of(context)!.latest_episodes, style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.bold)),
         ),
       ),
       if (feed == null)
@@ -361,8 +361,8 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
           child: Padding(padding: EdgeInsets.all(32), child: Center(child: PlatformProgressIndicator())),
         )
       else if (feed.isEmpty)
-        const SliverToBoxAdapter(
-          child: Padding(padding: EdgeInsets.all(32), child: Text('No episodes yet.', textAlign: TextAlign.center)),
+        SliverToBoxAdapter(
+          child: Padding(padding: const EdgeInsets.all(32), child: Text(L.of(context)!.no_episodes_yet, textAlign: TextAlign.center)),
         )
       else
         SliverList.builder(

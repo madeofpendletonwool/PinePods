@@ -286,7 +286,7 @@ class _ExpandableEpisodeTileState extends State<ExpandableEpisodeTile> {
                       ),
                       ExcludeSemantics(
                         child: Text(
-                          widget.queued ? 'Remove' : 'Add',
+                          widget.queued ? 'Remove' : L.of(context)!.add,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontWeight: FontWeight.normal,
@@ -480,7 +480,7 @@ class _CupertinoAccessibleEpisodeTileState extends State<_CupertinoAccessibleEpi
                             isDefaultAction: true,
                             onPressed: () {
                               audioBloc.transitionState(TransitionState.pause);
-                              Navigator.pop(context, 'Cancel');
+                              Navigator.pop(context, L.of(context)!.cancel_button_label);
                             },
                             child: Text(L.of(context)!.pause_button_label),
                           ),
@@ -489,7 +489,7 @@ class _CupertinoAccessibleEpisodeTileState extends State<_CupertinoAccessibleEpi
                             isDefaultAction: true,
                             onPressed: () {
                               audioBloc.transitionState(TransitionState.play);
-                              Navigator.pop(context, 'Cancel');
+                              Navigator.pop(context, L.of(context)!.cancel_button_label);
                             },
                             child: Text(L.of(context)!.resume_button_label),
                           ),
@@ -500,7 +500,7 @@ class _CupertinoAccessibleEpisodeTileState extends State<_CupertinoAccessibleEpi
                               final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
                               audioBloc.play(widget.episode);
                               optionalShowNowPlaying(context, settings);
-                              Navigator.pop(context, 'Cancel');
+                              Navigator.pop(context, L.of(context)!.cancel_button_label);
                             },
                             child: widget.episode.downloaded
                                 ? Text(L.of(context)!.play_download_button_label)
@@ -512,7 +512,7 @@ class _CupertinoAccessibleEpisodeTileState extends State<_CupertinoAccessibleEpi
                             isDefaultAction: false,
                             onPressed: () {
                               episodeBloc.deleteDownload(widget.episode);
-                              Navigator.pop(context, 'Cancel');
+                              Navigator.pop(context, L.of(context)!.cancel_button_label);
                             },
                             child: Text(L.of(context)!.cancel_download_button_label),
                           ),
@@ -522,10 +522,10 @@ class _CupertinoAccessibleEpisodeTileState extends State<_CupertinoAccessibleEpi
                             onPressed: () {
                               if (widget.episode.downloaded) {
                                 episodeBloc.deleteDownload(widget.episode);
-                                Navigator.pop(context, 'Cancel');
+                                Navigator.pop(context, L.of(context)!.cancel_button_label);
                               } else {
                                 podcastBloc.downloadEpisode(widget.episode);
-                                Navigator.pop(context, 'Cancel');
+                                Navigator.pop(context, L.of(context)!.cancel_button_label);
                               }
                             },
                             child: widget.episode.downloaded
@@ -537,7 +537,7 @@ class _CupertinoAccessibleEpisodeTileState extends State<_CupertinoAccessibleEpi
                             isDefaultAction: false,
                             onPressed: () {
                               queueBloc.queueEvent(QueueAddEvent(episode: widget.episode));
-                              Navigator.pop(context, 'Cancel');
+                              Navigator.pop(context, L.of(context)!.cancel_button_label);
                             },
                             child: Text(L.of(context)!.semantics_add_to_queue),
                           ),
@@ -546,7 +546,7 @@ class _CupertinoAccessibleEpisodeTileState extends State<_CupertinoAccessibleEpi
                             isDefaultAction: false,
                             onPressed: () {
                               queueBloc.queueEvent(QueueRemoveEvent(episode: widget.episode));
-                              Navigator.pop(context, 'Cancel');
+                              Navigator.pop(context, L.of(context)!.cancel_button_label);
                             },
                             child: Text(L.of(context)!.semantics_remove_from_queue),
                           ),
@@ -555,7 +555,7 @@ class _CupertinoAccessibleEpisodeTileState extends State<_CupertinoAccessibleEpi
                             isDefaultAction: false,
                             onPressed: () {
                               episodeBloc.togglePlayed(widget.episode);
-                              Navigator.pop(context, 'Cancel');
+                              Navigator.pop(context, L.of(context)!.cancel_button_label);
                             },
                             child: Text(L.of(context)!.semantics_mark_episode_unplayed),
                           ),
@@ -564,14 +564,14 @@ class _CupertinoAccessibleEpisodeTileState extends State<_CupertinoAccessibleEpi
                             isDefaultAction: false,
                             onPressed: () {
                               episodeBloc.togglePlayed(widget.episode);
-                              Navigator.pop(context, 'Cancel');
+                              Navigator.pop(context, L.of(context)!.cancel_button_label);
                             },
                             child: Text(L.of(context)!.semantics_mark_episode_played),
                           ),
                         CupertinoActionSheetAction(
                           isDefaultAction: false,
                           onPressed: () {
-                            Navigator.pop(context, 'Cancel');
+                            Navigator.pop(context, L.of(context)!.cancel_button_label);
                             showModalBottomSheet<void>(
                                 context: context,
                                 barrierLabel: L.of(context)!.scrim_episode_details_selector,
@@ -595,7 +595,7 @@ class _CupertinoAccessibleEpisodeTileState extends State<_CupertinoAccessibleEpi
                       cancelButton: CupertinoActionSheetAction(
                         isDefaultAction: false,
                         onPressed: () {
-                          Navigator.pop(context, 'Close');
+                          Navigator.pop(context, L.of(context)!.close_button_label);
                         },
                         child: Text(L.of(context)!.close_button_label),
                       ),
@@ -666,7 +666,7 @@ class _AccessibleEpisodeTileState extends State<_AccessibleEpisodeTile> {
                     header: true,
                     child: SimpleDialog(
                       //TODO: Fix this - should not be hardcoded text
-                      title: const Text('Episode Actions'),
+                      title: Text(L.of(context)!.episode_actions),
                       children: <Widget>[
                         if (currentlyPlaying)
                           SimpleDialogOption(
@@ -920,9 +920,9 @@ class EpisodeSubtitle extends StatelessWidget {
 
     if (length.inSeconds > 0) {
       if (length.inSeconds < 60) {
-        title = '$date • ${length.inSeconds} sec';
+        title = '$date • ${L.of(context)!.seconds_short(length.inSeconds)}';
       } else {
-        title = '$date • ${length.inMinutes} min';
+        title = '$date • ${L.of(context)!.minutes_short(length.inMinutes)}';
       }
     } else {
       title = date;
@@ -930,9 +930,9 @@ class EpisodeSubtitle extends StatelessWidget {
 
     if (timeRemaining.inSeconds > 0) {
       if (timeRemaining.inSeconds < 60) {
-        title = '$title / ${timeRemaining.inSeconds} sec left';
+        title = '$title / ${L.of(context)!.seconds_left_short(timeRemaining.inSeconds)}';
       } else {
-        title = '$title / ${timeRemaining.inMinutes} min left';
+        title = '$title / ${L.of(context)!.minutes_left_short(timeRemaining.inMinutes)}';
       }
     }
 

@@ -1,0 +1,18 @@
+{
+  "@@locale": "et",
+  "cancel_button_label": "Loobu",
+  "cancel_option_label": "Loobu",
+  "podcast_details_refreshed": "Taskuhäälingu andmed värskendati voost",
+  "title_contains": "Pealkiri sisaldab",
+  "save": "Salvesta",
+  "unsubscribe": "Loobu tellimusest",
+  "copy": "Kopeeri",
+  "remove": "Eemalda",
+  "refresh": "Värskenda",
+  "search_failed": "Otsing ebaõnnestus",
+  "try_again": "Proovi uuesti",
+  "server_url": "Serveri URL",
+  "username": "Kasutajanimi",
+  "password": "Parool",
+  "sync_now": "Sünkrooni kohe"
+}

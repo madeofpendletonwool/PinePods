@@ -13,6 +13,7 @@ import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class PlaylistEpisodesPage extends StatefulWidget {
   final PlaylistData playlist;
@@ -53,7 +54,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
         settings.pinepodsApiKey == null ||
         settings.pinepodsUserId == null) {
       setState(() {
-        _errorMessage = 'Not connected to PinePods server. Please connect in Settings.';
+        _errorMessage = L.of(context)!.not_connected_connect_in_settings;
         _isLoading = false;
       });
       return;
@@ -171,13 +172,13 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
   String _getEmptyStateMessage() {
     switch (widget.playlist.name) {
       case 'Fresh Releases':
-        return 'No new episodes have been released in the last 24 hours. Check back later for fresh content!';
+        return L.of(context)!.playlist_empty_fresh;
       case 'Currently Listening':
-        return 'Start listening to some episodes and they\'ll appear here for easy access.';
+        return L.of(context)!.playlist_empty_continue;
       case 'Almost Done':
-        return 'You don\'t have any episodes that are near completion. Keep listening!';
+        return L.of(context)!.playlist_empty_almost_done;
       default:
-        return 'No episodes match the current playlist criteria. Try adjusting the filters or add more podcasts.';
+        return L.of(context)!.playlist_empty_default;
     }
   }
 
@@ -185,7 +186,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
 
   Future<void> _playEpisode(PinepodsEpisode episode) async {
     if (_audioService == null) {
-      _showSnackBar('Audio service not available', Colors.red);
+      _showSnackBar(L.of(context)!.audio_service_not_available, Colors.red);
       return;
     }
 
@@ -196,7 +197,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
       );
     } catch (e) {
       if (mounted) {
-        _showSnackBar('Failed to play episode: $e', Colors.red);
+        _showSnackBar(L.of(context)!.failed_to_play_episode(e.toString()), Colors.red);
       }
     }
   }
@@ -212,7 +213,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
       );
     } catch (e) {
       if (mounted) {
-        _showSnackBar('Failed to start playlist: $e', Colors.red);
+        _showSnackBar(L.of(context)!.failed_to_start_playlist(e.toString()), Colors.red);
       }
     }
   }
@@ -236,7 +237,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -248,13 +249,13 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
       );
 
       if (success && mounted) {
-        _showSnackBar('Episode saved', Colors.green);
+        _showSnackBar(L.of(context)!.episode_saved_plain, Colors.green);
       } else if (mounted) {
-        _showSnackBar('Failed to save episode', Colors.red);
+        _showSnackBar(L.of(context)!.failed_to_save_episode, Colors.red);
       }
     } catch (e) {
       if (mounted) {
-        _showSnackBar('Error saving episode: $e', Colors.red);
+        _showSnackBar(L.of(context)!.error_saving_episode(e.toString()), Colors.red);
       }
     }
   }
@@ -266,7 +267,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -278,32 +279,32 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
       );
 
       if (success && mounted) {
-        _showSnackBar('Episode removed from saved', Colors.orange);
+        _showSnackBar(L.of(context)!.episode_removed_from_saved, Colors.orange);
       } else if (mounted) {
-        _showSnackBar('Failed to remove saved episode', Colors.red);
+        _showSnackBar(L.of(context)!.failed_to_remove_saved_episode, Colors.red);
       }
     } catch (e) {
       if (mounted) {
-        _showSnackBar('Error removing saved episode: $e', Colors.red);
+        _showSnackBar(L.of(context)!.error_removing_saved_episode(e.toString()), Colors.red);
       }
     }
   }
 
   Future<void> _downloadEpisode(int episodeIndex) async {
     final episode = _playlistResponse!.episodes[episodeIndex];
-    _showSnackBar('Download started for ${episode.episodeTitle}', Colors.blue);
+    _showSnackBar(L.of(context)!.download_started_for(episode.episodeTitle), Colors.blue);
     // Note: Actual download implementation would depend on download service integration
   }
 
   Future<void> _deleteEpisode(int episodeIndex) async {
     final episode = _playlistResponse!.episodes[episodeIndex];
-    _showSnackBar('Delete requested for ${episode.episodeTitle}', Colors.orange);
+    _showSnackBar(L.of(context)!.delete_requested_for(episode.episodeTitle), Colors.orange);
     // Note: Actual delete implementation would depend on download service integration
   }
 
   Future<void> _localDownloadEpisode(int episodeIndex) async {
     final episode = _playlistResponse!.episodes[episodeIndex];
-    _showSnackBar('Local download started for ${episode.episodeTitle}', Colors.blue);
+    _showSnackBar(L.of(context)!.local_download_started_for(episode.episodeTitle), Colors.blue);
     // Note: Actual local download implementation would depend on download service integration
   }
 
@@ -314,7 +315,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -327,7 +328,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
         );
         
         if (success && mounted) {
-          _showSnackBar('Episode removed from queue', Colors.orange);
+          _showSnackBar(L.of(context)!.episode_removed_from_queue, Colors.orange);
         }
       } else {
         final success = await _pinepodsService.queueEpisode(
@@ -338,12 +339,12 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
         );
         
         if (success && mounted) {
-          _showSnackBar('Episode added to queue', Colors.green);
+          _showSnackBar(L.of(context)!.episode_added_to_queue, Colors.green);
         }
       }
     } catch (e) {
       if (mounted) {
-        _showSnackBar('Error updating queue: $e', Colors.red);
+        _showSnackBar(L.of(context)!.error_updating_queue(e.toString()), Colors.red);
       }
     }
   }
@@ -355,7 +356,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -368,7 +369,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
         );
         
         if (success && mounted) {
-          _showSnackBar('Episode marked as incomplete', Colors.orange);
+          _showSnackBar(L.of(context)!.episode_marked_incomplete, Colors.orange);
         }
       } else {
         final success = await _pinepodsService.markEpisodeCompleted(
@@ -378,12 +379,12 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
         );
         
         if (success && mounted) {
-          _showSnackBar('Episode marked as complete', Colors.green);
+          _showSnackBar(L.of(context)!.episode_marked_complete, Colors.green);
         }
       }
     } catch (e) {
       if (mounted) {
-        _showSnackBar('Error updating completion status: $e', Colors.red);
+        _showSnackBar(L.of(context)!.error_updating_completion_status(e.toString()), Colors.red);
       }
     }
   }
@@ -476,7 +477,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
           if (_playlistResponse != null && _playlistResponse!.episodes.isNotEmpty)
             IconButton(
               icon: const Icon(PhosphorIconsRegular.playlist),
-              tooltip: 'Play from top',
+              tooltip: L.of(context)!.play_from_top,
               onPressed: _playFromTop,
             ),
         ],
@@ -487,13 +488,13 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            PlatformProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Loading playlist episodes...'),
+            const PlatformProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(L.of(context)!.loading_playlist_episodes),
           ],
         ),
       );
@@ -513,7 +514,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Error loading playlist',
+                L.of(context)!.error_loading_playlist,
                 style: Theme.of(context).textTheme.titleLarge,
                 textAlign: TextAlign.center,
               ),
@@ -526,7 +527,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: _loadPlaylistEpisodes,
-                child: const Text('Retry'),
+                child: Text(L.of(context)!.retry),
               ),
             ],
           ),
@@ -535,8 +536,8 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     }
 
     if (_playlistResponse == null) {
-      return const Center(
-        child: Text('No data available'),
+      return Center(
+        child: Text(L.of(context)!.no_data_available),
       );
     }
 
@@ -583,7 +584,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
-                              '${_playlistResponse!.playlistInfo.episodeCount ?? _playlistResponse!.episodes.length} episodes',
+                              L.of(context)!.episodes_count(_playlistResponse!.playlistInfo.episodeCount ?? _playlistResponse!.episodes.length),
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Theme.of(context).textTheme.bodyMedium?.color,
@@ -616,7 +617,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'No Episodes Found',
+                    L.of(context)!.episode_filter_no_episodes_title_label,
                     style: Theme.of(context).textTheme.titleLarge,
                     textAlign: TextAlign.center,
                   ),

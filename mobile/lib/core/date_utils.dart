@@ -7,6 +7,8 @@
 // convert them to the device-local timezone before any comparison, and compare
 // calendar dates (not rolling 24h windows) so "Today" snaps to local midnight.
 
+import 'package:pinepods_mobile/l10n/L.dart';
+
 /// Parse an episode pubdate string into a device-local [DateTime].
 ///
 /// Strings that already carry timezone information (`Z` or an explicit offset)
@@ -56,16 +58,16 @@ String relativePubDateLabel(String pubdate) {
 
   final days = calendarDaysAgo(local);
   if (days <= 0) {
-    return 'Today';
+    return L.current.today;
   } else if (days == 1) {
-    return 'Yesterday';
+    return L.current.yesterday;
   } else if (days < 7) {
-    return '$days days ago';
+    return L.current.days_ago(days);
   } else if (days < 30) {
     final weeks = (days / 7).floor();
-    return weeks == 1 ? '1 week ago' : '$weeks weeks ago';
+    return L.current.weeks_ago(weeks);
   } else {
     final months = (days / 30).floor();
-    return months == 1 ? '1 month ago' : '$months months ago';
+    return L.current.months_ago(months);
   }
 }

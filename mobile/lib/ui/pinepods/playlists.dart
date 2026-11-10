@@ -10,6 +10,7 @@ import 'package:pinepods_mobile/ui/pinepods/create_playlist.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class PinepodsPlaylists extends StatefulWidget {
   const PinepodsPlaylists({Key? key}) : super(key: key);
@@ -48,7 +49,7 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
         settings.pinepodsApiKey == null || 
         settings.pinepodsUserId == null) {
       setState(() {
-        _errorMessage = 'Not connected to PinePods server. Please connect in Settings.';
+        _errorMessage = L.of(context)!.not_connected_connect_in_settings;
         _isLoading = false;
       });
       return;
@@ -104,16 +105,16 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Playlists'),
-        content: Text('Are you sure you want to delete ${_selectedPlaylists.length} playlist${_selectedPlaylists.length == 1 ? '' : 's'}?'),
+        title: Text(L.of(context)!.delete_playlists),
+        content: Text(L.of(context)!.delete_playlists_confirm(_selectedPlaylists.length)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(L.of(context)!.cancel_button_label),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
+            child: Text(L.of(context)!.delete_label),
           ),
         ],
       ),
@@ -138,13 +139,13 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Playlists deleted successfully')),
+          SnackBar(content: Text(L.of(context)!.playlists_deleted)),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting playlists: $e')),
+          SnackBar(content: Text(L.of(context)!.error_deleting_playlists(e.toString()))),
         );
       }
     }
@@ -154,16 +155,16 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Playlist'),
-        content: Text('Are you sure you want to delete "${playlist.name}"?'),
+        title: Text(L.of(context)!.delete_playlist),
+        content: Text(L.of(context)!.delete_playlist_confirm(playlist.name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(L.of(context)!.cancel_button_label),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
+            child: Text(L.of(context)!.delete_label),
           ),
         ],
       ),
@@ -180,13 +181,13 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Playlist deleted successfully')),
+          SnackBar(content: Text(L.of(context)!.playlist_deleted)),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting playlist: $e')),
+          SnackBar(content: Text(L.of(context)!.error_deleting_playlist(e.toString()))),
         );
       }
     }
@@ -273,10 +274,10 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
           ? null 
           : _errorMessage,
         onRetry: _loadPlaylists,
-        title: 'Playlists Unavailable',
+        title: L.of(context)!.playlists_unavailable,
         subtitle: _errorMessage!.isServerConnectionError
-          ? 'Unable to connect to the PinePods server'
-          : 'Failed to load your playlists',
+          ? L.of(context)!.unable_to_connect_server
+          : L.of(context)!.failed_to_load_playlists,
       );
     }
 
@@ -286,12 +287,12 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
         child: Center(
           child: SoftEmptyState(
             icon: PhosphorIconsRegular.playlist,
-            title: 'No playlists yet',
-            body: 'Create a smart playlist to get started',
+            title: L.of(context)!.no_playlists_yet,
+            body: L.of(context)!.playlists_empty_body,
             action: FilledButton.icon(
               onPressed: _createPlaylist,
               icon: const Icon(PhosphorIconsRegular.plus),
-              label: const Text('Create playlist'),
+              label: Text(L.of(context)!.create_playlist),
             ),
           ),
         ),
@@ -306,7 +307,7 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SoftSectionHeader(
-                title: 'Playlists',
+                title: L.of(context)!.playlists,
                 count: _playlists!.length,
                 padding: const EdgeInsets.only(bottom: 4),
                 trailing: [
@@ -314,23 +315,23 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
                     IconButton(
                       icon: const Icon(PhosphorIconsRegular.x),
                       onPressed: _toggleSelectionMode,
-                      tooltip: 'Cancel',
+                      tooltip: L.of(context)!.cancel_button_label,
                     ),
                     IconButton(
                       icon: const Icon(PhosphorIconsRegular.trash),
                       onPressed: _selectedPlaylists.isNotEmpty ? _deleteSelectedPlaylists : null,
-                      tooltip: 'Delete selected (${_selectedPlaylists.length})',
+                      tooltip: L.of(context)!.delete_selected_count(_selectedPlaylists.length),
                     ),
                   ] else ...[
                     IconButton(
                       icon: const Icon(PhosphorIconsRegular.selectionAll),
                       onPressed: _toggleSelectionMode,
-                      tooltip: 'Select multiple',
+                      tooltip: L.of(context)!.select_multiple,
                     ),
                     IconButton(
                       icon: const Icon(PhosphorIconsRegular.plus),
                       onPressed: _createPlaylist,
-                      tooltip: 'Create playlist',
+                      tooltip: L.of(context)!.create_playlist,
                     ),
                   ],
                 ],
@@ -352,10 +353,10 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
                         color: Theme.of(context).primaryColor,
                       ),
                       const SizedBox(width: 8),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'System playlists cannot be deleted.',
-                          style: TextStyle(fontSize: 14),
+                          L.of(context)!.system_playlists_cannot_be_deleted,
+                          style: const TextStyle(fontSize: 14),
                         ),
                       ),
                     ],
@@ -425,7 +426,7 @@ class _PlaylistRow extends StatelessWidget {
     final count = playlist.episodeCount ?? 0;
     final description = playlist.description?.trim() ?? '';
     final subtitle = [
-      '$count episode${count == 1 ? '' : 's'}',
+      L.of(context)!.episodes_count(count),
       if (description.isNotEmpty) description,
     ].join('  ·  ');
 
@@ -443,12 +444,12 @@ class _PlaylistRow extends StatelessWidget {
             color: theme.hintColor.withOpacity(0.12),
             borderRadius: BorderRadius.circular(20),
           ),
-          child: Text('System', style: TextStyle(fontSize: 11, color: theme.hintColor)),
+          child: Text(L.of(context)!.system, style: TextStyle(fontSize: 11, color: theme.hintColor)),
         ),
       );
     } else {
       trailing = PopupMenuButton<String>(
-        tooltip: 'Playlist options',
+        tooltip: L.of(context)!.playlist_options,
         icon: Icon(PhosphorIconsRegular.dotsThreeVertical, color: theme.hintColor),
         onSelected: (_) => onDelete(),
         itemBuilder: (context) => [
@@ -457,7 +458,7 @@ class _PlaylistRow extends StatelessWidget {
             child: ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(PhosphorIconsRegular.trash, color: theme.colorScheme.error),
-              title: Text('Delete', style: TextStyle(color: theme.colorScheme.error)),
+              title: Text(L.of(context)!.delete_label, style: TextStyle(color: theme.colorScheme.error)),
             ),
           ),
         ],

@@ -6,6 +6,7 @@ import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/shimmer_episode_tile.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class PaginatedEpisodeList extends StatefulWidget {
   final List<dynamic> episodes; // Can be PinepodsEpisode or Episode
@@ -107,18 +108,18 @@ class _PaginatedEpisodeListState extends State<PaginatedEpisodeList> {
         if (_currentPage + 1 < _totalPages && !_isLoadingMore) ...[
           const SizedBox(height: 8),
           if (_isLoadingMore)
-            const Padding(
-              padding: EdgeInsets.all(16.0),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SizedBox(
+                  const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                  SizedBox(width: 12),
-                  Text('Loading more episodes...'),
+                  const SizedBox(width: 12),
+                  Text(L.of(context)!.loading_more_episodes),
                 ],
               ),
             )
@@ -131,8 +132,7 @@ class _PaginatedEpisodeListState extends State<PaginatedEpisodeList> {
                   onPressed: _loadMoreEpisodes,
                   icon: const Icon(PhosphorIconsRegular.caretDown),
                   label: Text(
-                    'Load ${(_displayedCount + widget.pageSize).clamp(0, widget.episodes.length) - _displayedCount} more episodes '
-                    '(${widget.episodes.length - _displayedCount} remaining)',
+                    L.of(context)!.load_more_episodes_remaining((_displayedCount + widget.pageSize).clamp(0, widget.episodes.length) - _displayedCount, widget.episodes.length - _displayedCount),
                   ),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -145,7 +145,7 @@ class _PaginatedEpisodeListState extends State<PaginatedEpisodeList> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
-              'All ${widget.episodes.length} episodes loaded',
+              L.of(context)!.all_episodes_loaded(widget.episodes.length),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Colors.grey[600],
               ),

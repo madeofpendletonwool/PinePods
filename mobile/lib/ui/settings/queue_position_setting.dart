@@ -3,6 +3,7 @@ import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// Where Add to queue puts an episode by default. Stored on the server, so it
 /// applies to every client.
@@ -41,7 +42,7 @@ class _QueuePositionSettingState extends State<QueuePositionSetting> {
       if (!mounted) return;
       setState(() => _position = previous);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save the queue position')),
+        SnackBar(content: Text(L.of(context)!.could_not_save_queue_position)),
       );
     }
   }
@@ -52,16 +53,16 @@ class _QueuePositionSettingState extends State<QueuePositionSetting> {
     return MergeSemantics(
       child: ListTile(
         leading: const Icon(PhosphorIconsRegular.queue),
-        title: const Text('Add to queue position'),
-        subtitle: const Text('Where Add to Queue puts an episode. The arrow beside it picks the other end.'),
+        title: Text(L.of(context)!.add_to_queue_position),
+        subtitle: Text(L.of(context)!.add_to_queue_position_description),
         trailing: _position == null
             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
             : DropdownButton<String>(
                 value: _position,
                 underline: Container(),
-                items: const [
-                  DropdownMenuItem(value: 'bottom', child: Text('Bottom')),
-                  DropdownMenuItem(value: 'top', child: Text('Top')),
+                items: [
+                  DropdownMenuItem(value: 'bottom', child: Text(L.of(context)!.queue_bottom)),
+                  DropdownMenuItem(value: 'top', child: Text(L.of(context)!.queue_top)),
                 ],
                 onChanged: (value) {
                   if (value != null && value != _position) _set(value);

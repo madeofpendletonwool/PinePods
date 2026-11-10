@@ -5,6 +5,7 @@ import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/services/nowplaying/nowplaying_service.dart';
 import 'package:pinepods_mobile/ui/podcast/remote_devices_button.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class EpisodeContextMenu extends StatefulWidget {
   final PinepodsEpisode episode;
@@ -134,32 +135,32 @@ class _EpisodeContextMenuState extends State<EpisodeContextMenu> {
                     _buildMenuOption(
                       context,
                       icon: episode.saved ? PhosphorIconsFill.bookmarkSimple : PhosphorIconsRegular.bookmarkSimple,
-                      text: episode.saved ? 'Remove from Saved' : 'Save Episode',
+                      text: episode.saved ? L.of(context)!.remove_from_saved : L.of(context)!.save_episode,
                       onTap: episode.saved ? onRemoveSaved : onSave,
                     ),
                     
                     _buildMenuOption(
                       context,
                       icon: episode.downloaded ? PhosphorIconsRegular.trash : PhosphorIconsRegular.cloudArrowDown,
-                      text: episode.downloaded ? 'Delete from Server' : 'Download to Server',
+                      text: episode.downloaded ? L.of(context)!.delete_from_server : L.of(context)!.download_to_server_title,
                       onTap: onDownload,
                     ),
                     
                     _buildMenuOption(
                       context,
                       icon: isDownloadedLocally ? PhosphorIconsRegular.trashSimple : PhosphorIconsRegular.fileArrowDown,
-                      text: isDownloadedLocally ? 'Delete Local Download' : 'Download Locally',
+                      text: isDownloadedLocally ? L.of(context)!.delete_local_download : L.of(context)!.download_locally,
                       onTap: isDownloadedLocally ? onDeleteLocalDownload : onLocalDownload,
                     ),
                     
                     _buildMenuOption(
                       context,
                       icon: PhosphorIconsRegular.queue,
-                      text: episode.queued ? 'Remove from Queue' : 'Add to Queue',
+                      text: episode.queued ? L.of(context)!.remove_from_queue : L.of(context)!.add_to_queue,
                       onTap: onQueue,
                       trailing: !episode.queued && onQueueAt != null
                           ? IconButton(
-                              tooltip: 'Choose top or bottom',
+                              tooltip: L.of(context)!.choose_top_or_bottom,
                               visualDensity: VisualDensity.compact,
                               icon: Icon(
                                 _queueChoicesOpen
@@ -175,14 +176,14 @@ class _EpisodeContextMenuState extends State<EpisodeContextMenu> {
                       _buildMenuOption(
                         context,
                         icon: PhosphorIconsRegular.arrowLineUp,
-                        text: 'Add to top of queue',
+                        text: L.of(context)!.add_to_top_of_queue,
                         onTap: () => onQueueAt!('top'),
                         indent: 32,
                       ),
                       _buildMenuOption(
                         context,
                         icon: PhosphorIconsRegular.arrowLineDown,
-                        text: 'Add to bottom of queue',
+                        text: L.of(context)!.add_to_bottom_of_queue,
                         onTap: () => onQueueAt!('bottom'),
                         indent: 32,
                       ),
@@ -191,7 +192,7 @@ class _EpisodeContextMenuState extends State<EpisodeContextMenu> {
                     _buildMenuOption(
                       context,
                       icon: episode.completed ? PhosphorIconsFill.checkCircle : PhosphorIconsRegular.checkCircle,
-                      text: episode.completed ? 'Mark as Incomplete' : 'Mark as Complete',
+                      text: episode.completed ? L.of(context)!.mark_as_incomplete : L.of(context)!.mark_as_complete,
                       onTap: onMarkComplete,
                     ),
 
@@ -221,7 +222,7 @@ class _EpisodeContextMenuState extends State<EpisodeContextMenu> {
         return _buildMenuOption(
           context,
           icon: PhosphorIconsRegular.screencast,
-          text: 'Play on device…',
+          text: L.of(context)!.play_on_device,
           onTap: () {
             // Some callers dismiss with Navigator.pop, so dismiss first and open
             // the picker from the root navigator's (still-mounted) context.

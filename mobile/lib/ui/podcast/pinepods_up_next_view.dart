@@ -9,6 +9,7 @@ import 'package:pinepods_mobile/ui/widgets/draggable_queue_episode_card.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// PinePods version of the Up Next queue that shows the server queue.
 ///
@@ -93,7 +94,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
           settings.pinepodsApiKey == null || 
           settings.pinepodsUserId == null) {
         setState(() {
-          _errorMessage = 'Not connected to PinePods server';
+          _errorMessage = L.of(context)!.not_connected_to_pinepods;
           _isLoading = false;
         });
         return;
@@ -149,7 +150,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
 
       if (userId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Not logged in')),
+          SnackBar(content: Text(L.of(context)!.not_logged_in)),
         );
         await _loadQueue(); // Reload to restore original order
         return;
@@ -159,13 +160,13 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
 
       if (!success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to update queue order')),
+          SnackBar(content: Text(L.current.failed_to_update_queue_order)),
         );
         await _loadQueue(); // Reload to restore original order
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error updating queue: $e')),
+        SnackBar(content: Text(L.current.error_updating_queue(e.toString()))),
       );
       await _loadQueue(); // Reload to restore original order
     }
@@ -176,7 +177,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
       await GlobalServices.pinepodsAudioService?.playPinepodsEpisode(pinepodsEpisode: episode);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not play episode: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L.of(context)!.could_not_play_episode(e.toString()))));
     }
   }
 
@@ -188,7 +189,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
 
     if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not logged in')),
+        SnackBar(content: Text(L.of(context)!.not_logged_in)),
       );
       return;
     }
@@ -205,16 +206,16 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
           _queuedEpisodes.removeAt(index);
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Removed from queue')),
+          SnackBar(content: Text(L.current.removed_from_queue)),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to remove from queue')),
+          SnackBar(content: Text(L.current.failed_to_remove_from_queue)),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error removing from queue: $e')),
+        SnackBar(content: Text(L.current.error_removing_from_queue(e.toString()))),
       );
     }
   }
@@ -223,16 +224,16 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear Queue'),
-        content: const Text('Are you sure you want to clear the entire queue?'),
+        title: Text(L.of(context)!.clear_queue),
+        content: Text(L.of(context)!.clear_queue_confirm),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(L.of(context)!.cancel_button_label),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Clear'),
+            child: Text(L.of(context)!.clear),
           ),
         ],
       ),
@@ -247,7 +248,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
 
     if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not logged in')),
+        SnackBar(content: Text(L.current.not_logged_in)),
       );
       return;
     }
@@ -267,11 +268,11 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Queue cleared')),
+        SnackBar(content: Text(L.current.queue_cleared)),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error clearing queue: $e')),
+        SnackBar(content: Text(L.current.error_clearing_queue(e.toString()))),
       );
       await _loadQueue(); // Reload to get current state
     }
@@ -290,7 +291,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16.0, 8.0, 24.0, 8.0),
               child: Text(
-                'Up Next',
+                L.of(context)!.up_next_queue_label,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
@@ -300,7 +301,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
               child: TextButton(
                 onPressed: _queuedEpisodes.isEmpty ? null : _clearQueue,
                 child: Text(
-                  'Clear',
+                  L.of(context)!.clear,
                   style: Theme.of(context).textTheme.titleSmall!.copyWith(
                         fontSize: 12.0,
                         color: _queuedEpisodes.isEmpty
@@ -327,7 +328,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
             child: Column(
               children: [
                 Text(
-                  'Error loading queue',
+                  L.of(context)!.error_loading_queue,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 8),
@@ -338,7 +339,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: _loadQueue,
-                  child: const Text('Retry'),
+                  child: Text(L.of(context)!.retry),
                 ),
               ],
             ),
@@ -357,7 +358,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Text(
-                  'Your queue is empty. Add episodes to see them here.',
+                  L.of(context)!.up_next_empty,
                   style: Theme.of(context).textTheme.titleMedium,
                   textAlign: TextAlign.center,
                 ),

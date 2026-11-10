@@ -1,0 +1,18 @@
+{
+  "@@locale": "zh_Hans",
+  "cancel_button_label": "取消",
+  "cancel_option_label": "取消",
+  "podcast_details_refreshed": "已从订阅源刷新播客信息",
+  "title_contains": "标题包含",
+  "save": "保存",
+  "unsubscribe": "取消订阅",
+  "copy": "复制",
+  "remove": "移除",
+  "refresh": "刷新",
+  "search_failed": "搜索失败",
+  "try_again": "重试",
+  "server_url": "服务器地址",
+  "username": "用户名",
+  "password": "密码",
+  "sync_now": "立即同步"
+}

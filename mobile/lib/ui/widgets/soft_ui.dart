@@ -1,6 +1,7 @@
 // lib/ui/widgets/soft_ui.dart
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// Neutral foreground for secondary controls. Taken from the body text colour
 /// rather than colorScheme.onSurface, which some themes set to their accent.
@@ -126,7 +127,7 @@ class ListToolbar<T> extends StatefulWidget {
 
   final List<ToolbarFilter> filters;
   final TextEditingController? searchController;
-  final String searchHint;
+  final String? searchHint;
   final Map<T, String>? sortOptions;
   final T? sortValue;
   final ValueChanged<T>? onSort;
@@ -137,7 +138,7 @@ class ListToolbar<T> extends StatefulWidget {
     super.key,
     this.filters = const [],
     this.searchController,
-    this.searchHint = 'Search',
+    this.searchHint,
     this.sortOptions,
     this.sortValue,
     this.onSort,
@@ -181,7 +182,7 @@ class _ListToolbarState<T> extends State<ListToolbar<T>> {
                 autofocus: true,
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
-                  hintText: widget.searchHint,
+                  hintText: widget.searchHint ?? L.of(context)!.search,
                   isDense: true,
                   prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass, size: 20),
                   filled: true,
@@ -196,7 +197,7 @@ class _ListToolbarState<T> extends State<ListToolbar<T>> {
               ),
             ),
             IconButton(
-              tooltip: 'Close search',
+              tooltip: L.of(context)!.close_search,
               icon: const Icon(PhosphorIconsRegular.x),
               onPressed: () {
                 controller.clear();
@@ -232,13 +233,13 @@ class _ListToolbarState<T> extends State<ListToolbar<T>> {
         ),
         if (controller != null)
           IconButton(
-            tooltip: 'Search',
+            tooltip: L.of(context)!.search,
             icon: const Icon(PhosphorIconsRegular.magnifyingGlass),
             onPressed: () => setState(() => _searchOpen = true),
           ),
         if (sortOptions != null && widget.onSort != null)
           PopupMenuButton<T>(
-            tooltip: 'Sort',
+            tooltip: L.of(context)!.sort,
             icon: const Icon(PhosphorIconsRegular.sortAscending),
             onSelected: widget.onSort,
             itemBuilder: (context) => [

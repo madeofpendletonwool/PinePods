@@ -29,7 +29,7 @@ const feedbackUrl = String.fromEnvironment('FEEDBACK_URL', defaultValue: '');
 /// The user agent string can be overridden by passing in the USER_AGENT variable
 /// using dart-define.
 class Environment {
-  static const _applicationName = 'Pinepods';
+  static const _applicationName = 'Pinepods'; // i18n-ignore
   static const _applicationUrl =
       'https://github.com/madeofpendletonwool/pinepods';
   static const _projectVersion = '0.9.2';

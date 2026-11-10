@@ -178,6 +178,6 @@ class _EpisodeRefreshWidgetState extends State<EpisodeRefreshWidget> {
         return Text(L.of(context)!.settings_auto_update_episodes_12hour);
     }
 
-    return const Text('Never');
+    return Text(L.of(context)!.settings_auto_update_episodes_never);
   }
 }

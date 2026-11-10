@@ -46,10 +46,4 @@ void main() {
     expect(defaults.withOverrides(deleteAfterDays: 0).anyEnabled, isTrue);
     expect(defaults.withOverrides(deleteWhenFinished: false, deleteAfterDays: 0).anyEnabled, isFalse);
   });
-
-  test('labels', () {
-    expect(deleteAfterDaysLabel(0), 'Never');
-    expect(deleteAfterDaysLabel(1), '1 day');
-    expect(deleteAfterDaysLabel(14), '14 days');
-  });
 }

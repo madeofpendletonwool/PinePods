@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/entities/people.dart';
 import 'package:pinepods_mobile/ui/pinepods/people/people_widgets.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// Show the sheet. Resolves to everyone credited afterwards, or null if the
 /// user closed it without adding anyone.
@@ -165,7 +166,7 @@ class _AddPeopleSheetState extends State<_AddPeopleSheet> {
             .toList(),
       );
       if (!mounted) return;
-      final message = _pending.length == 1 ? 'Added ${_pending.first.name}' : 'Added ${_pending.length} people';
+      final message = _pending.length == 1 ? L.of(context)!.added_name(_pending.first.name) : L.of(context)!.added_people_count(_pending.length);
       final messenger = ScaffoldMessenger.of(context);
       Navigator.of(context).pop(result);
       messenger.showSnackBar(SnackBar(content: Text(message)));
@@ -194,20 +195,20 @@ class _AddPeopleSheetState extends State<_AddPeopleSheet> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              widget.episodeId != null ? 'Who\'s in this episode?' : 'Who hosts this show?',
+              widget.episodeId != null ? L.of(context)!.whos_in_this_episode : L.of(context)!.who_hosts_this_show,
               style: theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
             Text(
-              'Added to PodPeopleDB for everyone right away, marked unverified until reviewed.',
+              L.of(context)!.podpeople_added_unverified,
               style: muted,
             ),
             const SizedBox(height: 16),
             SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: roleHost, label: Text('Host')),
-                ButtonSegment(value: roleCoHost, label: Text('Co-host')),
-                ButtonSegment(value: roleGuest, label: Text('Guest')),
+              segments: [
+                ButtonSegment(value: roleHost, label: Text(L.of(context)!.host)),
+                ButtonSegment(value: roleCoHost, label: Text(L.of(context)!.co_host)),
+                ButtonSegment(value: roleGuest, label: Text(L.of(context)!.guest)),
               ],
               selected: {_role},
               showSelectedIcon: false,
@@ -237,7 +238,7 @@ class _AddPeopleSheetState extends State<_AddPeopleSheet> {
               textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.done,
               decoration: InputDecoration(
-                hintText: _pending.isEmpty ? 'Name, or several: Alice, Bob and Carol' : 'Add another',
+                hintText: _pending.isEmpty ? L.of(context)!.add_people_hint : L.of(context)!.add_another,
                 prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass),
               ),
               onChanged: _onChanged,
@@ -277,7 +278,7 @@ class _AddPeopleSheetState extends State<_AddPeopleSheet> {
               onPressed: canSubmit ? _submit : null,
               child: _submitting
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : Text(_pending.length > 1 ? 'Add ${_pending.length} people' : 'Add'),
+                  : Text(_pending.length > 1 ? L.of(context)!.add_people_count(_pending.length) : L.of(context)!.add),
             ),
           ],
         ),

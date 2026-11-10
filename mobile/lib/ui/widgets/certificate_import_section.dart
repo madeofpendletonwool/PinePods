@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/services/security/certificate_manager.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// Reusable UI for importing / removing custom TLS certificates:
 ///
@@ -34,7 +35,7 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
     if (file == null) return;
     final bytes = await _readBytes(file);
     if (bytes == null) {
-      _snack('Could not read the selected file.');
+      _snack(L.current.could_not_read_file);
       return;
     }
     final err = CertificateManager.validateServerCa(bytes);
@@ -46,7 +47,7 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
     await _cm.importServerCa(bytes, file.name);
     if (!mounted) return;
     setState(() => _busy = false);
-    _snack('Server CA imported: ${file.name}');
+    _snack(L.of(context)!.server_ca_imported(file.name));
   }
 
   Future<void> _importClientCert() async {
@@ -54,7 +55,7 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
     if (file == null) return;
     final bytes = await _readBytes(file);
     if (bytes == null) {
-      _snack('Could not read the selected file.');
+      _snack(L.current.could_not_read_file);
       return;
     }
     if (!mounted) return;
@@ -69,7 +70,7 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
     await _cm.importClientCert(bytes, password, file.name);
     if (!mounted) return;
     setState(() => _busy = false);
-    _snack('Client certificate imported: ${file.name}');
+    _snack(L.of(context)!.client_certificate_imported(file.name));
   }
 
   Future<PlatformFile?> _pickFile(List<String> extensions) async {
@@ -79,7 +80,7 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
         allowedExtensions: extensions,
       );
     } catch (e) {
-      _snack('Could not open file picker: $e');
+      _snack(L.of(context)!.could_not_open_file_picker(e.toString()));
       return null;
     }
   }
@@ -98,24 +99,24 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Certificate password'),
+          title: Text(L.of(context)!.certificate_password),
           content: TextField(
             controller: controller,
             obscureText: true,
             autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'Leave blank if none',
+            decoration: InputDecoration(
+              hintText: L.of(context)!.leave_blank_if_none,
             ),
             onSubmitted: (v) => Navigator.of(context).pop(v),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(null),
-              child: const Text('Cancel'),
+              child: Text(L.of(context)!.cancel_button_label),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(controller.text),
-              child: const Text('Import'),
+              child: Text(L.of(context)!.import),
             ),
           ],
         );
@@ -138,27 +139,27 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
           children: [
             _certTile(
               icon: PhosphorIconsRegular.shieldCheck,
-              title: 'Server CA certificate',
+              title: L.of(context)!.server_ca_certificate,
               subtitle: state.serverCaName ??
-                  'For private or self-signed server certificates',
+                  L.of(context)!.server_ca_certificate_description,
               configured: state.hasServerCa,
               onImport: _importServerCa,
               onRemove: () async {
                 await _cm.removeServerCa();
-                _snack('Server CA removed (restart to fully apply).');
+                _snack(L.current.server_ca_removed);
               },
             ),
             const SizedBox(height: 8),
             _certTile(
               icon: PhosphorIconsRegular.identificationBadge,
-              title: 'Client certificate (mTLS)',
+              title: L.of(context)!.client_certificate_mtls,
               subtitle: state.clientCertName ??
-                  'A .p12 / .pfx certificate to present to the server',
+                  L.of(context)!.client_certificate_description,
               configured: state.hasClientCert,
               onImport: _importClientCert,
               onRemove: () async {
                 await _cm.removeClientCert();
-                _snack('Client certificate removed (restart to fully apply).');
+                _snack(L.current.client_certificate_removed);
               },
             ),
           ],
@@ -188,12 +189,12 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
               children: [
                 TextButton(
                   onPressed: onImport,
-                  child: Text(configured ? 'Replace' : 'Import'),
+                  child: Text(configured ? L.of(context)!.replace : L.of(context)!.import),
                 ),
                 if (configured)
                   IconButton(
                     icon: const Icon(PhosphorIconsRegular.trash),
-                    tooltip: 'Remove',
+                    tooltip: L.of(context)!.remove,
                     onPressed: onRemove,
                   ),
               ],

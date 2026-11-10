@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:math';
 import 'dart:async';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class PinepodsStartupLogin extends StatefulWidget {
   final VoidCallback? onLoginSuccess;
@@ -157,7 +158,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
     final serverUrl = _serverController.text.trim();
     if (serverUrl.isEmpty) {
       setState(() {
-        _errorMessage = 'Please enter a server URL first';
+        _errorMessage = L.of(context)!.enter_server_url_first;
       });
       return;
     }
@@ -182,7 +183,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
 
       if (authUrl == null) {
         setState(() {
-          _errorMessage = 'Failed to prepare OIDC authentication URL';
+          _errorMessage = L.of(context)!.failed_to_prepare_oidc;
           _isLoading = false;
         });
         return;
@@ -202,7 +203,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
       // own redirect, so only a state that is present and different is refused.
       if (callback.state != null && callback.state != state) {
         setState(() {
-          _errorMessage = 'Authentication failed: login state mismatch';
+          _errorMessage = L.of(context)!.auth_state_mismatch;
           _isLoading = false;
         });
         return;
@@ -212,7 +213,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
       } else {
         setState(() {
           _errorMessage =
-              'Authentication failed: ${callback.error ?? 'no API key returned'}';
+              L.of(context)!.authentication_failed(callback.error ?? L.of(context)!.no_api_key_returned);
           _isLoading = false;
         });
       }
@@ -225,13 +226,13 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
         });
       } else {
         setState(() {
-          _errorMessage = 'OIDC login error: ${e.message ?? e.code}';
+          _errorMessage = L.of(context)!.oidc_login_error(e.message ?? e.code);
           _isLoading = false;
         });
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'OIDC login error: ${e.toString()}';
+        _errorMessage = L.of(context)!.oidc_login_error(e.toString());
         _isLoading = false;
       });
     }
@@ -297,7 +298,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to complete login: ${e.toString()}';
+          _errorMessage = L.of(context)!.failed_to_complete_login(e.toString());
           _isLoading = false;
         });
       }
@@ -345,7 +346,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
           }
         } else {
           setState(() {
-            _errorMessage = result.errorMessage ?? 'MFA verification failed';
+            _errorMessage = result.errorMessage ?? L.of(context)!.mfa_verification_failed;
             _isLoading = false;
           });
         }
@@ -388,18 +389,18 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
             _tempMfaSessionToken = result.mfaSessionToken;
             _showMfaField = true;
             _isLoading = false;
-            _errorMessage = 'Please enter your MFA code';
+            _errorMessage = L.of(context)!.enter_mfa_code;
           });
         } else {
           setState(() {
-            _errorMessage = result.errorMessage ?? 'Login failed';
+            _errorMessage = result.errorMessage ?? L.of(context)!.login_failed;
             _isLoading = false;
           });
         }
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Error: ${e.toString()}';
+        _errorMessage = L.of(context)!.error_with_detail(e.toString());
         _isLoading = false;
       });
     }
@@ -490,7 +491,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                                       color: Theme.of(context).primaryColor,
                                       borderRadius: BorderRadius.circular(16),
                                     ),
-                                    child: Icon(
+                                    child: const Icon(
                                       PhosphorIconsRegular.headset,
                                       size: 48,
                                       color: Colors.white,
@@ -503,7 +504,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Welcome to PinePods',
+                          L.of(context)!.welcome_to_pinepods,
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
@@ -511,7 +512,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Connect to your PinePods server to get started',
+                          L.of(context)!.connect_to_get_started,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: Colors.grey[600],
                           ),
@@ -523,7 +524,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                         TextFormField(
                           controller: _serverController,
                           decoration: InputDecoration(
-                            labelText: 'Server URL',
+                            labelText: L.of(context)!.server_url,
                             hintText: 'https://your-pinepods-server.com',
                             prefixIcon: const Icon(PhosphorIconsRegular.hardDrives),
                             border: OutlineInputBorder(
@@ -532,10 +533,10 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return 'Please enter a server URL';
+                              return L.of(context)!.enter_server_url;
                             }
                             if (!value.startsWith('http://') && !value.startsWith('https://')) {
-                              return 'URL must start with http:// or https://';
+                              return L.of(context)!.url_must_start_with_http;
                             }
                             return null;
                           },
@@ -554,7 +555,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                           child: TextFormField(
                             controller: _usernameController,
                             decoration: InputDecoration(
-                              labelText: 'Username',
+                              labelText: L.of(context)!.username,
                               prefixIcon: const Icon(PhosphorIconsRegular.user),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -562,7 +563,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) {
-                                return 'Please enter your username';
+                                return L.of(context)!.enter_username;
                               }
                               return null;
                             },
@@ -575,7 +576,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                         TextFormField(
                           controller: _passwordController,
                           decoration: InputDecoration(
-                            labelText: 'Password',
+                            labelText: L.of(context)!.password,
                             prefixIcon: const Icon(PhosphorIconsRegular.lock),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -584,7 +585,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                           obscureText: true,
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return 'Please enter your password';
+                              return L.of(context)!.enter_password;
                             }
                             return null;
                           },
@@ -603,8 +604,8 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                           TextFormField(
                             controller: _mfaController,
                             decoration: InputDecoration(
-                              labelText: 'MFA Code',
-                              hintText: 'Enter 6-digit code',
+                              labelText: L.of(context)!.mfa_code,
+                              hintText: L.of(context)!.mfa_code_hint,
                               prefixIcon: const Icon(PhosphorIconsRegular.shieldCheck),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -612,17 +613,17 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                               suffixIcon: IconButton(
                                 icon: const Icon(PhosphorIconsRegular.x),
                                 onPressed: _resetMfa,
-                                tooltip: 'Cancel MFA',
+                                tooltip: L.of(context)!.cancel_mfa,
                               ),
                             ),
                             keyboardType: TextInputType.number,
                             maxLength: 6,
                             validator: (value) {
                               if (_showMfaField && (value == null || value.isEmpty)) {
-                                return 'Please enter your MFA code';
+                                return L.of(context)!.enter_mfa_code;
                               }
                               if (_showMfaField && value!.length != 6) {
-                                return 'MFA code must be 6 digits';
+                                return L.of(context)!.mfa_code_six_digits;
                               }
                               return null;
                             },
@@ -668,10 +669,10 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                             tilePadding: EdgeInsets.zero,
                             childrenPadding: EdgeInsets.zero,
                             leading: const Icon(PhosphorIconsRegular.shieldCheck),
-                            title: const Text('Advanced: Certificates'),
-                            subtitle: const Text(
-                              'Custom server CA / client certificate (mTLS)',
-                              style: TextStyle(fontSize: 12),
+                            title: Text(L.of(context)!.advanced_certificates),
+                            subtitle: Text(
+                              L.of(context)!.advanced_certificates_description,
+                              style: const TextStyle(fontSize: 12),
                             ),
                             children: const [CertificateImportSection()],
                           ),
@@ -697,7 +698,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                             ),
                           )
                               : Text(
-                            _showMfaField ? 'Verify MFA Code' : 'Connect to PinePods',
+                            _showMfaField ? L.of(context)!.verify_mfa_code : L.of(context)!.connect_to_pinepods,
                             style: const TextStyle(fontSize: 16),
                           ),
                         ),
@@ -713,7 +714,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 16),
                                 child: Text(
-                                  'Or continue with',
+                                  L.of(context)!.or_continue_with,
                                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                     color: Colors.grey[600],
                                   ),
@@ -775,7 +776,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
 
                         // Additional Info
                         Text(
-                          'Don\'t have a PinePods server? Visit pinepods.online to learn more.',
+                          L.of(context)!.no_server_learn_more,
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Colors.grey[600],
                           ),

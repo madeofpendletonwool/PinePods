@@ -2,12 +2,30 @@
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/ui/settings/bottom_bar_order.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// How many tabs stay in the bar when the rest move into the More sheet.
 const int bottomBarPinnedCount = 4;
 
 const double _minSlotWidth = 72.0;
 const double _maxSlotWidth = 96.0;
+
+/// Display name for a bottom-bar page id; unknown ids are shown as-is.
+String bottomNavLabel(BuildContext context, String page) {
+  final l = L.of(context)!;
+  return switch (page) {
+    'Home' => l.nav_home,
+    'Feed' => l.feed,
+    'Saved' => l.saved,
+    'Podcasts' => l.podcasts,
+    'People' => l.nav_people,
+    'Downloads' => l.downloads,
+    'History' => l.history,
+    'Playlists' => l.playlists,
+    'Search' => l.search,
+    _ => page,
+  };
+}
 
 IconData bottomNavIcon(String label, {bool selected = false}) {
   switch (label) {
@@ -87,7 +105,7 @@ class PinepodsBottomNav extends StatelessWidget {
           icon: moreSelected
               ? bottomNavIcon(order[selectedIndex], selected: true)
               : PhosphorIconsRegular.dotsThree,
-          label: moreSelected ? order[selectedIndex] : 'More',
+          label: moreSelected ? order[selectedIndex] : L.of(context)!.more_label,
           selected: moreSelected,
           onTap: () => _showMoreSheet(context, overflow),
         ),
@@ -148,7 +166,7 @@ class PinepodsBottomNav extends StatelessWidget {
                 const SizedBox(height: 8),
                 TextButton.icon(
                   icon: const Icon(PhosphorIconsRegular.dotsSix, size: 18),
-                  label: const Text('Reorder tabs'),
+                  label: Text(L.of(context)!.reorder_tabs),
                   style: TextButton.styleFrom(
                     foregroundColor: theme.textTheme.bodySmall?.color,
                   ),
@@ -200,7 +218,7 @@ class _NavSlot extends StatelessWidget {
       child: Semantics(
         button: true,
         selected: selected,
-        label: label,
+        label: bottomNavLabel(context, label),
         excludeSemantics: true,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -208,7 +226,7 @@ class _NavSlot extends StatelessWidget {
             Icon(icon, color: colour, size: 24),
             const SizedBox(height: 4),
             Text(
-              label,
+              bottomNavLabel(context, label),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -254,7 +272,7 @@ class _MoreTile extends StatelessWidget {
             Icon(bottomNavIcon(label, selected: selected), color: fg, size: 26),
             const SizedBox(height: 6),
             Text(
-              label,
+              bottomNavLabel(context, label),
               style: TextStyle(
                 fontSize: 13,
                 color: fg,
