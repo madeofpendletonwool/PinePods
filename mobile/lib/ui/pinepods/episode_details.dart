@@ -29,6 +29,7 @@ import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/pinepods/collection_sheets.dart';
 
 class PinepodsEpisodeDetails extends StatefulWidget {
   final PinepodsEpisode initialEpisode;
@@ -1128,6 +1129,13 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                 enabled: !_actionGuard.inProgress,
                 onTap: () => run(() => _runGuarded(_toggleDownload)),
               ),
+              if (e.episodeId > 0)
+                ListTile(
+                  leading: const Icon(PhosphorIconsRegular.folderPlus),
+                  title: const Text('Add to collection'),
+                  onTap: () => run(() => showAddToCollectionSheet(context,
+                      episodes: [(e.episodeId, e.isYoutube)])),
+                ),
               ListTile(
                 leading: const Icon(PhosphorIconsRegular.microphoneStage),
                 title: const Text('Go to podcast'),

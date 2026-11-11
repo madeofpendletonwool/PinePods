@@ -432,6 +432,7 @@
     "completed": ""
   },
   "episodes_layout": {
+    "transcribe": "",
     "add": "Lägg till",
     "add_remove_podcast": "Klicka för att lägga till eller ta bort podd från flöde",
     "auto_play_next_episode": "",
@@ -1730,6 +1731,8 @@
     "youtube_channels": ""
   },
   "collections": {
+    "add_episodes_count": "",
+    "bulk_added": "",
     "collections": "",
     "add_to_collection": "",
     "new_collection": "",

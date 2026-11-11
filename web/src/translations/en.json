@@ -439,6 +439,7 @@
     "completed": "Completed"
   },
   "episodes_layout": {
+    "transcribe": "Transcribe",
     "add": "Add",
     "add_remove_podcast": "Click to add or remove podcast from feed",
     "auto_play_next_episode": "Auto-play next episode",
@@ -1754,6 +1755,8 @@
     "youtube_channels": "YouTube Channels"
   },
   "collections": {
+    "add_episodes_count": "Add {count} episodes to a collection",
+    "bulk_added": "Added {count} episodes to {name}",
     "collections": "Collections",
     "add_to_collection": "Add to Collection",
     "new_collection": "New collection",

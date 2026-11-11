@@ -34,6 +34,7 @@ import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/pinepods/collection_sheets.dart';
 
 // Sort direction for episodes within a podcast
 enum EpisodeSortDirection {
@@ -122,6 +123,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
   // Tracks episode being loaded for ghost mini player
   PinepodsEpisode? _pendingEpisode;
+
+  // Multi-select: server ids of the ticked episodes.
+  bool _selecting = false;
+  final Set<int> _selected = {};
+  bool _bulkBusy = false;
 
   bool get _isYoutube => isYoutubeChannelUrl(_podcast.url);
   bool get _isLocal => _podcast.url.startsWith('local://');
@@ -1868,6 +1874,149 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _hideEpisodeContextMenu();
   }
 
+  void _setSelecting(bool on) {
+    setState(() {
+      _selecting = on;
+      _selected.clear();
+    });
+  }
+
+  void _toggleSelected(PinepodsEpisode episode) {
+    setState(() {
+      if (!_selected.remove(episode.episodeId)) _selected.add(episode.episodeId);
+    });
+  }
+
+  /// Selected ids in list order, so bulk-queued episodes keep the order shown.
+  List<int> get _selectedIds => [
+        for (final e in _filteredEpisodes)
+          if (_selected.contains(e.episodeId)) e.episodeId,
+      ];
+
+  /// Runs a bulk action on the selection; [apply] updates the rows on success.
+  Future<void> _runBulk(
+    Future<String> Function(List<int> ids, int userId) call, {
+    PinepodsEpisode Function(PinepodsEpisode)? apply,
+    bool keepSelection = false,
+  }) async {
+    final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    final userId = settings.pinepodsUserId;
+    final ids = _selectedIds;
+    if (userId == null || ids.isEmpty || _bulkBusy) return;
+    _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+    setState(() => _bulkBusy = true);
+    try {
+      final message = await call(ids, userId);
+      if (!mounted) return;
+      setState(() {
+        if (apply != null) {
+          final idSet = ids.toSet();
+          for (var i = 0; i < _episodes.length; i++) {
+            if (idSet.contains(_episodes[i].episodeId)) _episodes[i] = apply(_episodes[i]);
+          }
+          _filterEpisodes();
+        }
+        if (!keepSelection) {
+          _selecting = false;
+          _selected.clear();
+        }
+      });
+      _showSnackBar(message, Colors.green);
+    } catch (e) {
+      _showSnackBar(e.toString().replaceFirst('Exception: ', ''), Colors.red);
+    } finally {
+      if (mounted) setState(() => _bulkBusy = false);
+    }
+  }
+
+  void _bulkAction(String action, {PinepodsEpisode Function(PinepodsEpisode)? apply}) => _runBulk(
+        (ids, userId) => _pinepodsService.bulkEpisodeAction(action, ids, userId, _isYoutube),
+        apply: apply,
+      );
+
+  Widget _buildSelectionBar(ThemeData theme, Color accent) {
+    final allIds = {for (final e in _filteredEpisodes) if (e.episodeId > 0) e.episodeId};
+    final allSelected = allIds.isNotEmpty && _selected.containsAll(allIds);
+    final enabled = _selected.isNotEmpty && !_bulkBusy;
+    Widget action(IconData icon, String label, VoidCallback onTap) => Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: FilledButton.tonalIcon(
+            onPressed: enabled ? onTap : null,
+            icon: Icon(icon, size: 18),
+            label: Text(label),
+          ),
+        );
+    return Material(
+      color: theme.cardColor,
+      elevation: 8,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('${_selected.length} selected',
+                        style: theme.textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w600)),
+                  ),
+                  if (_bulkBusy)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 8),
+                      child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    ),
+                  TextButton(
+                    onPressed: () => setState(() {
+                      if (allSelected) {
+                        _selected.clear();
+                      } else {
+                        _selected.addAll(allIds);
+                      }
+                    }),
+                    child: Text(allSelected ? 'Select none' : 'Select all'),
+                  ),
+                  IconButton(
+                    tooltip: 'Done',
+                    icon: const Icon(PhosphorIconsRegular.x),
+                    onPressed: () => _setSelecting(false),
+                  ),
+                ],
+              ),
+              SizedBox(
+                height: 44,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    action(PhosphorIconsRegular.folderPlus, 'Collection', () {
+                      showAddToCollectionSheet(context,
+                          episodes: [for (final id in _selectedIds) (id, _isYoutube)]);
+                    }),
+                    if (_aiAvailable && !_isYoutube)
+                      action(PhosphorIconsRegular.textAa, 'Transcribe', () {
+                        // Kept selected so the same episodes can go into a collection too.
+                        _runBulk(_pinepodsService.bulkTranscribeEpisodes, keepSelection: true);
+                      }),
+                    action(PhosphorIconsRegular.queue, 'Queue',
+                        () => _bulkAction('queue_episodes', apply: (e) => _updateEpisodeProperty(e, queued: true))),
+                    action(PhosphorIconsRegular.bookmarkSimple, 'Save',
+                        () => _bulkAction('save_episodes', apply: (e) => _updateEpisodeProperty(e, saved: true))),
+                    action(PhosphorIconsRegular.checkCircle, 'Complete',
+                        () => _bulkAction('mark_episodes_completed',
+                            apply: (e) => _updateEpisodeProperty(e, completed: true))),
+                    action(PhosphorIconsRegular.cloudArrowDown, 'Download',
+                        () => _bulkAction('download_episodes')),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   PinepodsEpisode _updateEpisodeProperty(
     PinepodsEpisode episode, {
     bool? saved,
@@ -1979,7 +2128,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
               ),
             ),
           ),
-          _buildBottomPlayer(),
+          if (_selecting) _buildSelectionBar(theme, accent) else _buildBottomPlayer(),
         ],
       ),
     );
@@ -2358,6 +2507,15 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         });
         _saveSortPreference();
       },
+      trailing: [
+        if (_isFollowing && _episodes.any((e) => e.episodeId > 0))
+          IconButton(
+            tooltip: _selecting ? 'Done selecting' : 'Select episodes',
+            icon: Icon(_selecting ? PhosphorIconsFill.checkSquare : PhosphorIconsRegular.checkSquare,
+                color: _selecting ? accent : null),
+            onPressed: () => _setSelecting(!_selecting),
+          ),
+      ],
     );
   }
 
@@ -2391,6 +2549,22 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           final originalIndex = _filteredIndexes[index];
           // RSS fallback episodes have no server id, so no details or actions.
           final hasServerId = episode.episodeId > 0;
+
+          if (_selecting) {
+            final ticked = _selected.contains(episode.episodeId);
+            return PinepodsEpisodeCard(
+              episode: episode,
+              leading: Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Icon(
+                  ticked ? PhosphorIconsFill.checkSquare : PhosphorIconsRegular.square,
+                  color: ticked ? Theme.of(context).primaryColor : Theme.of(context).hintColor,
+                ),
+              ),
+              onTap: hasServerId ? () => _toggleSelected(episode) : null,
+              onLongPress: hasServerId ? () => _toggleSelected(episode) : null,
+            );
+          }
 
           return PinepodsEpisodeCard(
             episode: episode,

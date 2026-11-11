@@ -20,6 +20,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/icons/collection_icons.dart';
+import 'package:pinepods_mobile/ui/pinepods/collection_sheets.dart';
+import 'package:pinepods_mobile/entities/pinepods_collection.dart';
 
 /// Sort direction options for saved episodes
 enum SavedSortDirection {
@@ -72,11 +75,16 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
   bool _favoritesOnly = false;
   Set<int> _favoritePodcastIds = {};
 
+  // Collections other than Saved; [_active] is the one shown (null = Saved).
+  List<PinepodsCollection> _collections = [];
+  PinepodsCollection? _active;
+
   @override
   void initState() {
     super.initState();
     _loadSortPreference();
     _loadSavedEpisodes();
+    _loadCollections();
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -268,6 +276,90 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
 
   PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
 
+  Future<void> _loadCollections() async {
+    final client = collectionsClient(context);
+    if (client == null) return;
+    try {
+      final cols = await client.$1.getCollections(client.$2);
+      if (!mounted) return;
+      setState(() {
+        _collections = cols.where((c) => !c.isDefault).toList();
+        // Keep the shown collection current (name/icon edits), or fall back to Saved.
+        if (_active != null) {
+          _active = _collections.where((c) => c.id == _active!.id).firstOrNull;
+          if (_active == null) _loadSavedEpisodes();
+        }
+      });
+    } catch (_) {
+      // Non-fatal: the page still shows Saved.
+    }
+  }
+
+  void _selectCollection(PinepodsCollection? collection) {
+    if (collection?.id == _active?.id) return;
+    setState(() {
+      _active = collection;
+      _searchController.clear();
+      _searchQuery = '';
+    });
+    _loadSavedEpisodes();
+  }
+
+  Future<void> _newCollection() async {
+    final created = await showCollectionEditor(context);
+    if (created == null || !mounted) return;
+    await _loadCollections();
+    final match = _collections.where((c) => c.id == created.id).firstOrNull;
+    if (match != null) _selectCollection(match);
+  }
+
+  Future<void> _editActiveCollection() async {
+    final active = _active;
+    if (active == null) return;
+    final result = await showCollectionEditor(context, existing: active);
+    if (result == null || !mounted) return;
+    if (result.deleted) {
+      setState(() => _active = null);
+      _loadSavedEpisodes();
+    }
+    _loadCollections();
+  }
+
+  Future<void> _removeFromActiveCollection(int episodeIndex) async {
+    final active = _active;
+    final client = collectionsClient(context);
+    if (active == null || client == null) return;
+    final episode = _episodes[episodeIndex];
+    try {
+      await client.$1.setEpisodeInCollection(active.id, client.$2, episode.episodeId, episode.isYoutube, false);
+      if (!mounted) return;
+      setState(() {
+        _episodes.removeAt(episodeIndex);
+        _total = (_total - 1).clamp(0, _total);
+        _offset = (_offset - 1).clamp(0, _offset);
+        _filterEpisodes();
+      });
+      _showSnackBar('Removed from ${active.name}', Colors.orange);
+      _loadCollections();
+    } catch (e) {
+      _showSnackBar('Failed to remove: $e', Colors.red);
+    }
+  }
+
+  /// One page of the shown list: Saved, or the active collection.
+  Future<EpisodePage> _fetchPage(int userId, int offset) {
+    final sortBy = _sortByParam(_sortDirection);
+    final sortOrder = _sortOrderParam(_sortDirection);
+    final filter = _filterParam(_activeFilter);
+    final active = _active;
+    if (active != null) {
+      return _pinepodsService.getCollectionEpisodesPaged(active.id,
+          limit: 50, offset: offset, sortBy: sortBy, sortOrder: sortOrder, filter: filter);
+    }
+    return _pinepodsService.getSavedEpisodesPaged(userId,
+        limit: 50, offset: offset, sortBy: sortBy, sortOrder: sortOrder, filter: filter);
+  }
+
   Future<void> _loadSavedEpisodes() async {
     setState(() {
       _isLoading = true;
@@ -296,14 +388,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
       final userId = settings.pinepodsUserId!;
 
-      final page = await _pinepodsService.getSavedEpisodesPaged(
-        userId,
-        limit: 50,
-        offset: 0,
-        sortBy: _sortByParam(_sortDirection),
-        sortOrder: _sortOrderParam(_sortDirection),
-        filter: _filterParam(_activeFilter),
-      );
+      final page = await _fetchPage(userId, 0);
 
       final enrichedEpisodes = await PositionUtils.enrichEpisodesWithBestPositions(
         context,
@@ -324,7 +409,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       await _loadFavoritePodcastIds(userId);
     } catch (e) {
       setState(() {
-        _errorMessage = 'Failed to load saved episodes: ${e.toString()}';
+        _errorMessage = 'Failed to load episodes: ${e.toString()}';
         _isLoading = false;
       });
     }
@@ -346,14 +431,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     setState(() => _isLoadingMore = true);
 
     try {
-      final page = await _pinepodsService.getSavedEpisodesPaged(
-        userId,
-        limit: 50,
-        offset: _offset,
-        sortBy: _sortByParam(_sortDirection),
-        sortOrder: _sortOrderParam(_sortDirection),
-        filter: _filterParam(_activeFilter),
-      );
+      final page = await _fetchPage(userId, _offset);
 
       final enrichedEpisodes = await PositionUtils.enrichEpisodesWithBestPositions(
         context,
@@ -378,6 +456,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
 
   Future<void> _refresh() async {
     LocalDownloadUtils.clearCache();
+    _loadCollections();
     await _loadSavedEpisodes();
   }
 
@@ -462,6 +541,12 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
         onDismiss: () {
           Navigator.of(context).pop();
         },
+        onRemoveFromCollection: _active == null
+            ? null
+            : () {
+                Navigator.of(context).pop();
+                _removeFromActiveCollection(episodeIndex);
+              },
         onPodcastTap: () {
           Navigator.of(context).pop();
           navigateToPodcastById(
@@ -567,10 +652,14 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       );
 
       if (success) {
-        // REMOVE the episode from the list since it's no longer saved
         setState(() {
-          _episodes.removeAt(episodeIndex);
-          _filterEpisodes(); // Update filtered list after removal
+          if (_active == null) {
+            // Off the Saved list now; a collection still holds it.
+            _episodes.removeAt(episodeIndex);
+          } else {
+            _episodes[episodeIndex] = _updateEpisodeProperty(episode, saved: false);
+          }
+          _filterEpisodes();
         });
         _showSnackBar('Removed from saved episodes', Colors.orange);
       } else {
@@ -778,6 +867,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       queued: queued ?? episode.queued,
       downloaded: downloaded ?? episode.downloaded,
       isYoutube: episode.isYoutube,
+      podcastId: episode.podcastId,
       saveDate: episode.saveDate,
     );
   }
@@ -794,19 +884,38 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const SliverFillRemaining(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading saved episodes...'),
-            ],
-          ),
+    final title = _active?.name ?? 'Saved';
+    final header = <Widget>[
+      SliverToBoxAdapter(
+        child: SoftSectionHeader(
+          title: title,
+          count: _isLoading || _errorMessage.isNotEmpty ? null : _filteredEpisodes.length,
+          trailing: [
+            if (_active != null)
+              IconButton(
+                tooltip: 'Edit collection',
+                icon: const Icon(PhosphorIconsRegular.pencilSimple),
+                onPressed: _editActiveCollection,
+              ),
+            IconButton(
+              tooltip: 'Refresh',
+              icon: const Icon(PhosphorIconsRegular.arrowClockwise),
+              onPressed: _refresh,
+            ),
+          ],
         ),
-      );
+      ),
+      SliverToBoxAdapter(child: _buildCollectionChips()),
+    ];
+
+    if (_isLoading) {
+      return MultiSliver(children: [
+        ...header,
+        const SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ]);
     }
 
     if (_errorMessage.isNotEmpty) {
@@ -822,37 +931,70 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       );
     }
 
-    if (_episodes.isEmpty) {
-      return const SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(
-          child: SoftEmptyState(
-            icon: PhosphorIconsRegular.bookmarkSimple,
-            title: 'No saved episodes',
-            body: 'Episodes you save will appear here',
+    if (_episodes.isEmpty && _activeFilter == EpisodeFilter.all) {
+      return MultiSliver(children: [
+        ...header,
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: _active == null
+                ? const SoftEmptyState(
+                    icon: PhosphorIconsRegular.bookmarkSimple,
+                    title: 'No saved episodes',
+                    body: 'Episodes you save will appear here',
+                  )
+                : SoftEmptyState(
+                    icon: collectionIcon(_active!.icon),
+                    title: 'Nothing in ${_active!.name} yet',
+                    body: 'Long-press an episode and choose Add to Collection, '
+                        'or select several on a podcast\'s page.',
+                  ),
           ),
         ),
-      );
+      ]);
     }
 
     return MultiSliver(
       children: [
-        SliverToBoxAdapter(
-          child: SoftSectionHeader(
-            title: 'Saved',
-            count: _filteredEpisodes.length,
-            trailing: [
-              IconButton(
-                tooltip: 'Refresh',
-                icon: const Icon(PhosphorIconsRegular.arrowClockwise),
-                onPressed: _refresh,
-              ),
-            ],
-          ),
-        ),
+        ...header,
         ListToolbar.sliver(context, _buildToolbar()),
         _buildEpisodesList(),
       ],
+    );
+  }
+
+  /// Saved, then each collection, then "New".
+  Widget _buildCollectionChips() {
+    final pills = <Widget>[
+      FilterPill(
+        label: 'Saved',
+        icon: PhosphorIconsRegular.bookmarkSimple,
+        selected: _active == null,
+        onTap: () => _selectCollection(null),
+      ),
+      for (final c in _collections)
+        FilterPill(
+          label: c.name,
+          icon: collectionIcon(c.icon),
+          selected: _active?.id == c.id,
+          onTap: () => _selectCollection(c),
+        ),
+      FilterPill(
+        label: 'New',
+        icon: PhosphorIconsRegular.plus,
+        selected: false,
+        onTap: _newCollection,
+      ),
+    ];
+    return SizedBox(
+      height: 46,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+        itemCount: pills.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) => pills[i],
+      ),
     );
   }
 
@@ -902,7 +1044,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     final hasActiveSearch = _searchQuery.isNotEmpty;
     if (_filteredEpisodes.isEmpty &&
         !_isLoadingMore &&
-        (hasActiveSearch || _favoritesOnly)) {
+        (hasActiveSearch || _favoritesOnly || _activeFilter != EpisodeFilter.all)) {
       return SliverToBoxAdapter(
         child: SoftEmptyState(
           icon: PhosphorIconsRegular.funnelSimpleX,

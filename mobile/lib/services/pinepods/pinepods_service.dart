@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/entities/pinepods_collection.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/user_stats.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
@@ -1793,6 +1794,197 @@ class PinepodsService {
       _devLog('Error getting paged saved episodes: $e');
       rethrow;
     }
+  }
+
+  // --- Collections ------------------------------------------------------
+  // Hand-picked groups of episodes; the default one is "Saved".
+
+  Map<String, String> get _jsonHeaders => {'Api-Key': _apiKey!, 'Content-Type': 'application/json'};
+
+  void _requireAuth() {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+  }
+
+  /// The server's error text from a JSON `{message}` body, or the status code.
+  String _errorText(http.Response response) {
+    try {
+      final data = jsonDecode(response.body);
+      final msg = data['message'] ?? data['detail'] ?? data['error'];
+      if (msg is String && msg.isNotEmpty) return msg;
+    } catch (_) {}
+    return 'Server returned ${response.statusCode}';
+  }
+
+  Future<List<PinepodsCollection>> getCollections(int userId) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/user/$userId');
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    final list = jsonDecode(response.body)['collections'] as List<dynamic>? ?? [];
+    return list.map((c) => PinepodsCollection.fromJson(c as Map<String, dynamic>)).toList();
+  }
+
+  /// Distinct categories across the user's podcasts, for auto-add.
+  Future<List<String>> getUserCategories(int userId) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/categories/$userId');
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    return (jsonDecode(response.body)['categories'] as List<dynamic>? ?? []).cast<String>();
+  }
+
+  /// Returns the new collection's id. With [backfill], episodes already in
+  /// [autoAddCategories] are added too.
+  Future<int> createCollection(
+    int userId, {
+    required String name,
+    String? description,
+    String icon = 'ph-bookmark-simple',
+    List<String>? autoAddCategories,
+    bool backfill = false,
+  }) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/create');
+    final response = await _post(url,
+        headers: _jsonHeaders,
+        body: jsonEncode({
+          'user_id': userId,
+          'name': name,
+          'description': description,
+          'icon': icon,
+          'auto_add_categories': autoAddCategories,
+          'backfill': backfill,
+        }));
+    if (response.statusCode == 409) throw Exception('A collection with that name already exists');
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    return (jsonDecode(response.body)['collection_id'] as num).toInt();
+  }
+
+  Future<void> updateCollection(
+    int collectionId, {
+    required String name,
+    String? description,
+    required String icon,
+    required List<String> autoAddCategories,
+    bool backfill = false,
+  }) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/$collectionId');
+    final response = await _client
+        .patch(url,
+            headers: _jsonHeaders,
+            body: jsonEncode({
+              'name': name,
+              'description': description ?? '',
+              'icon': icon,
+              'auto_add_categories': autoAddCategories,
+              'backfill': backfill,
+            }))
+        .timeout(_timeout);
+    if (response.statusCode == 409) throw Exception('A collection with that name already exists');
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+  }
+
+  Future<void> deleteCollection(int collectionId) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/$collectionId');
+    final response = await _client.delete(url, headers: {'Api-Key': _apiKey!}).timeout(_timeout);
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+  }
+
+  Future<void> setEpisodeInCollection(
+      int collectionId, int userId, int episodeId, bool isYoutube, bool inCollection) async {
+    _requireAuth();
+    final action = inCollection ? 'add_episode' : 'remove_episode';
+    final url = Uri.parse('$_server/api/data/collections/$collectionId/$action');
+    final response = await _post(url,
+        headers: _jsonHeaders,
+        body: jsonEncode({'user_id': userId, 'episode_id': episodeId, 'is_youtube': isYoutube}));
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+  }
+
+  /// Adds every `(episodeId, isYoutube)` pair to one collection.
+  Future<void> bulkAddToCollection(
+      int collectionId, int userId, List<(int, bool)> episodes) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/bulk_add');
+    final response = await _post(url,
+        headers: _jsonHeaders,
+        body: jsonEncode({
+          'user_id': userId,
+          'collection_id': collectionId,
+          'episodes': [for (final (id, yt) in episodes) [id, yt]],
+        }));
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+  }
+
+  /// Ids of the collections (including Saved) that hold this episode.
+  Future<Set<int>> getEpisodeCollections(int userId, int episodeId, bool isYoutube) async {
+    _requireAuth();
+    final url = Uri.parse(
+        '$_server/api/data/episode_collections/$userId/$episodeId?is_youtube=$isYoutube');
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    return (jsonDecode(response.body)['collection_ids'] as List<dynamic>? ?? [])
+        .map((e) => (e as num).toInt())
+        .toSet();
+  }
+
+  Future<EpisodePage> getCollectionEpisodesPaged(
+    int collectionId, {
+    int limit = 50,
+    int offset = 0,
+    String sortBy = 'date',
+    String sortOrder = 'desc',
+    String filter = 'all',
+  }) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/$collectionId/episodes').replace(
+      queryParameters: {
+        'limit': '$limit',
+        'offset': '$offset',
+        'sort_by': sortBy,
+        'sort_order': sortOrder,
+        'filter': filter,
+      },
+    );
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    final data = jsonDecode(response.body);
+    final list = data['saved_episodes'] as List<dynamic>? ?? [];
+    return EpisodePage(
+      episodes: list.map((e) => PinepodsEpisode.fromJson(e as Map<String, dynamic>)).toList(),
+      total: (data['total'] as num?)?.toInt() ?? list.length,
+    );
+  }
+
+  // --- Bulk episode actions (multi-select) -------------------------------
+
+  /// POST /api/data/bulk_<action>: `mark_episodes_completed`, `save_episodes`,
+  /// `queue_episodes` or `download_episodes`. Returns the server's summary.
+  Future<String> bulkEpisodeAction(
+      String action, List<int> episodeIds, int userId, bool isYoutube) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/bulk_$action');
+    final response = await _post(url,
+        headers: _jsonHeaders,
+        body: jsonEncode({'episode_ids': episodeIds, 'user_id': userId, 'is_youtube': isYoutube}));
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    return jsonDecode(response.body)['message'] as String? ?? 'Done';
+  }
+
+  /// Queues transcriptions; the server runs them one at a time and skips
+  /// episodes that already have an AI transcript. Returns its summary.
+  Future<String> bulkTranscribeEpisodes(List<int> episodeIds, int userId) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/bulk_transcribe_episodes');
+    final response = await _post(url,
+        headers: _jsonHeaders,
+        body: jsonEncode({'episode_ids': episodeIds, 'user_id': userId, 'force': false}));
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    return jsonDecode(response.body)['detail'] as String? ?? 'Transcriptions queued';
   }
 
   // Get episode metadata
