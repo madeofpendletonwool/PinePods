@@ -681,6 +681,53 @@ impl DatabasePool {
         Ok(())
     }
 
+    /// Whether a podcast the user subscribes to starts with auto-queue on (#648). Off unless set.
+    pub async fn get_auto_queue_new_podcasts(&self, user_id: i32) -> AppResult<bool> {
+        let value: Option<bool> = dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"SELECT autoqueuenewpodcasts FROM "UserSettings" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+                    .map(|row| row.try_get::<Option<bool>, _>("autoqueuenewpodcasts"))
+                    .transpose()?
+                    .flatten()
+            },
+            mysql(pool) => {
+                sqlx::query("SELECT AutoQueueNewPodcasts FROM UserSettings WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+                    .map(|row| row.try_get::<Option<bool>, _>("AutoQueueNewPodcasts"))
+                    .transpose()?
+                    .flatten()
+            },
+        });
+        Ok(value.unwrap_or(false))
+    }
+
+    pub async fn set_auto_queue_new_podcasts(&self, user_id: i32, enabled: bool) -> AppResult<()> {
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"INSERT INTO "UserSettings" (userid, autoqueuenewpodcasts, theme) VALUES ($1, $2, 'Nordic')
+                            ON CONFLICT (userid) DO UPDATE SET autoqueuenewpodcasts = EXCLUDED.autoqueuenewpodcasts"#)
+                    .bind(user_id)
+                    .bind(enabled)
+                    .execute(pool)
+                    .await?;
+            },
+            mysql(pool) => {
+                sqlx::query("INSERT INTO UserSettings (UserID, AutoQueueNewPodcasts, Theme) VALUES (?, ?, 'Nordic')
+                             ON DUPLICATE KEY UPDATE AutoQueueNewPodcasts = VALUES(AutoQueueNewPodcasts)")
+                    .bind(user_id)
+                    .bind(enabled)
+                    .execute(pool)
+                    .await?;
+            },
+        });
+        Ok(())
+    }
+
     // Get playback speed - matches Python get_playback_speed function exactly
     pub async fn get_playback_speed(&self, user_id: i32, _is_youtube: bool, podcast_id: Option<i32>) -> AppResult<f64> {
         dialect_match!(self, {

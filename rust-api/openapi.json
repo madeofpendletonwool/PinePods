@@ -4120,6 +4120,49 @@
         ]
       }
     },
+    "/api/data/get_auto_queue_new_podcasts/{user_id}": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Get the auto-queue default for new subscriptions",
+        "operationId": "get_auto_queue_new_podcasts",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoQueueNewPodcastsSetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Another user's setting"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/get_auto_queue_status": {
       "post": {
         "tags": [
@@ -10045,6 +10088,48 @@
         ]
       }
     },
+    "/api/data/update_auto_queue_new_podcasts": {
+      "put": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Set the auto-queue default for new subscriptions",
+        "operationId": "update_auto_queue_new_podcasts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoQueueNewPodcastsSetting"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoQueueNewPodcastsSetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Another user's setting"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/update_date_format": {
       "put": {
         "tags": [
@@ -13726,6 +13811,23 @@
         ],
         "properties": {
           "auto_play_next": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AutoQueueNewPodcastsSetting": {
+        "type": "object",
+        "description": "Whether a podcast the user subscribes to starts with auto-queue on (#648).",
+        "required": [
+          "user_id",
+          "enabled"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "enabled": {
             "type": "boolean"
           }
         }

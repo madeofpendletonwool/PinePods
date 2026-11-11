@@ -9,6 +9,7 @@ mod ad_downloads;
 mod admin_only;
 mod ai;
 mod auth_coverage;
+mod auto_queue_default;
 mod backups;
 mod cross_user;
 mod downloads;
