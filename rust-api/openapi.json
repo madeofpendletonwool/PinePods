@@ -4849,6 +4849,49 @@
         ]
       }
     },
+    "/api/data/get_podcast_count_display/{user_id}": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Get the Podcasts page episode count setting",
+        "operationId": "get_podcast_count_display",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodcastCountDisplaySetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Another user's setting"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/get_podcast_details": {
       "get": {
         "tags": [
@@ -10264,6 +10307,48 @@
           },
           "401": {
             "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/update_podcast_count_display": {
+      "put": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Set the Podcasts page episode count setting",
+        "operationId": "update_podcast_count_display",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PodcastCountDisplaySetting"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodcastCountDisplaySetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Another user's setting"
           }
         },
         "security": [
@@ -17003,6 +17088,30 @@
           }
         }
       },
+      "PodcastCountDisplay": {
+        "type": "string",
+        "description": "Which episode count the Podcasts page shows for each podcast.",
+        "enum": [
+          "total",
+          "unplayed"
+        ]
+      },
+      "PodcastCountDisplaySetting": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "display"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "display": {
+            "$ref": "#/components/schemas/PodcastCountDisplay"
+          }
+        }
+      },
       "PodcastCredits": {
         "type": "object",
         "required": [
@@ -17358,7 +17467,8 @@
           "explicit",
           "is_favorite",
           "is_video",
-          "play_count"
+          "play_count",
+          "unplayed_count"
         ],
         "properties": {
           "podcastid": {
@@ -17445,6 +17555,11 @@
           "play_count": {
             "type": "integer",
             "format": "int64"
+          },
+          "unplayed_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Episodes (and videos) of this podcast the user hasn't finished."
           }
         }
       },
