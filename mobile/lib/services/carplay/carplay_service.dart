@@ -40,7 +40,7 @@ class CarPlayService {
   // because flutter_carplay manages its own template stack and interface controller
 
   // Store tab templates for updating
-  CPListTemplate? _currentTab;
+  CPListTemplate? _homeTab;
   CPListTemplate? _savedTab;
   CPListTemplate? _nowPlayingTab;
   CPTabBarTemplate? _rootTemplate;
@@ -48,6 +48,12 @@ class CarPlayService {
   // Playback state tracking
   StreamSubscription? _playbackSubscription;
   AudioState _currentPlaybackState = AudioState.none;
+  int? _homeEpisodeId;  // Playing episode the Home tab was last built around
+
+  /// Most Up Next artwork a CarPlay image row can show.
+  static const _upNextRowLimit = 8;
+
+  int? get _playingEpisodeId => GlobalServices.pinepodsAudioService?.currentEpisodeId;
 
   CarPlayService({
     required this.repository,
@@ -100,10 +106,10 @@ class CarPlayService {
   void _setInitialRootTemplate() {
     log.info('Pre-setting CarPlay root template');
 
-    _currentTab = CPListTemplate(
+    _homeTab = CPListTemplate(
       sections: [],
-      title: L.current.car_current,
-      systemIcon: 'clock.fill',
+      title: L.current.nav_home,
+      systemIcon: 'house.fill',
       emptyViewTitleVariants: ['Loading…'],
       emptyViewSubtitleVariants: ['Episodes loading'],
     );
@@ -120,8 +126,8 @@ class CarPlayService {
 
     _rootTemplate = CPTabBarTemplate(
       templates: [
+        _homeTab!,
         _nowPlayingTab!,
-        _currentTab!,
         _savedTab!,
         _createMoreTab(),
       ],
@@ -149,12 +155,17 @@ class CarPlayService {
     log.info('Refreshing CarPlay dynamic tab content');
 
     try {
-      // Update Current tab
+      // Home: Up Next artwork row, then current/recent episodes
+      _homeEpisodeId = _playingEpisodeId;
+      final upNext = await _loadUpNext();
       final currentItems = await _loadCurrentEpisodes();
-      if (_currentTab != null) {
+      if (_homeTab != null) {
         await _flutterCarplay.updateListTemplateSections(
-          elementId: _currentTab!.uniqueId,
-          sections: currentItems.isEmpty ? [] : [CPListSection(items: currentItems)],
+          elementId: _homeTab!.uniqueId,
+          sections: [
+            if (upNext.isNotEmpty) CPListSection(items: [_buildUpNextRow(upNext)]),
+            if (currentItems.isNotEmpty) CPListSection(items: currentItems),
+          ],
         );
       }
 
@@ -200,6 +211,8 @@ class CarPlayService {
           // which CarPlay uses to display now playing info. Refresh the Now
           // Playing tab so it reflects the current episode / play state.
           _refreshNowPlayingTab();
+          // A new episode changes what's Up Next on the Home tab.
+          if (_playingEpisodeId != _homeEpisodeId) _refreshDynamicTabs();
         }
       }
     });
@@ -483,16 +496,19 @@ class CarPlayService {
       if (pinepodsService != null && settingsService.pinepodsUserId != null) {
         try {
           final homeData = await pinepodsService!.getHomeOverview(settingsService.pinepodsUserId!);
+          // The playing episode's guid is its feed URL, so match it by id.
+          final playingId = _playingEpisodeId;
+          bool listed(int id) => id == playingId || episodes.any((e) => e.guid == 'pinepods_$id');
           // Add in-progress episodes first (limit to 5 for initial load)
           for (final ep in homeData.inProgressEpisodes.take(5)) {
-            if (!episodes.any((e) => e.guid == 'pinepods_${ep.episodeId}')) {
+            if (!listed(ep.episodeId)) {
               episodes.add(_convertHomeEpisode(ep));
             }
           }
           // Then recent episodes (limit to 10 total for CarPlay - keep it light)
           final remainingSlots = 10 - episodes.length;
           for (final ep in homeData.recentEpisodes.take(remainingSlots)) {
-            if (!episodes.any((e) => e.guid == 'pinepods_${ep.episodeId}')) {
+            if (!listed(ep.episodeId)) {
               episodes.add(_convertHomeEpisode(ep));
             }
           }
@@ -534,6 +550,55 @@ class CarPlayService {
     return items;
   }
 
+  /// The server queue minus the playing episode and finished ones, in queue
+  /// order. The queue lives on the server; the local queue is no longer used.
+  Future<List<PinepodsEpisode>> _loadUpNext() async {
+    if (!_isReady) return [];
+    try {
+      final queue = await pinepodsService!.getQueuedEpisodes(settingsService.pinepodsUserId!);
+      return upNextFrom(queue, playingEpisodeId: _playingEpisodeId, limit: _upNextRowLimit);
+    } catch (e) {
+      log.warning('Failed to load Up Next: $e');
+      return [];
+    }
+  }
+
+  @visibleForTesting
+  static List<PinepodsEpisode> upNextFrom(List<PinepodsEpisode> queue, {int? playingEpisodeId, int? limit}) {
+    final upNext = queue.where((ep) => ep.episodeId != playingEpisodeId && !ep.completed);
+    return (limit == null ? upNext : upNext.take(limit)).toList();
+  }
+
+  /// Artwork row of Up Next episodes: tapping artwork plays that episode,
+  /// tapping the row title opens the full queue.
+  CPListImageRowItem _buildUpNextRow(List<PinepodsEpisode> upNext) {
+    final episodes = upNext.map(_convertPinepodsEpisode).toList();
+    return CPListImageRowItem(
+      text: L.current.up_next_queue_label,
+      // iOS before 26
+      gridImages: episodes.map((ep) => ep.imageUrl ?? '').toList(),
+      imageTitles: episodes.map((ep) => _sanitizeForCarPlay(ep.title)).toList(),
+      // iOS 26+
+      elements: episodes
+          .map((ep) => CPListImageRowItemRowElement(
+                image: ep.imageUrl ?? '',
+                title: _sanitizeForCarPlay(ep.title),
+                subtitle: _sanitizeForCarPlay(ep.podcast),
+              ))
+          .toList(),
+      onPress: (complete, item) {
+        _showQueue();
+        complete();
+      },
+      onItemPress: (complete, item, index) async {
+        if (index != null && index >= 0 && index < episodes.length) {
+          await _playEpisode(episodes[index]);
+        }
+        complete();
+      },
+    );
+  }
+
   // MARK: - More Submenu Navigation
 
   void _showQueue() async {
@@ -549,9 +614,10 @@ class CarPlayService {
 
     FlutterCarplay.push(template: template, animated: true);
 
+    if (!_isReady) return;
     try {
-      final queue = await repository.loadQueue();
-      final items = queue.take(50).map((ep) => _createEpisodeItem(ep)).toList();
+      final queue = await pinepodsService!.getQueuedEpisodes(settingsService.pinepodsUserId!);
+      final items = queue.take(50).map((ep) => _createEpisodeItem(_convertPinepodsEpisode(ep))).toList();
 
       await _flutterCarplay.updateListTemplateSections(
         elementId: template.uniqueId,
