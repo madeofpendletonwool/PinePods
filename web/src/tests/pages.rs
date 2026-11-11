@@ -275,6 +275,48 @@ async fn the_stats_page_shows_the_servers_numbers() {
     assert_shows(&shown, "987");
 }
 
+fn podcast_with_counts() -> Value {
+    json!({ "pods": [{
+        "podcastid": 5,
+        "podcastname": "Counted Show",
+        "artworkurl": null,
+        "description": "A show",
+        "episodecount": 742,
+        "websiteurl": "",
+        "feedurl": "https://example.test/feed.xml",
+        "author": "Someone",
+        "categories": null,
+        "explicit": false,
+        "podcastindexid": 0,
+        "unplayed_count": 19,
+    }] })
+}
+
+#[wasm_bindgen_test]
+async fn the_podcasts_page_counts_every_episode_by_default() {
+    let shown = shown_when_signed_in(
+        Page::Podcasts,
+        json!({ "/api/data/return_pods/2": podcast_with_counts() }),
+    )
+    .await;
+    assert_shows(&shown, "742");
+    assert!(!shown.contains("19"), "unplayed count shown without the setting: {shown}");
+}
+
+#[wasm_bindgen_test]
+async fn the_podcasts_page_counts_unplayed_episodes_when_chosen() {
+    let shown = shown_when_signed_in(
+        Page::Podcasts,
+        json!({
+            "/api/data/return_pods/2": podcast_with_counts(),
+            "/api/data/get_podcast_count_display/2": { "user_id": 2, "display": "unplayed" },
+        }),
+    )
+    .await;
+    assert_shows(&shown, "19");
+    assert!(!shown.contains("742"), "total shown instead of unplayed: {shown}");
+}
+
 // Signing in.
 
 async fn set_input(input: &web_sys::HtmlInputElement, value: &str) {

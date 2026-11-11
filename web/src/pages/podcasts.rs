@@ -10,7 +10,7 @@ use crate::requests::pod_req::PodcastExtra;
 use crate::requests::pod_req::{
     call_remove_podcasts, call_toggle_podcast_favorite, PodcastResponseExtra, RemovePodcastValues,
 };
-use crate::requests::setting_reqs::call_add_custom_feed;
+use crate::requests::setting_reqs::{call_add_custom_feed, call_get_podcast_count_display};
 use i18nrs::yew::use_translation;
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -104,7 +104,10 @@ fn render_podcasts(
     toggle_delete: Callback<(i32, std::string::String)>,
     i18n: &i18nrs::I18n,
     on_toggle_favorite: Callback<(i32, bool)>,
+    show_unplayed: bool,
 ) -> Html {
+    let count_label = if show_unplayed { i18n.t("podcasts.unplayed_count") } else { i18n.t("podcasts.episode_count") };
+    let count_title = if show_unplayed { i18n.t("podcasts.unplayed_episodes") } else { i18n.t("podcasts.total_episodes") };
     // Add a debug log at the start of render function
     web_sys::console::log_1(&format!("Rendering {} podcasts", podcasts.len()).into());
 
@@ -210,7 +213,7 @@ fn render_podcasts(
                                     </div>
                                     <div class="ep-meta">
                                         <i class={if podcast.is_video { "ph ph-television" } else { "ph ph-broadcast" }}></i>
-                                        <span>{ format!("{}{}", &i18n.t("podcasts.episode_count"), &podcast.episodecount.clone().unwrap_or_else(|| 0)) }</span>
+                                        <span>{ format!("{}{}", count_label, podcast.shown_count(show_unplayed)) }</span>
                                     </div>
                                 </div>
                                 <div class="ep-actions">
@@ -259,8 +262,7 @@ fn render_podcasts(
                             podcast.is_youtube,
                         );
 
-                        // Get episode count
-                        let episode_count = podcast.episodecount.unwrap_or(0);
+                        let episode_count = podcast.shown_count(show_unplayed);
 
                         {
                             let is_fav = podcast.is_favorite;
@@ -273,7 +275,7 @@ fn render_podcasts(
                                 onclick={on_click}
                             >
                                 // Episode count badge (top-right); icon switches to TV for video podcasts
-                                <div class="absolute top-1 right-1 z-10 bg-opacity-80 bg-gray-800 text-white rounded-full px-2 py-1 text-xs font-bold">
+                                <div class="absolute top-1 right-1 z-10 bg-opacity-80 bg-gray-800 text-white rounded-full px-2 py-1 text-xs font-bold" title={count_title.clone()}>
                                     <i class={format!("ph {} inline-block mr-1", if podcast.is_video { "ph-television" } else { "ph-broadcast" })}></i>
                                     {episode_count}
                                 </div>
@@ -404,6 +406,28 @@ pub fn podcasts() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+    // Whether the count on each podcast is its unplayed episodes rather than all of them.
+    let show_unplayed = use_state(|| false);
+    {
+        let show_unplayed = show_unplayed.clone();
+        use_effect_with(
+            (api_key.clone(), user_id, server_name.clone()),
+            move |(api_key, user_id, server_name)| {
+                if let (Some(Some(api_key)), Some(user_id), Some(server_name)) =
+                    (api_key.clone(), *user_id, server_name.clone())
+                {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(display) = call_get_podcast_count_display(server_name, api_key, user_id).await {
+                            show_unplayed.set(display == "unplayed");
+                        }
+                    });
+                }
+                || ()
+            },
+        );
+    }
+
     // Fetch podcasts on component mount
     let filter_effect = filter_dispatch.clone();
     {
@@ -938,8 +962,9 @@ pub fn podcasts() -> Html {
             search_term.clone(),
             sort_direction.clone(),
             filter_state.favorites_only,
+            *show_unplayed,
         ),
-        |(podcasts, selected_cat, search, sort_dir, fav_only)| {
+        |(podcasts, selected_cat, search, sort_dir, fav_only, show_unplayed)| {
             // Log for debugging
             web_sys::console::log_1(&"Filtering podcasts...".into());
 
@@ -1022,8 +1047,8 @@ pub fn podcasts() -> Html {
                             .podcastname
                             .to_lowercase()
                             .cmp(&a.podcastname.to_lowercase()),
-                        SortDirection::EpisodeCountHigh => b.episodecount.cmp(&a.episodecount),
-                        SortDirection::EpisodeCountLow => a.episodecount.cmp(&b.episodecount),
+                        SortDirection::EpisodeCountHigh => b.shown_count(*show_unplayed).cmp(&a.shown_count(*show_unplayed)),
+                        SortDirection::EpisodeCountLow => a.shown_count(*show_unplayed).cmp(&b.shown_count(*show_unplayed)),
                         // By each podcast's latest episode; podcasts with no episodes go last.
                         SortDirection::OldestFirst => match (&a.newest_episode_date, &b.newest_episode_date) {
                             (Some(x), Some(y)) => x.cmp(y),
@@ -1197,6 +1222,7 @@ pub fn podcasts() -> Html {
                                 toggle_delete.clone(),
                                 &i18n,
                                 on_toggle_favorite.clone(),
+                                *show_unplayed,
                             )
                         }
 

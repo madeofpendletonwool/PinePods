@@ -8000,6 +8000,31 @@ def migration_090_user_queue_add_position(conn, db_type: str) -> None:
         cursor.close()
 
 
+@register_migration("091", "user_podcast_count_display", "UserSettings.PodcastCountDisplay: the Podcasts page shows each podcast's total or unplayed episode count", requires=["001"], sqlite=True)
+def migration_091_user_podcast_count_display(conn, db_type: str) -> None:
+    """'total' counts every episode of the podcast; 'unplayed' only the ones the user hasn't
+    finished. Total by default."""
+    cursor = conn.cursor()
+    try:
+        if db_type == "sqlite":
+            cursor.execute('PRAGMA table_info("UserSettings")')
+            exists = any(row[1].lower() == "podcastcountdisplay" for row in cursor.fetchall())
+        else:
+            exists = _column_exists(cursor, db_type, "UserSettings", "PodcastCountDisplay")
+        if not exists:
+            table, column = {
+                "postgresql": ('"UserSettings"', "PodcastCountDisplay"),
+                "sqlite": ('"UserSettings"', "podcastcountdisplay"),
+            }.get(db_type, ("UserSettings", "PodcastCountDisplay"))
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} VARCHAR(10) NOT NULL DEFAULT 'total'")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("118", "gpodder_actions_follow_merged_episodes", "Episode actions point at the shared episode their merged copy became; the copies are deleted", requires=["082", "111"])
 def migration_118_gpodder_actions_follow_merged_episodes(conn, db_type: str) -> None:
     """GpodderSyncEpisodeActions.EpisodeID of actions on an episode copy merged by 082 now points
