@@ -53,6 +53,13 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
   Timer? _localPositionTimer;
 
+  // Android Auto keeps whatever a list returned, so lists served before the
+  // app could answer stay empty until something asks Auto to re-query them.
+  Timer? _carReadyTimer;
+  Timer? _carRetryTimer;
+  int _carFailures = 0;
+  static const _carMaxFailureRetries = 3;
+
   /// Serialises local episode saves so a background save can't race the next
   /// one (an unsaved episode has no id yet, so two concurrent saves add twice).
   Future<void> _persistChain = Future.value();
@@ -89,6 +96,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
     // Set up method call handler for Android Auto / CarPlay browsing
     platform.setMethodCallHandler(_handleMethodCall);
+    _refreshCarBrowseWhenReady();
 
     // Set up native log handler to capture Android/iOS logs
     const nativeLogChannel = MethodChannel('com.pinepods/native_logs');
@@ -1031,6 +1039,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
     final userId = settingsService.pinepodsUserId;
     if (api == null || server == null || apiKey == null || userId == null) {
       log.warning('Not connected to a PinePods server for $what');
+      _refreshCarBrowseWhenReady();
       return null;
     }
     api.setCredentials(server, apiKey);
@@ -1046,10 +1055,51 @@ class NativeAudioPlayerService extends AudioPlayerService {
     try {
       final items = await load(car.api, car.userId);
       log.info('$what for car: ${items.length} items');
+      _carFailures = 0;
       return items;
     } catch (e) {
       log.severe('Error getting $what for car: $e');
+      _retryCarBrowseAfterFailure();
       return [];
+    }
+  }
+
+  bool get _carDataReady =>
+      GlobalServices.pinepodsService != null &&
+      settingsService.pinepodsServer != null &&
+      settingsService.pinepodsApiKey != null &&
+      settingsService.pinepodsUserId != null;
+
+  /// Once the app can serve car data (services and login loaded at startup),
+  /// has Android Auto re-query its lists so ones it got while starting up
+  /// don't stay empty. Gives up after a minute (e.g. not logged in).
+  void _refreshCarBrowseWhenReady() {
+    if (!Platform.isAndroid || (_carReadyTimer?.isActive ?? false)) return;
+    var ticks = 0;
+    _carReadyTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_carDataReady) {
+        timer.cancel();
+        _refreshCarBrowse();
+      } else if (++ticks >= 60) {
+        timer.cancel();
+      }
+    });
+  }
+
+  /// A failed fetch (often the phone switching networks as the car connects)
+  /// left an empty list in Android Auto; ask it to try again shortly.
+  void _retryCarBrowseAfterFailure() {
+    if (!Platform.isAndroid || (_carRetryTimer?.isActive ?? false)) return;
+    if (_carFailures >= _carMaxFailureRetries) return;
+    _carFailures++;
+    _carRetryTimer = Timer(Duration(seconds: 3 * _carFailures), _refreshCarBrowse);
+  }
+
+  Future<void> _refreshCarBrowse() async {
+    try {
+      await platform.invokeMethod('refreshCarBrowse');
+    } catch (e) {
+      log.fine('Could not refresh Android Auto lists: $e');
     }
   }
 

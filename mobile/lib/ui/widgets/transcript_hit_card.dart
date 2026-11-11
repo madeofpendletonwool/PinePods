@@ -4,6 +4,7 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
 import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// Moments shown before "more moments".
 const _foldedMoments = 2;
@@ -90,7 +91,7 @@ class _TranscriptHitCardState extends State<TranscriptHitCard> {
     final meta = [
       ep.podcastName,
       _date(ep.episodePubDate),
-      hit.mentions == 1 ? '1 mention' : '${hit.mentions} mentions',
+      L.of(context)!.mentions_count(hit.mentions),
     ].where((s) => s.isNotEmpty).join(' · ');
     final textStyle = theme.textTheme.bodyMedium!.copyWith(height: 1.4);
 
@@ -126,7 +127,7 @@ class _TranscriptHitCardState extends State<TranscriptHitCard> {
                           Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall!.copyWith(color: muted)),
                           const SizedBox(height: 2),
                           Text(
-                            hit.source == 'generated' ? 'AI transcript' : "Podcast's transcript",
+                            hit.source == 'generated' ? L.of(context)!.ai_transcript : L.of(context)!.podcasts_transcript,
                             style: theme.textTheme.labelSmall!.copyWith(color: hit.source == 'generated' ? accent : muted),
                           ),
                         ],
@@ -168,7 +169,7 @@ class _TranscriptHitCardState extends State<TranscriptHitCard> {
                     ),
                     onPressed: () => setState(() => _expanded = !_expanded),
                     icon: Icon(_expanded ? PhosphorIconsRegular.caretUp : PhosphorIconsRegular.caretDown, size: 16),
-                    label: Text(_expanded ? 'Show fewer' : '$hidden more moments'),
+                    label: Text(_expanded ? L.of(context)!.show_fewer : L.of(context)!.more_moments(hidden)),
                   ),
               ],
             ),
@@ -190,7 +191,7 @@ class _MomentButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: 'Play from $label',
+      label: L.of(context)!.play_from_time(label),
       child: Material(
         color: accent.withOpacity(0.12),
         shape: StadiumBorder(side: BorderSide(color: accent.withOpacity(0.35))),

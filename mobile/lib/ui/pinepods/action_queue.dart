@@ -7,6 +7,7 @@ import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// Shows the offline "outbox" — episode interactions (progress, completion,
 /// saved, queue) that were recorded while offline and are waiting to sync to
@@ -65,7 +66,7 @@ class _ActionQueueState extends State<ActionQueue> {
       setState(() => _syncing = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_actions.isEmpty ? 'All actions synced' : '${_actions.length} action(s) still pending'),
+          content: Text(_actions.isEmpty ? L.of(context)!.all_actions_synced : L.of(context)!.actions_still_pending(_actions.length)),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -94,11 +95,11 @@ class _ActionQueueState extends State<ActionQueue> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Action Queue'),
+        title: Text(L.of(context)!.action_queue_title),
         actions: [
           IconButton(
             icon: const Icon(PhosphorIconsRegular.arrowsClockwise),
-            tooltip: 'Sync now',
+            tooltip: L.of(context)!.sync_now,
             onPressed: _syncing ? null : _syncNow,
           ),
         ],
@@ -114,13 +115,13 @@ class _ActionQueueState extends State<ActionQueue> {
                         Icon(PhosphorIconsRegular.cloudCheck, size: 64, color: Colors.green[400]),
                         const SizedBox(height: 16),
                         Center(
-                          child: Text('Everything is synced',
+                          child: Text(L.of(context)!.everything_synced,
                               style: Theme.of(context).textTheme.titleMedium),
                         ),
                         const SizedBox(height: 8),
                         Center(
                           child: Text(
-                            'Interactions made offline appear here until they reach the server.',
+                            L.of(context)!.action_queue_empty_body,
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
@@ -136,7 +137,7 @@ class _ActionQueueState extends State<ActionQueue> {
                             separatorBuilder: (context, index) => const Divider(height: 1),
                             itemBuilder: (context, index) {
                               final a = _actions[index];
-                              final title = _titleCache[a.episodeId] ?? 'Episode #${a.episodeId}';
+                              final title = _titleCache[a.episodeId] ?? L.of(context)!.episode_number(a.episodeId);
                               return ListTile(
                                 leading: Icon(_iconFor(a.type), color: Theme.of(context).primaryColor),
                                 title: Text(a.description),
@@ -147,7 +148,7 @@ class _ActionQueueState extends State<ActionQueue> {
                                 ),
                                 trailing: a.retryCount > 0
                                     ? Tooltip(
-                                        message: 'Failed ${a.retryCount} time(s)',
+                                        message: L.of(context)!.failed_times(a.retryCount),
                                         child: Icon(PhosphorIconsRegular.warningCircle, size: 18, color: Colors.orange[700]),
                                       )
                                     : null,

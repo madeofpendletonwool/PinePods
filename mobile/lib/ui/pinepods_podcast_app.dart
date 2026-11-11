@@ -20,6 +20,9 @@ import 'package:pinepods_mobile/entities/feed.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/l10n/app_localizations.dart';
+import 'package:pinepods_mobile/l10n/app_locale.dart';
+import 'package:intl/intl.dart';
+import 'package:pinepods_mobile/services/language/account_language.dart';
 import 'package:pinepods_mobile/navigation/navigation_route_observer.dart';
 import 'package:pinepods_mobile/repository/repository.dart';
 import 'package:pinepods_mobile/repository/sembast/sembast_repository.dart';
@@ -186,6 +189,12 @@ class PinepodsPodcastApp extends StatefulWidget {
 class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
   ThemeData? theme;
 
+  /// Explicit UI language code, or empty to follow the device.
+  String _language = '';
+
+  /// The account the language was last synced for, so it's fetched once.
+  String? _languageSyncedFor;
+
   @override
   void initState() {
     super.initState();
@@ -199,7 +208,9 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
         if (newTheme != theme) {
           theme = newTheme;
         }
+        _language = event.language;
       });
+      _syncAccountLanguage(event);
 
       // Keep the now-playing socket in step with auth state. connect() is
       // idempotent (a no-op when already connected to the same session), so
@@ -210,10 +221,53 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
 
     // Initialize theme from current settings
     theme = ThemeRegistry.getThemeData(widget.mobileSettingsService.theme);
+    _language = widget.settingsBloc!.currentSettings.language;
+    // Services built before the first frame (CarPlay) read L.current.
+    L.current = lookupAppLocalizations(
+        resolveAppLocale(_language, WidgetsBinding.instance.platformDispatcher.locales));
+    _syncAccountLanguage(widget.settingsBloc!.currentSettings);
 
     // Cover the already-authenticated cold-start case (the settings stream may
     // not re-emit before the user starts playing).
     _syncNowPlayingConnection(widget.settingsBloc!.currentSettings);
+  }
+
+  /// Adopt the account's language, as the web app does, when the user chose
+  /// one there. An account left on the server default keeps this device's
+  /// choice (or the device language).
+  Future<void> _syncAccountLanguage(AppSettings settings) async {
+    final server = settings.pinepodsServer;
+    final apiKey = settings.pinepodsApiKey;
+    final userId = settings.pinepodsUserId;
+    if (server == null || server.isEmpty || apiKey == null || apiKey.isEmpty || userId == null) {
+      _languageSyncedFor = null;
+      return;
+    }
+    final account = '$server|$userId';
+    if (_languageSyncedFor == account) return;
+    _languageSyncedFor = account;
+    final explicit = await AccountLanguage.fetchExplicit(server: server, apiKey: apiKey, userId: userId);
+    if (explicit != null && explicit != widget.settingsBloc!.currentSettings.language) {
+      widget.settingsBloc!.setLanguage(explicit);
+    }
+  }
+
+  /// Keeps [L.current] and intl's date/number formatting on the UI locale.
+  void _applyLocale(BuildContext context) {
+    final strings = AppLocalizations.of(context);
+    if (strings != null) L.current = strings;
+    final locale = Localizations.localeOf(context);
+    final code = languageCodeForLocale(locale) ?? 'en';
+    final intlCode = switch (code) {
+      'zh-Hans' => 'zh',
+      'zh-Hant' => 'zh_TW',
+      _ => code.replaceAll('-', '_'),
+    };
+    Intl.defaultLocale = DateFormat.localeExists(intlCode)
+        ? intlCode
+        : DateFormat.localeExists(locale.languageCode)
+            ? locale.languageCode
+            : 'en';
   }
 
   /// Open or close the now-playing socket to match the current auth state.
@@ -273,7 +327,7 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         showSemanticsDebugger: false,
-        title: 'Pinepods Podcast Client',
+        title: 'Pinepods Podcast Client', // i18n-ignore
         navigatorObservers: [NavigationRouteObserver()],
         localizationsDelegates: const <LocalizationsDelegate<Object>>[
           AppLocalizations.delegate,
@@ -281,11 +335,16 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        supportedLocales: const [Locale('en', ''), Locale('de', ''), Locale('it', '')],
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: _language.isEmpty ? null : localeForLanguageCode(_language),
+        localeListResolutionCallback: (locales, supported) => resolveAppLocale(null, locales),
         theme: theme,
-        // Uncomment builder below to enable accessibility checker tool.
-        // builder: (context, child) => AccessibilityTools(child: child),
-        home: const AuthWrapper(child: PinepodsHomePage(title: 'PinePods Podcast Player')),
+        builder: (context, child) {
+          _applyLocale(context);
+          // Wrap with AccessibilityTools(child: ...) to enable the accessibility checker.
+          return child!;
+        },
+        home: const AuthWrapper(child: PinepodsHomePage(title: 'PinePods Podcast Player')), // i18n-ignore
       ),
     );
   }
@@ -459,7 +518,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
         print('OIDC Callback: Authentication failed: ${callbackResult.error}');
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('OIDC authentication failed: ${callbackResult.error}'), backgroundColor: Colors.red),
+            SnackBar(content: Text(L.of(context)!.oidc_authentication_failed(callbackResult.error ?? '')), backgroundColor: Colors.red),
           );
         }
         return;
@@ -473,8 +532,8 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
         print('OIDC Callback: No API key found, traditional OAuth flow not implemented yet');
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('OIDC callback received but no API key found'),
+            SnackBar(
+              content: Text(L.of(context)!.oidc_callback_no_api_key),
               backgroundColor: Colors.orange,
             ),
           );
@@ -485,7 +544,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error processing OIDC callback: $e'), backgroundColor: Colors.red));
+        ).showSnackBar(SnackBar(content: Text(L.current.error_processing_oidc_callback(e.toString())), backgroundColor: Colors.red));
       }
     }
   }
@@ -548,7 +607,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('OIDC authentication successful!'), backgroundColor: Colors.green));
+        ).showSnackBar(SnackBar(content: Text(L.current.oidc_authentication_successful), backgroundColor: Colors.green));
 
         // Log current settings state for debugging
         final currentSettings = settingsBloc.currentSettings;
@@ -566,7 +625,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to complete OIDC login: $e'), backgroundColor: Colors.red));
+        ).showSnackBar(SnackBar(content: Text(L.current.failed_to_complete_oidc_login(e.toString())), backgroundColor: Colors.red));
       }
     }
   }
@@ -670,7 +729,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
                           // Only takes space once another device is online.
                           const RemoteDevicesButton(hideWhenEmpty: true),
                           IconButton(
-                            tooltip: 'Queue',
+                            tooltip: L.of(context)!.queue,
                             icon: const Icon(PhosphorIconsRegular.queue),
                             onPressed: () async {
                               await Navigator.push(
@@ -679,7 +738,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
                                   fullscreenDialog: false,
                                   settings: const RouteSettings(name: 'queue'),
                                   builder: (context) => Scaffold(
-                                    appBar: AppBar(title: const Text('Queue')),
+                                    appBar: AppBar(title: Text(L.of(context)!.queue)),
                                     body: const CustomScrollView(slivers: [PinepodsQueue()]),
                                   ),
                                 ),
@@ -914,7 +973,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
                     if (mounted) {
                       Navigator.of(context).pop(); // Close loading dialog
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to load podcast: $e'), backgroundColor: Colors.red),
+                        SnackBar(content: Text(L.of(context)!.failed_to_load_podcast(e.toString())), backgroundColor: Colors.red),
                       );
                     }
                   }
@@ -940,7 +999,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
       final unifiedPodcast = UnifiedPinepodsPodcast(
         id: 0,
         indexId: 0,
-        title: podcast.title ?? 'Unknown Podcast',
+        title: podcast.title ?? L.current.unknown_podcast,
         url: url,
         originalUrl: url,
         link: podcast.link ?? url,
@@ -963,7 +1022,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
 
       if (userId != null) {
         try {
-          isFollowing = await pinepodsService.checkPodcastExists(podcast.title ?? 'Unknown Podcast', url, userId);
+          isFollowing = await pinepodsService.checkPodcastExists(podcast.title ?? L.current.unknown_podcast, url, userId);
         } catch (e) {
           print('Failed to check if podcast exists: $e');
         }
@@ -1060,17 +1119,17 @@ class TitleWidget extends StatelessWidget {
               padding: const EdgeInsets.only(left: 2.0),
               child: Row(
                 children: <Widget>[
-                  Text(
-                    'Pine',
+                  const Text(
+                    'Pine', // i18n-ignore
                     style: TextStyle(
-                      color: const Color(0xFF539e8a),
+                      color: Color(0xFF539e8a),
                       fontWeight: FontWeight.bold,
                       fontFamily: 'MontserratRegular',
                       fontSize: 18,
                     ),
                   ),
                   Text(
-                    'Pods',
+                    'Pods', // i18n-ignore
                     style: TextStyle(
                       color: Theme.of(context).brightness == Brightness.light ? Colors.black : Colors.white,
                       fontWeight: FontWeight.bold,

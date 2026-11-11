@@ -1,0 +1,18 @@
+{
+  "@@locale": "tr",
+  "cancel_button_label": "İptal",
+  "cancel_option_label": "İptal",
+  "podcast_details_refreshed": "Podcast bilgileri akıştan yenilendi",
+  "title_contains": "Başlık şunu içerir",
+  "save": "Kaydet",
+  "unsubscribe": "Abonelikten çık",
+  "copy": "Kopyala",
+  "remove": "Kaldır",
+  "refresh": "Yenile",
+  "search_failed": "Arama başarısız oldu",
+  "try_again": "Yeniden dene",
+  "server_url": "Sunucu URL'si",
+  "username": "Kullanıcı adı",
+  "password": "Parola",
+  "sync_now": "Şimdi eşitle"
+}

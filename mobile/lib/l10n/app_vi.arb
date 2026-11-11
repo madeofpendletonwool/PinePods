@@ -1,0 +1,18 @@
+{
+  "@@locale": "vi",
+  "cancel_button_label": "Hủy",
+  "cancel_option_label": "Hủy",
+  "podcast_details_refreshed": "Đã làm mới thông tin podcast từ nguồn cấp",
+  "title_contains": "Tiêu đề chứa",
+  "save": "Lưu",
+  "unsubscribe": "Hủy đăng ký",
+  "copy": "Sao chép",
+  "remove": "Gỡ bỏ",
+  "refresh": "Làm mới",
+  "search_failed": "Tìm kiếm thất bại",
+  "try_again": "Thử lại",
+  "server_url": "URL máy chủ",
+  "username": "Tên người dùng",
+  "password": "Mật khẩu",
+  "sync_now": "Đồng bộ ngay"
+}

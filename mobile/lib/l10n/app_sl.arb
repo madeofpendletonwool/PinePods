@@ -1,0 +1,18 @@
+{
+  "@@locale": "sl",
+  "cancel_button_label": "Prekliči",
+  "cancel_option_label": "Prekliči",
+  "podcast_details_refreshed": "Podatki podcasta osveženi iz vira",
+  "title_contains": "Naslov vsebuje",
+  "save": "Shrani",
+  "unsubscribe": "Odjava",
+  "copy": "Kopiraj",
+  "remove": "Odstrani",
+  "refresh": "Osveži",
+  "search_failed": "Iskanje ni uspelo",
+  "try_again": "Poskusi znova",
+  "server_url": "URL strežnika",
+  "username": "Uporabniško ime",
+  "password": "Geslo",
+  "sync_now": "Sinhroniziraj zdaj"
+}

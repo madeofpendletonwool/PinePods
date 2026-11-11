@@ -1,0 +1,18 @@
+{
+  "@@locale": "nb",
+  "cancel_button_label": "Avbryt",
+  "cancel_option_label": "Avbryt",
+  "podcast_details_refreshed": "Podkastens opplysninger er oppdatert fra feeden",
+  "title_contains": "Tittelen inneholder",
+  "save": "Lagre",
+  "unsubscribe": "Avslutt abonnement",
+  "copy": "Kopier",
+  "remove": "Fjern",
+  "refresh": "Oppdater",
+  "search_failed": "Søket mislyktes",
+  "try_again": "Prøv igjen",
+  "server_url": "Serveradresse",
+  "username": "Brukernavn",
+  "password": "Passord",
+  "sync_now": "Synkroniser nå"
+}

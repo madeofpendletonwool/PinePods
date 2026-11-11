@@ -1,0 +1,18 @@
+{
+  "@@locale": "hr",
+  "cancel_button_label": "Odustani",
+  "cancel_option_label": "Odustani",
+  "podcast_details_refreshed": "Podaci podcasta osvježeni iz feeda",
+  "title_contains": "Naslov sadrži",
+  "save": "Spremi",
+  "unsubscribe": "Otkaži pretplatu",
+  "copy": "Kopiraj",
+  "remove": "Ukloni",
+  "refresh": "Osvježi",
+  "search_failed": "Pretraživanje nije uspjelo",
+  "try_again": "Pokušaj ponovno",
+  "server_url": "URL poslužitelja",
+  "username": "Korisničko ime",
+  "password": "Lozinka",
+  "sync_now": "Sinkroniziraj sada"
+}

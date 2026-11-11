@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/pinepods_collection.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/icons/collection_icons.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
@@ -117,7 +118,7 @@ class _AddToCollectionSheetState extends State<_AddToCollectionSheet> {
       await widget.service.bulkAddToCollection(collectionId, widget.userId, widget.episodes);
       if (!mounted) return;
       Navigator.of(context).pop();
-      _snack(widget.messenger, 'Added ${widget.episodes.length} episodes to $name');
+      _snack(widget.messenger, L.current.added_episodes_to_collection(widget.episodes.length, name));
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
@@ -160,7 +161,7 @@ class _AddToCollectionSheetState extends State<_AddToCollectionSheet> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      _isBulk ? 'Add ${widget.episodes.length} episodes to…' : 'Add to collection',
+                      _isBulk ? L.of(context)!.add_episodes_to_collection_title(widget.episodes.length) : L.of(context)!.add_to_collection,
                       style: theme.textTheme.titleLarge,
                     ),
                   ),
@@ -180,14 +181,14 @@ class _AddToCollectionSheetState extends State<_AddToCollectionSheet> {
                     if (collections.isEmpty)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                        child: Text('No collections yet.', style: TextStyle(color: theme.hintColor)),
+                        child: Text(L.of(context)!.no_collections_yet, style: TextStyle(color: theme.hintColor)),
                       ),
                     for (final c in collections)
                       ListTile(
                         enabled: !_busy,
                         leading: Icon(collectionIcon(c.icon)),
                         title: Text(c.name),
-                        subtitle: Text('${c.episodeCount} episode${c.episodeCount == 1 ? '' : 's'}'),
+                        subtitle: Text(L.of(context)!.collection_episode_count(c.episodeCount)),
                         trailing: _isBulk
                             ? null
                             : Icon(
@@ -201,7 +202,7 @@ class _AddToCollectionSheetState extends State<_AddToCollectionSheet> {
                     ListTile(
                       enabled: !_busy,
                       leading: const Icon(PhosphorIconsRegular.plus),
-                      title: const Text('New collection'),
+                      title: Text(L.of(context)!.new_collection),
                       onTap: _createNew,
                     ),
                   ],
@@ -278,7 +279,7 @@ class _CollectionEditorState extends State<_CollectionEditor> {
   Future<void> _save() async {
     final name = _name.text.trim();
     if (name.isEmpty) {
-      setState(() => _error = 'Give the collection a name');
+      setState(() => _error = L.of(context)!.collection_name_required);
       return;
     }
     setState(() {
@@ -322,11 +323,11 @@ class _CollectionEditorState extends State<_CollectionEditor> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete collection?'),
-        content: Text('"${existing.name}" will be removed. Its episodes stay in your library.'),
+        title: Text(L.of(context)!.delete_collection_confirm_title),
+        content: Text(L.of(context)!.delete_collection_confirm_body(existing.name)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(L.of(context)!.cancel_button_label)),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(L.of(context)!.delete_label)),
         ],
       ),
     );
@@ -359,22 +360,22 @@ class _CollectionEditorState extends State<_CollectionEditor> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(_isEdit ? 'Edit collection' : 'New collection', style: theme.textTheme.titleLarge),
+                Text(_isEdit ? L.of(context)!.edit_collection : L.of(context)!.new_collection, style: theme.textTheme.titleLarge),
                 const SizedBox(height: 16),
                 TextField(
                   controller: _name,
                   autofocus: !_isEdit,
                   textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(labelText: 'Collection name'),
+                  decoration: InputDecoration(labelText: L.of(context)!.collection_name),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _description,
                   textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(labelText: 'Description (optional)'),
+                  decoration: InputDecoration(labelText: L.of(context)!.description_optional),
                 ),
                 const SizedBox(height: 16),
-                Text('Icon', style: theme.textTheme.titleSmall),
+                Text(L.of(context)!.icon, style: theme.textTheme.titleSmall),
                 const SizedBox(height: 8),
                 SizedBox(
                   height: 152,
@@ -398,13 +399,13 @@ class _CollectionEditorState extends State<_CollectionEditor> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text('Auto-add by category', style: theme.textTheme.titleSmall),
+                Text(L.of(context)!.auto_add_by_category, style: theme.textTheme.titleSmall),
                 const SizedBox(height: 4),
-                Text('New episodes from podcasts in these categories are added automatically.',
+                Text(L.of(context)!.auto_add_by_category_body,
                     style: TextStyle(color: theme.hintColor, fontSize: 13)),
                 const SizedBox(height: 8),
                 if (_available.isEmpty)
-                  Text('Your podcasts have no categories.', style: TextStyle(color: theme.hintColor, fontSize: 13))
+                  Text(L.of(context)!.no_podcast_categories, style: TextStyle(color: theme.hintColor, fontSize: 13))
                 else
                   Wrap(
                     spacing: 6,
@@ -427,7 +428,7 @@ class _CollectionEditorState extends State<_CollectionEditor> {
                     contentPadding: EdgeInsets.zero,
                     value: _backfill,
                     onChanged: (v) => setState(() => _backfill = v ?? false),
-                    title: const Text('Add existing matching episodes now'),
+                    title: Text(L.of(context)!.add_existing_matching_episodes),
                   ),
                 if (_error != null) ...[
                   const SizedBox(height: 8),
@@ -440,12 +441,12 @@ class _CollectionEditorState extends State<_CollectionEditor> {
                       TextButton(
                         onPressed: _saving ? null : _delete,
                         style: TextButton.styleFrom(foregroundColor: Colors.red),
-                        child: const Text('Delete collection'),
+                        child: Text(L.of(context)!.delete_collection),
                       ),
                     const Spacer(),
                     FilledButton(
                       onPressed: _saving ? null : _save,
-                      child: Text(_saving ? 'Saving…' : (_isEdit ? 'Save' : 'Create')),
+                      child: Text(_saving ? L.of(context)!.saving_ellipsis : (_isEdit ? L.of(context)!.save : L.of(context)!.create)),
                     ),
                   ],
                 ),

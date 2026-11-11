@@ -1,0 +1,18 @@
+{
+  "@@locale": "eu",
+  "cancel_button_label": "Utzi",
+  "cancel_option_label": "Utzi",
+  "podcast_details_refreshed": "Podcastaren datuak jariotik eguneratu dira",
+  "title_contains": "Izenburuak hau dauka",
+  "save": "Gorde",
+  "unsubscribe": "Harpidetza kendu",
+  "copy": "Kopiatu",
+  "remove": "Kendu",
+  "refresh": "Freskatu",
+  "search_failed": "Bilaketak huts egin du",
+  "try_again": "Saiatu berriro",
+  "server_url": "Zerbitzariaren URLa",
+  "username": "Erabiltzaile-izena",
+  "password": "Pasahitza",
+  "sync_now": "Sinkronizatu orain"
+}

@@ -1,0 +1,18 @@
+{
+  "@@locale": "bg",
+  "cancel_button_label": "Отказ",
+  "cancel_option_label": "Отказ",
+  "podcast_details_refreshed": "Данните за подкаста са обновени от емисията",
+  "title_contains": "Заглавието съдържа",
+  "save": "Запази",
+  "unsubscribe": "Отписване",
+  "copy": "Копирай",
+  "remove": "Премахни",
+  "refresh": "Опресни",
+  "search_failed": "Търсенето не бе успешно",
+  "try_again": "Опитай отново",
+  "server_url": "URL на сървъра",
+  "username": "Потребителско име",
+  "password": "Парола",
+  "sync_now": "Синхронизирай сега"
+}

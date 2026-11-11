@@ -1,0 +1,18 @@
+{
+  "@@locale": "zh_Hant",
+  "cancel_button_label": "取消",
+  "cancel_option_label": "取消",
+  "podcast_details_refreshed": "已從訂閱源重新整理 Podcast 資訊",
+  "title_contains": "標題包含",
+  "save": "儲存",
+  "unsubscribe": "取消訂閱",
+  "copy": "複製",
+  "remove": "移除",
+  "refresh": "重新整理",
+  "search_failed": "搜尋失敗",
+  "try_again": "重試",
+  "server_url": "伺服器網址",
+  "username": "使用者名稱",
+  "password": "密碼",
+  "sync_now": "立即同步"
+}

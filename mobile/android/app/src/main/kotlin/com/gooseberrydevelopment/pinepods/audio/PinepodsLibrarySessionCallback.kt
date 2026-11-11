@@ -3,6 +3,7 @@ package com.gooseberrydevelopment.pinepods.audio
 import android.os.Bundle
 import android.util.Log
 import androidx.media3.common.MediaItem
+import com.gooseberrydevelopment.pinepods.PinepodsEngine
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.LibraryResult
@@ -65,6 +66,19 @@ class PinepodsLibrarySessionCallback(
     ): ListenableFuture<LibraryResult<MediaItem>> {
         Log.d(TAG, "onGetLibraryRoot called by ${browser.packageName}")
         AudioPlayerPlugin.logToFlutter("INFO", TAG, "onGetLibraryRoot called by ${browser.packageName}, params=$params")
+
+        // A car browsing with the app closed: start the app's engine without UI
+        // so the lists can be filled (they refresh once it's ready).
+        if (browser.packageName != service.packageName && !PinepodsEngine.isRunning) {
+            Log.d(TAG, "Starting Flutter engine for ${browser.packageName}")
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                try {
+                    PinepodsEngine.obtain(service)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not start Flutter engine", e)
+                }
+            }
+        }
 
         try {
             // Return root item for Android Auto browsing

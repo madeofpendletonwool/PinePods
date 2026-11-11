@@ -369,9 +369,10 @@ class PinepodsMediaService : MediaLibraryService() {
 
     /**
      * Ask any connected browsers (Android Auto) to re-fetch the content nodes.
-     * Called once Flutter connects so stale empty results are refreshed.
+     * Called when Flutter connects and again once it can actually serve data,
+     * so empty results cached in between are refreshed.
      */
-    private fun notifyBrowseContentChanged() {
+    fun notifyBrowseContentChanged() {
         val session = mediaSession ?: return
         val contentIds = listOf(
             MediaBrowserHelper.ROOT_ID,

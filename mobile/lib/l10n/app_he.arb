@@ -1,0 +1,18 @@
+{
+  "@@locale": "he",
+  "cancel_button_label": "ביטול",
+  "cancel_option_label": "ביטול",
+  "podcast_details_refreshed": "פרטי הפודקאסט רועננו מהפיד",
+  "title_contains": "הכותרת מכילה",
+  "save": "שמירה",
+  "unsubscribe": "ביטול מינוי",
+  "copy": "העתקה",
+  "remove": "הסרה",
+  "refresh": "רענון",
+  "search_failed": "החיפוש נכשל",
+  "try_again": "ניסיון חוזר",
+  "server_url": "כתובת השרת",
+  "username": "שם משתמש",
+  "password": "סיסמה",
+  "sync_now": "סנכרן עכשיו"
+}

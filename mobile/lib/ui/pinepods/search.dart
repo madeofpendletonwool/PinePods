@@ -18,6 +18,7 @@ import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
 import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class PinepodsSearch extends StatefulWidget {
   final String? searchTerm;
@@ -171,7 +172,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
     } catch (e) {
       if (!mounted || provider != _selectedProvider) return;
       setState(() {
-        _errorMessage = 'Search failed: $e';
+        _errorMessage = L.of(context)!.search_failed_error(e.toString());
         _isLoading = false;
         _clearResults();
       });
@@ -250,7 +251,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in to PinePods server', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in_to_server, Colors.red);
       return;
     }
 
@@ -268,7 +269,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
           setState(() {
             _addedPodcastUrls.remove(podcast.url);
           });
-          _showSnackBar('Podcast removed', Colors.orange);
+          _showSnackBar(L.current.podcast_removed, Colors.orange);
         }
       } else {
         success = await _pinepodsService.addPodcast(podcast, userId);
@@ -276,15 +277,15 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
           setState(() {
             _addedPodcastUrls.add(podcast.url);
           });
-          _showSnackBar('Podcast added', Colors.green);
+          _showSnackBar(L.current.podcast_added, Colors.green);
         }
       }
 
       if (!success) {
-        _showSnackBar('Failed to ${isAdded ? 'remove' : 'add'} podcast', Colors.red);
+        _showSnackBar(isAdded ? L.current.failed_to_remove_podcast : L.current.failed_to_add_podcast, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error: $e', Colors.red);
+      _showSnackBar(L.current.error_with_detail(e.toString()), Colors.red);
     }
   }
 
@@ -300,13 +301,13 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
 
   Widget _buildSearchHistorySliver() {
     if (_searchHistory.isEmpty) {
-      return const SliverFillRemaining(
+      return SliverFillRemaining(
         hasScrollBody: false,
         child: Center(
           child: SoftEmptyState(
             icon: PhosphorIconsRegular.magnifyingGlass,
-            title: 'Search for podcasts',
-            body: 'Find new shows to follow by name, topic or host',
+            title: L.of(context)!.search_for_podcasts,
+            body: L.of(context)!.search_empty_body,
           ),
         ),
       );
@@ -316,14 +317,14 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
     return SliverList(
       delegate: SliverChildListDelegate([
         SoftSectionHeader(
-          title: 'Recent searches',
+          title: L.of(context)!.recent_searches,
           trailing: [
             TextButton(
               onPressed: () async {
                 await _searchHistoryService.clearPodcastSearchHistory();
                 await _loadSearchHistory();
               },
-              child: const Text('Clear'),
+              child: Text(L.of(context)!.clear),
             ),
           ],
         ),
@@ -333,7 +334,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
             leading: Icon(PhosphorIconsRegular.clockCounterClockwise, color: theme.hintColor, size: 20),
             title: Text(searchTerm, maxLines: 1, overflow: TextOverflow.ellipsis),
             trailing: IconButton(
-              tooltip: 'Remove',
+              tooltip: L.of(context)!.remove,
               icon: Icon(PhosphorIconsRegular.x, size: 18, color: theme.hintColor),
               onPressed: () => _removeHistoryItem(searchTerm),
             ),
@@ -347,8 +348,8 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
     final theme = Theme.of(context);
     final isAdded = _addedPodcastUrls.contains(podcast.url);
     final meta = [
-      if (podcast.episodeCount > 0) '${podcast.episodeCount} episode${podcast.episodeCount != 1 ? 's' : ''}',
-      if (podcast.explicit) 'Explicit',
+      if (podcast.episodeCount > 0) L.of(context)!.episodes_count(podcast.episodeCount),
+      if (podcast.explicit) L.of(context)!.explicit,
     ].join('  ·  ');
 
     return Card(
@@ -424,7 +425,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
               const SizedBox(width: 8),
               CircleAction(
                 size: 40,
-                tooltip: isAdded ? 'Unfollow' : 'Follow',
+                tooltip: isAdded ? 'Unfollow' : L.of(context)!.subscribe_label,
                 onTap: () => _togglePodcast(podcast),
                 icon: Icon(
                   isAdded ? PhosphorIconsBold.check : PhosphorIconsBold.plus,
@@ -490,7 +491,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                     if (videos > 0) ...[
                       const SizedBox(height: 4),
                       Text(
-                        'Latest: ${channel.recentVideos.first.title}',
+                        L.of(context)!.latest_title(channel.recentVideos.first.title),
                         style: TextStyle(fontSize: 12, color: theme.hintColor),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -502,7 +503,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
               const SizedBox(width: 8),
               CircleAction(
                 size: 40,
-                tooltip: subscribed ? 'Unsubscribe' : 'Subscribe',
+                tooltip: subscribed ? 'Unsubscribe' : L.of(context)!.subscribe,
                 onTap: busy ? null : () => _toggleChannel(channel),
                 icon: busy
                     ? SizedBox(
@@ -531,7 +532,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
         slivers: <Widget>[
           SliverAppBar(
             leading: IconButton(
-              tooltip: 'Back',
+              tooltip: L.of(context)!.search_back_button_label,
               icon: Platform.isAndroid
                   ? Icon(PhosphorIconsRegular.arrowLeft, color: theme.appBarTheme.foregroundColor)
                   : const Icon(PhosphorIconsRegular.caretLeft),
@@ -552,7 +553,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                   });
                 },
                 decoration: InputDecoration(
-                  hintText: _isYoutube ? 'Search YouTube channels' : 'Search podcasts',
+                  hintText: _isYoutube ? L.of(context)!.search_youtube_channels : L.of(context)!.search_podcasts,
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 10),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
@@ -566,7 +567,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                     builder: (context, value, _) => value.text.isEmpty
                         ? const SizedBox.shrink()
                         : IconButton(
-                            tooltip: 'Clear search',
+                            tooltip: L.of(context)!.clear_search,
                             icon: const Icon(PhosphorIconsRegular.x, size: 18),
                             onPressed: () {
                               _searchController.clear();
@@ -636,12 +637,12 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                 ? null
                 : _errorMessage,
               onRetry: () => _performSearch(_searchController.text),
-              title: 'Search Unavailable',
+              title: L.of(context)!.search_unavailable,
               subtitle: _errorMessage!.isServerConnectionError
-                ? 'Unable to connect to the PinePods server'
+                ? L.of(context)!.unable_to_connect_server
                 : _isYoutube
-                  ? 'Failed to search YouTube'
-                  : 'Failed to search for podcasts',
+                  ? L.of(context)!.failed_to_search_youtube
+                  : L.of(context)!.failed_to_search_podcasts,
             )
           else if (!_hasResults && _searchController.text.isNotEmpty)
             SliverFillRemaining(
@@ -649,8 +650,8 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
               child: Center(
                 child: SoftEmptyState(
                   icon: PhosphorIconsRegular.magnifyingGlassMinus,
-                  title: _isYoutube ? 'No channels found' : 'No podcasts found',
-                  body: 'Try different keywords or another search provider',
+                  title: _isYoutube ? 'No channels found' : L.of(context)!.no_search_results_message,
+                  body: L.of(context)!.try_different_keywords,
                 ),
               ),
             )

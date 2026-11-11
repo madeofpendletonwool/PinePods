@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class EpisodeAiSection extends StatefulWidget {
   final PinepodsEpisode episode;
@@ -143,25 +144,22 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
       final choice = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Not downloaded to the server'),
-          content: const Text(
-            "Many podcasts insert different ads each time an episode is "
-            "fetched, so ads found on a one-off copy can land at the wrong "
-            "times when you play it. For exact skips, download it to the "
-            "server first; ads are then detected on the copy you'll play.",
+          title: Text(L.of(context)!.not_downloaded_to_server),
+          content: Text(
+            L.of(context)!.not_downloaded_ads_explainer,
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: Text(L.of(context)!.cancel_button_label),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, 'stream'),
-              child: const Text('Detect anyway'),
+              child: Text(L.of(context)!.detect_anyway),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, 'download'),
-              child: const Text('Download first'),
+              child: Text(L.of(context)!.download_first),
             ),
           ],
         ),
@@ -181,10 +179,10 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
           widget.episode.episodeId, widget.userId,
           force: true, downloadFirst: downloadFirst);
       _snack(!ok
-          ? 'AI is unavailable right now.'
+          ? L.current.ai_unavailable
           : downloadFirst
-              ? 'Downloading to the server — ads will be detected on that copy.'
-              : 'Ad detection queued — this can take a few minutes.');
+              ? L.current.downloading_to_server_for_ads
+              : L.current.ad_detection_queued);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -197,8 +195,8 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
       final ok = await widget.pinepodsService
           .transcribeEpisode(widget.episode.episodeId, widget.userId, force: true);
       _snack(ok
-          ? 'Transcription queued — this can take a few minutes.'
-          : 'AI is unavailable right now.');
+          ? L.current.transcription_queued
+          : L.current.ai_unavailable);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -211,10 +209,10 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
       final ok = await widget.pinepodsService
           .adjustAdSegmentReview(ad.segmentId, widget.userId, status);
       if (ok) {
-        _snack(status == 'confirmed' ? 'Ad confirmed' : 'Ad kept');
+        _snack(status == 'confirmed' ? L.current.ad_confirmed : L.current.ad_kept);
         await _reloadSegments();
       } else {
-        _snack('Could not update ad');
+        _snack(L.current.could_not_update_ad);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -239,7 +237,7 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
           Icon(PhosphorIconsRegular.sparkle, size: 20, color: theme.primaryColor),
           const SizedBox(width: 8),
           Text(
-            'AI Features',
+            L.of(context)!.ai_features_title,
             style: theme.textTheme.titleMedium!
                 .copyWith(fontWeight: FontWeight.bold),
           ),
@@ -257,22 +255,22 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
           OutlinedButton.icon(
             onPressed: _busy ? null : _detectAds,
             icon: const Icon(PhosphorIconsRegular.prohibit, size: 18),
-            label: const Text('Detect ads'),
+            label: Text(L.of(context)!.detect_ads),
           ),
         if (_transcript?.status == 'complete')
           PopupMenuButton<String>(
-            tooltip: 'Export transcript',
+            tooltip: L.of(context)!.export_transcript,
             onSelected: _exportTranscript,
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'srt', child: Text('Subtitles (.srt)')),
-              PopupMenuItem(value: 'vtt', child: Text('WebVTT (.vtt)')),
-              PopupMenuItem(value: 'txt', child: Text('Plain text (.txt)')),
+            itemBuilder: (context) => [
+              PopupMenuItem(value: 'srt', child: Text(L.of(context)!.export_srt)),
+              PopupMenuItem(value: 'vtt', child: Text(L.of(context)!.export_vtt)),
+              PopupMenuItem(value: 'txt', child: Text(L.of(context)!.export_txt)),
             ],
             child: IgnorePointer(
               child: OutlinedButton.icon(
                 onPressed: () {},
                 icon: const Icon(PhosphorIconsRegular.export, size: 18),
-                label: const Text('Export transcript'),
+                label: Text(L.of(context)!.export_transcript),
               ),
             ),
           ),
@@ -281,8 +279,8 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
             onPressed: _busy ? null : _transcribe,
             icon: const Icon(PhosphorIconsRegular.userSound, size: 18),
             label: Text(_transcript?.status == 'complete'
-                ? 'Re-transcribe'
-                : 'Transcribe'),
+                ? L.of(context)!.re_transcribe
+                : L.of(context)!.transcribe),
           ),
       ],
     ));
@@ -298,7 +296,7 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
     if (_adSegments.isNotEmpty) {
       children.add(const SizedBox(height: 16));
       children.add(Text(
-        'Detected ads',
+        L.of(context)!.detected_ads,
         style: theme.textTheme.titleSmall!.copyWith(fontWeight: FontWeight.bold),
       ));
       for (final ad in _adSegments) {
@@ -313,13 +311,13 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
     } else if (_transcript?.status == 'running') {
       children.add(const SizedBox(height: 12));
       children.add(Row(
-        children: const [
-          SizedBox(
+        children: [
+          const SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2)),
-          SizedBox(width: 8),
-          Text('Transcribing…'),
+          const SizedBox(width: 8),
+          Text(L.of(context)!.transcribing),
         ],
       ));
     }
@@ -337,20 +335,14 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
     switch (_adAudio?.download) {
       case 'match':
         ok = true;
-        text = 'Ads were found on your server download, so skips line up '
-            'exactly.';
+        text = L.of(context)!.ads_match_server_download;
       case 'mismatch':
         ok = false;
-        text = 'Your server download is a different copy from the one these '
-            'ads were found on, so their times may be off. Detect ads again '
-            'to match your download.';
+        text = L.of(context)!.ads_mismatch_server_download;
       case 'none':
         ok = false;
         offerDownload = _aiStatus.downloadsEnabled;
-        text = "You're streaming this episode. If the podcast inserts ads "
-            'dynamically, they can sit at different times than detected; '
-            "Pinepods only skips them when the stream's length matches the "
-            'analyzed copy. Download it to the server for exact skips.';
+        text = L.of(context)!.ads_streaming_explainer;
       default:
         return null;
     }
@@ -380,7 +372,7 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
             OutlinedButton.icon(
               onPressed: _busy ? null : () => _startDetect(downloadFirst: true),
               icon: const Icon(PhosphorIconsRegular.cloudArrowDown, size: 18),
-              label: const Text('Download to server'),
+              label: Text(L.of(context)!.download_to_server),
             ),
           ],
         ],
@@ -407,21 +399,21 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              skipping ? 'Skipping' : 'Kept',
+              skipping ? L.of(context)!.ad_skipping : L.of(context)!.ad_kept_label,
               style: theme.textTheme.bodySmall!.copyWith(
                 color: skipping ? Colors.green[700] : Colors.grey[700],
               ),
             ),
           ),
           IconButton(
-            tooltip: 'Confirm ad (skip)',
+            tooltip: L.of(context)!.confirm_ad_skip,
             visualDensity: VisualDensity.compact,
             icon: const Icon(PhosphorIconsRegular.check, size: 20),
             color: Colors.green,
             onPressed: _busy ? null : () => _review(ad, 'confirmed'),
           ),
           IconButton(
-            tooltip: 'Keep (do not skip)',
+            tooltip: L.of(context)!.keep_ad_no_skip,
             visualDensity: VisualDensity.compact,
             icon: const Icon(PhosphorIconsRegular.x, size: 20),
             color: Colors.red,
@@ -449,7 +441,7 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
         sharePositionOrigin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
       ));
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Could not export the transcript: $e')));
+      messenger.showSnackBar(SnackBar(content: Text(L.current.could_not_export_transcript(e.toString()))));
     }
   }
 
@@ -457,7 +449,7 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
     return ExpansionTile(
       tilePadding: EdgeInsets.zero,
       title: Text(
-        'Transcript',
+        L.of(context)!.transcript_label,
         style: theme.textTheme.titleSmall!.copyWith(fontWeight: FontWeight.bold),
       ),
       children: _cues.map((cue) {

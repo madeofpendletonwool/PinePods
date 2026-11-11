@@ -1,6 +1,7 @@
 // lib/services/error_handling_service.dart
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// Service for handling and categorizing errors, especially server connection issues
 class ErrorHandlingService {
@@ -96,18 +97,18 @@ class ErrorHandlingService {
 
   /// Gets a user-friendly error message based on the error type
   static String getUserFriendlyErrorMessage(dynamic error) {
-    if (error == null) return 'An unknown error occurred';
+    if (error == null) return L.current.error_unknown;
     
     if (isServerConnectionError(error)) {
-      return 'Unable to connect to the PinePods server. Please check your internet connection and server settings.';
+      return L.current.error_cannot_connect_long;
     }
     
     if (isAuthenticationError(error)) {
-      return 'Authentication failed. Please check your login credentials.';
+      return L.current.error_auth_long;
     }
     
     if (isServerError(error)) {
-      return 'The PinePods server is experiencing issues. Please try again later.';
+      return L.current.error_server_long;
     }
     
     // Return the original error message for other types of errors
@@ -116,59 +117,59 @@ class ErrorHandlingService {
 
   /// Gets an appropriate title for the error
   static String getErrorTitle(dynamic error) {
-    if (error == null) return 'Error';
+    if (error == null) return L.current.error_title;
     
     if (isServerConnectionError(error)) {
-      return 'Server Unavailable';
+      return L.current.server_unavailable;
     }
     
     if (isAuthenticationError(error)) {
-      return 'Authentication Error';
+      return L.current.authentication_error;
     }
     
     if (isServerError(error)) {
-      return 'Server Error';
+      return L.current.server_error;
     }
     
-    return 'Error';
+    return L.current.error_title;
   }
 
   /// Gets troubleshooting suggestions based on the error type
   static List<String> getTroubleshootingSteps(dynamic error) {
-    if (error == null) return ['Please try again later'];
+    if (error == null) return [L.current.tip_try_later];
     
     if (isServerConnectionError(error)) {
       return [
-        'Check your internet connection',
-        'Verify server URL in settings',
-        'Ensure the PinePods server is running',
-        'Check if the server port is accessible',
-        'Contact your administrator if the issue persists',
+        L.current.tip_check_internet,
+        L.current.tip_verify_url,
+        L.current.tip_server_running,
+        L.current.tip_port_accessible,
+        L.current.tip_contact_admin_persists,
       ];
     }
     
     if (isAuthenticationError(error)) {
       return [
-        'Check your username and password',
-        'Ensure your account is still active',
-        'Try logging out and logging back in',
-        'Contact your administrator for help',
+        L.current.tip_check_credentials,
+        L.current.tip_account_active,
+        L.current.tip_relogin,
+        L.current.tip_contact_admin_help,
       ];
     }
     
     if (isServerError(error)) {
       return [
-        'Wait a few minutes and try again',
-        'Check if the server is overloaded',
-        'Contact your administrator',
-        'Check server logs for more details',
+        L.current.tip_wait,
+        L.current.tip_overloaded,
+        L.current.tip_contact_admin,
+        L.current.tip_server_logs,
       ];
     }
     
     return [
-      'Try refreshing the page',
-      'Restart the app if the issue persists',
-      'Contact support for assistance',
+      L.current.tip_refresh,
+      L.current.tip_restart_app,
+      L.current.tip_contact_support,
     ];
   }
 

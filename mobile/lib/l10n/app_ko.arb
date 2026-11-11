@@ -1,0 +1,18 @@
+{
+  "@@locale": "ko",
+  "cancel_button_label": "취소",
+  "cancel_option_label": "취소",
+  "podcast_details_refreshed": "피드에서 팟캐스트 정보를 새로고침했습니다",
+  "title_contains": "제목에 포함",
+  "save": "저장",
+  "unsubscribe": "구독 취소",
+  "copy": "복사",
+  "remove": "제거",
+  "refresh": "새로 고침",
+  "search_failed": "검색 실패",
+  "try_again": "다시 시도",
+  "server_url": "서버 URL",
+  "username": "사용자 이름",
+  "password": "비밀번호",
+  "sync_now": "지금 동기화"
+}

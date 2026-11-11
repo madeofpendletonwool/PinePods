@@ -11,8 +11,6 @@ const Duration finishedGracePeriod = Duration(hours: 1);
 /// "Delete after" choices shared by the device and server download settings.
 const List<int> deleteAfterDayChoices = [0, 1, 3, 7, 14, 30, 60, 90];
 
-String deleteAfterDaysLabel(int d) => d == 0 ? 'Never' : '$d day${d == 1 ? '' : 's'}';
-
 enum CleanupReason { finished, expired }
 
 /// The rules that apply to one podcast: the user's defaults, with any

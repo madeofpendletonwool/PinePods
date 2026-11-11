@@ -16,6 +16,7 @@ import 'package:pinepods_mobile/services/audio/audio_player_service.dart' show A
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// Service that provides content for CarPlay browsing
 /// Mirrors the functionality of MediaBrowserHelper on Android Auto
@@ -39,7 +40,7 @@ class CarPlayService {
   // because flutter_carplay manages its own template stack and interface controller
 
   // Store tab templates for updating
-  CPListTemplate? _currentTab;
+  CPListTemplate? _homeTab;
   CPListTemplate? _savedTab;
   CPListTemplate? _nowPlayingTab;
   CPTabBarTemplate? _rootTemplate;
@@ -47,6 +48,12 @@ class CarPlayService {
   // Playback state tracking
   StreamSubscription? _playbackSubscription;
   AudioState _currentPlaybackState = AudioState.none;
+  int? _homeEpisodeId;  // Playing episode the Home tab was last built around
+
+  /// Most Up Next artwork a CarPlay image row can show.
+  static const _upNextRowLimit = 8;
+
+  int? get _playingEpisodeId => GlobalServices.pinepodsAudioService?.currentEpisodeId;
 
   CarPlayService({
     required this.repository,
@@ -99,17 +106,17 @@ class CarPlayService {
   void _setInitialRootTemplate() {
     log.info('Pre-setting CarPlay root template');
 
-    _currentTab = CPListTemplate(
+    _homeTab = CPListTemplate(
       sections: [],
-      title: 'Current',
-      systemIcon: 'clock.fill',
+      title: L.current.nav_home,
+      systemIcon: 'house.fill',
       emptyViewTitleVariants: ['Loading…'],
       emptyViewSubtitleVariants: ['Episodes loading'],
     );
 
     _savedTab = CPListTemplate(
       sections: [],
-      title: 'Saved',
+      title: L.current.saved,
       systemIcon: 'bookmark.fill',
       emptyViewTitleVariants: ['Loading…'],
       emptyViewSubtitleVariants: ['Saved episodes loading'],
@@ -119,8 +126,8 @@ class CarPlayService {
 
     _rootTemplate = CPTabBarTemplate(
       templates: [
+        _homeTab!,
         _nowPlayingTab!,
-        _currentTab!,
         _savedTab!,
         _createMoreTab(),
       ],
@@ -148,12 +155,17 @@ class CarPlayService {
     log.info('Refreshing CarPlay dynamic tab content');
 
     try {
-      // Update Current tab
+      // Home: Up Next artwork row, then current/recent episodes
+      _homeEpisodeId = _playingEpisodeId;
+      final upNext = await _loadUpNext();
       final currentItems = await _loadCurrentEpisodes();
-      if (_currentTab != null) {
+      if (_homeTab != null) {
         await _flutterCarplay.updateListTemplateSections(
-          elementId: _currentTab!.uniqueId,
-          sections: currentItems.isEmpty ? [] : [CPListSection(items: currentItems)],
+          elementId: _homeTab!.uniqueId,
+          sections: [
+            if (upNext.isNotEmpty) CPListSection(items: [_buildUpNextRow(upNext)]),
+            if (currentItems.isNotEmpty) CPListSection(items: currentItems),
+          ],
         );
       }
 
@@ -199,6 +211,8 @@ class CarPlayService {
           // which CarPlay uses to display now playing info. Refresh the Now
           // Playing tab so it reflects the current episode / play state.
           _refreshNowPlayingTab();
+          // A new episode changes what's Up Next on the Home tab.
+          if (_playingEpisodeId != _homeEpisodeId) _refreshDynamicTabs();
         }
       }
     });
@@ -290,7 +304,7 @@ class CarPlayService {
           items: [
             // Episode info with artwork and progress
             CPListItem(
-              text: episode.title ?? 'Unknown Episode',
+              text: episode.title ?? L.current.unknown_episode,
               detailText: '${episode.podcast ?? ''}\n$progressBar $progress%\n$positionMin:${positionSec.toString().padLeft(2, '0')} / $durationMin:${durationSec.toString().padLeft(2, '0')}',
               image: episode.imageUrl,
               playbackProgress: duration > 0 ? position / duration : null,
@@ -299,8 +313,8 @@ class CarPlayService {
             ),
             // Play/Pause - no screen refresh, just toggle
             CPListItem(
-              text: isPlaying ? '⏸  Pause' : '▶  Play',
-              detailText: isPlaying ? 'Tap to pause' : 'Tap to play',
+              text: isPlaying ? '⏸  ${L.current.pause}' : '▶  ${L.current.play}',
+              detailText: isPlaying ? L.current.car_tap_to_pause : L.current.car_tap_to_play,
               onPress: (complete, item) async {
                 if (_isPlaying) {
                   await audioPlayerService.pause();
@@ -312,7 +326,7 @@ class CarPlayService {
             ),
             // Rewind
             CPListItem(
-              text: '⏪  Rewind ${settingsService.rewindInterval} seconds',
+              text: '⏪  ${L.current.rewind_seconds(settingsService.rewindInterval)}',
               onPress: (complete, item) async {
                 await audioPlayerService.rewind();
                 complete();
@@ -320,7 +334,7 @@ class CarPlayService {
             ),
             // Fast forward
             CPListItem(
-              text: '⏩  Forward ${settingsService.fastForwardInterval} seconds',
+              text: '⏩  ${L.current.forward_seconds(settingsService.fastForwardInterval)}',
               onPress: (complete, item) async {
                 await audioPlayerService.fastForward();
                 complete();
@@ -329,7 +343,7 @@ class CarPlayService {
           ],
         ),
       ],
-      title: 'Now Playing',
+      title: L.current.now_playing,
       systemIcon: 'play.circle.fill',
     );
 
@@ -344,7 +358,7 @@ class CarPlayService {
 
     return CPListTemplate(
       sections: _buildNowPlayingSections(),
-      title: 'Now Playing',
+      title: L.current.now_playing,
       systemIcon: 'play.circle.fill',
       emptyViewTitleVariants: ['Nothing Playing'],
       emptyViewSubtitleVariants: ['Start playing an episode'],
@@ -364,8 +378,8 @@ class CarPlayService {
       CPListSection(
         items: [
           CPListItem(
-            text: nowPlaying.title ?? 'Unknown Episode',
-            detailText: nowPlaying.podcast ?? 'Unknown Podcast',
+            text: nowPlaying.title ?? L.current.unknown_episode,
+            detailText: nowPlaying.podcast ?? L.current.unknown_podcast,
             image: nowPlaying.imageUrl,
             onPress: (complete, item) async {
               log.info('Now Playing tab item pressed - opening player');
@@ -398,8 +412,8 @@ class CarPlayService {
     // Now Playing and Saved are top-level tabs, so not included here
     final moreItems = [
       CPListItem(
-        text: 'Queue',
-        detailText: 'Up next',
+        text: L.current.queue,
+        detailText: L.current.car_up_next,
         onPress: (complete, item) {
           _showQueue();
           complete();
@@ -407,8 +421,8 @@ class CarPlayService {
         accessoryType: CPListItemAccessoryType.disclosureIndicator,
       ),
       CPListItem(
-        text: 'Downloads',
-        detailText: 'Downloaded episodes',
+        text: L.current.downloads,
+        detailText: L.current.car_downloaded_episodes,
         onPress: (complete, item) {
           _showDownloads();
           complete();
@@ -416,8 +430,8 @@ class CarPlayService {
         accessoryType: CPListItemAccessoryType.disclosureIndicator,
       ),
       CPListItem(
-        text: 'History',
-        detailText: 'Recently played',
+        text: L.current.history,
+        detailText: L.current.car_recently_played,
         onPress: (complete, item) {
           _showHistory();
           complete();
@@ -425,8 +439,8 @@ class CarPlayService {
         accessoryType: CPListItemAccessoryType.disclosureIndicator,
       ),
       CPListItem(
-        text: 'Podcasts',
-        detailText: 'Your subscriptions',
+        text: L.current.podcasts,
+        detailText: L.current.car_your_subscriptions,
         onPress: (complete, item) {
           _showPodcasts();
           complete();
@@ -434,8 +448,8 @@ class CarPlayService {
         accessoryType: CPListItemAccessoryType.disclosureIndicator,
       ),
       CPListItem(
-        text: 'Playlists',
-        detailText: 'Your playlists',
+        text: L.current.playlists,
+        detailText: L.current.car_your_playlists,
         onPress: (complete, item) {
           _showPlaylists();
           complete();
@@ -446,7 +460,7 @@ class CarPlayService {
 
     return CPListTemplate(
       sections: [CPListSection(items: moreItems)],
-      title: 'More',
+      title: L.current.more_label,
       systemIcon: 'ellipsis.circle.fill',
     );
   }
@@ -465,8 +479,8 @@ class CarPlayService {
       if (nowPlaying != null) {
         // Add a "Now Playing" header item that navigates to the now playing screen
         items.add(CPListItem(
-          text: '▶ Now Playing',
-          detailText: nowPlaying.title ?? 'Unknown Episode',
+          text: '▶ ${L.current.now_playing}',
+          detailText: nowPlaying.title ?? L.current.unknown_episode,
           image: nowPlaying.imageUrl,
           onPress: (complete, item) async {
             log.info('Now Playing item pressed - navigating to Now Playing screen');
@@ -482,16 +496,19 @@ class CarPlayService {
       if (pinepodsService != null && settingsService.pinepodsUserId != null) {
         try {
           final homeData = await pinepodsService!.getHomeOverview(settingsService.pinepodsUserId!);
+          // The playing episode's guid is its feed URL, so match it by id.
+          final playingId = _playingEpisodeId;
+          bool listed(int id) => id == playingId || episodes.any((e) => e.guid == 'pinepods_$id');
           // Add in-progress episodes first (limit to 5 for initial load)
           for (final ep in homeData.inProgressEpisodes.take(5)) {
-            if (!episodes.any((e) => e.guid == 'pinepods_${ep.episodeId}')) {
+            if (!listed(ep.episodeId)) {
               episodes.add(_convertHomeEpisode(ep));
             }
           }
           // Then recent episodes (limit to 10 total for CarPlay - keep it light)
           final remainingSlots = 10 - episodes.length;
           for (final ep in homeData.recentEpisodes.take(remainingSlots)) {
-            if (!episodes.any((e) => e.guid == 'pinepods_${ep.episodeId}')) {
+            if (!listed(ep.episodeId)) {
               episodes.add(_convertHomeEpisode(ep));
             }
           }
@@ -533,6 +550,55 @@ class CarPlayService {
     return items;
   }
 
+  /// The server queue minus the playing episode and finished ones, in queue
+  /// order. The queue lives on the server; the local queue is no longer used.
+  Future<List<PinepodsEpisode>> _loadUpNext() async {
+    if (!_isReady) return [];
+    try {
+      final queue = await pinepodsService!.getQueuedEpisodes(settingsService.pinepodsUserId!);
+      return upNextFrom(queue, playingEpisodeId: _playingEpisodeId, limit: _upNextRowLimit);
+    } catch (e) {
+      log.warning('Failed to load Up Next: $e');
+      return [];
+    }
+  }
+
+  @visibleForTesting
+  static List<PinepodsEpisode> upNextFrom(List<PinepodsEpisode> queue, {int? playingEpisodeId, int? limit}) {
+    final upNext = queue.where((ep) => ep.episodeId != playingEpisodeId && !ep.completed);
+    return (limit == null ? upNext : upNext.take(limit)).toList();
+  }
+
+  /// Artwork row of Up Next episodes: tapping artwork plays that episode,
+  /// tapping the row title opens the full queue.
+  CPListImageRowItem _buildUpNextRow(List<PinepodsEpisode> upNext) {
+    final episodes = upNext.map(_convertPinepodsEpisode).toList();
+    return CPListImageRowItem(
+      text: L.current.up_next_queue_label,
+      // iOS before 26
+      gridImages: episodes.map((ep) => ep.imageUrl ?? '').toList(),
+      imageTitles: episodes.map((ep) => _sanitizeForCarPlay(ep.title)).toList(),
+      // iOS 26+
+      elements: episodes
+          .map((ep) => CPListImageRowItemRowElement(
+                image: ep.imageUrl ?? '',
+                title: _sanitizeForCarPlay(ep.title),
+                subtitle: _sanitizeForCarPlay(ep.podcast),
+              ))
+          .toList(),
+      onPress: (complete, item) {
+        _showQueue();
+        complete();
+      },
+      onItemPress: (complete, item, index) async {
+        if (index != null && index >= 0 && index < episodes.length) {
+          await _playEpisode(episodes[index]);
+        }
+        complete();
+      },
+    );
+  }
+
   // MARK: - More Submenu Navigation
 
   void _showQueue() async {
@@ -540,7 +606,7 @@ class CarPlayService {
 
     final template = CPListTemplate(
       sections: [],
-      title: 'Queue',
+      title: L.current.queue,
       systemIcon: 'list.bullet',
       emptyViewTitleVariants: ['Queue Empty'],
       emptyViewSubtitleVariants: ['Add episodes to your queue'],
@@ -548,9 +614,10 @@ class CarPlayService {
 
     FlutterCarplay.push(template: template, animated: true);
 
+    if (!_isReady) return;
     try {
-      final queue = await repository.loadQueue();
-      final items = queue.take(50).map((ep) => _createEpisodeItem(ep)).toList();
+      final queue = await pinepodsService!.getQueuedEpisodes(settingsService.pinepodsUserId!);
+      final items = queue.take(50).map((ep) => _createEpisodeItem(_convertPinepodsEpisode(ep))).toList();
 
       await _flutterCarplay.updateListTemplateSections(
         elementId: template.uniqueId,
@@ -567,7 +634,7 @@ class CarPlayService {
 
     final template = CPListTemplate(
       sections: [],
-      title: 'Downloads',
+      title: L.current.downloads,
       systemIcon: 'arrow.down.circle.fill',
       emptyViewTitleVariants: ['No Downloads'],
       emptyViewSubtitleVariants: ['Downloaded episodes appear here'],
@@ -594,7 +661,7 @@ class CarPlayService {
 
     final template = CPListTemplate(
       sections: [],
-      title: 'History',
+      title: L.current.history,
       systemIcon: 'clock.fill',
       emptyViewTitleVariants: ['No History'],
       emptyViewSubtitleVariants: ['Your listening history will appear here'],
@@ -624,7 +691,7 @@ class CarPlayService {
 
     final template = CPListTemplate(
       sections: [],
-      title: 'Podcasts',
+      title: L.current.podcasts,
       systemIcon: 'mic.fill',
       emptyViewTitleVariants: ['No Podcasts'],
       emptyViewSubtitleVariants: ['Subscribe to podcasts to see them here'],
@@ -644,8 +711,8 @@ class CarPlayService {
             final cleanTitle = _sanitizeForCarPlay(podcast.title);
 
             items.add(CPListItem(
-              text: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Podcast',
-              detailText: 'Podcast',
+              text: cleanTitle.isNotEmpty ? cleanTitle : L.current.unknown_podcast,
+              detailText: L.current.podcast,
               // Images disabled - loading many podcast images crashes CarPlay
               image: null,
               onPress: (complete, item) {
@@ -733,7 +800,7 @@ class CarPlayService {
 
     final template = CPListTemplate(
       sections: [],
-      title: 'Playlists',
+      title: L.current.playlists,
       systemIcon: 'music.note.list',
       emptyViewTitleVariants: ['No Playlists'],
       emptyViewSubtitleVariants: ['Create playlists to see them here'],
@@ -747,7 +814,7 @@ class CarPlayService {
         final playlists = await pinepodsService!.getUserPlaylists(settingsService.pinepodsUserId!);
         final items = playlists.map((playlist) => CPListItem(
           text: playlist.name,
-          detailText: '${playlist.episodeCount ?? 0} episodes',
+          detailText: L.current.episodes_count(playlist.episodeCount ?? 0),
           onPress: (complete, item) {
             _showPlaylistEpisodes(playlist.playlistId.toString(), playlist.name);
             complete();
@@ -804,7 +871,7 @@ class CarPlayService {
   CPListItem _createEpisodeItem(Episode episode) {
     try {
       // Format duration and progress
-      String subtitle = episode.podcast ?? 'Unknown Podcast';
+      String subtitle = episode.podcast ?? L.current.unknown_podcast;
       if (episode.duration > 0) {
         final durationSec = episode.duration ~/ 1000;
         final minutes = durationSec ~/ 60;
@@ -822,7 +889,7 @@ class CarPlayService {
       }
 
       return CPListItem(
-        text: episode.title ?? 'Unknown Episode',
+        text: episode.title ?? L.current.unknown_episode,
         detailText: subtitle,
         image: episode.imageUrl?.isNotEmpty == true ? episode.imageUrl : null,
         onPress: (complete, item) {
@@ -834,8 +901,8 @@ class CarPlayService {
     } catch (e) {
       log.warning('Failed to create episode item for ${episode.title}: $e');
       return CPListItem(
-        text: episode.title ?? 'Unknown Episode',
-        detailText: episode.podcast ?? 'Unknown Podcast',
+        text: episode.title ?? L.current.unknown_episode,
+        detailText: episode.podcast ?? L.current.unknown_podcast,
         onPress: (complete, item) {
           _playEpisode(episode);
           complete();

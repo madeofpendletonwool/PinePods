@@ -34,6 +34,8 @@ import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
+import 'package:pinepods_mobile/ui/utils/l10n_labels.dart';
 import 'package:pinepods_mobile/ui/pinepods/collection_sheets.dart';
 
 // Sort direction for episodes within a podcast
@@ -221,7 +223,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(newValue ? 'Auto-download enabled' : 'Auto-download disabled'),
+          content: Text(newValue ? L.of(context)!.auto_download_enabled : L.of(context)!.auto_download_disabled),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -277,11 +279,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       if (!mounted) return;
       setState(() => _isAutoRefreshEnabled = newValue);
       messenger.showSnackBar(SnackBar(
-        content: Text(newValue ? 'Refreshing automatically' : 'Automatic refresh off'),
+        content: Text(newValue ? L.of(context)!.refreshing_automatically : L.of(context)!.automatic_refresh_off),
         duration: const Duration(seconds: 2),
       ));
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text("Couldn't change automatic refresh: $e")));
+      messenger.showSnackBar(SnackBar(content: Text(L.of(context)!.couldnt_change_auto_refresh(e.toString()))));
     }
   }
 
@@ -295,11 +297,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       final added = await _pinepodsService.refreshPodcast(podcastId);
       await _loadPodcastFeed();
       final message = added > 0
-          ? '$added new episode${added == 1 ? '' : 's'} added'
-          : (_isYoutube ? 'Checked the channel for new videos' : 'No new episodes');
+          ? L.current.new_episodes_added(added)
+          : (_isYoutube ? L.current.checked_channel_new_videos : L.current.no_new_episodes);
       messenger.showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text("Couldn't check for new episodes: $e")));
+      messenger.showSnackBar(SnackBar(content: Text(L.current.couldnt_check_new_episodes(e.toString()))));
     } finally {
       if (mounted) setState(() => _isRefreshingNow = false);
     }
@@ -343,9 +345,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         _resolveArtColor();
       }
       await _loadPodcastFeed();
-      messenger.showSnackBar(const SnackBar(content: Text('Podcast details refreshed from the feed')));
+      messenger.showSnackBar(SnackBar(content: Text(L.current.podcast_details_refreshed)));
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text("Couldn't refresh from the feed: $e")));
+      messenger.showSnackBar(SnackBar(content: Text(L.current.couldnt_refresh_from_feed(e.toString()))));
     } finally {
       if (mounted) setState(() => _isRefreshingDetails = false);
     }
@@ -386,7 +388,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(newValue ? 'Auto-play next enabled' : 'Auto-play next disabled'),
+              content: Text(newValue ? L.of(context)!.auto_play_next_enabled : L.of(context)!.auto_play_next_disabled),
               duration: const Duration(seconds: 2),
             ),
           );
@@ -505,7 +507,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     child: Text(
-                      'AI Features',
+                      L.of(context)!.ai_features_title,
                       style: Theme.of(context)
                           .textTheme
                           .titleLarge!
@@ -513,27 +515,27 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     ),
                   ),
                   SwitchListTile(
-                    title: const Text('Auto-transcribe'),
-                    subtitle: const Text(
-                        'Transcribe new episodes automatically as they arrive.'),
+                    title: Text(L.of(context)!.auto_transcribe),
+                    subtitle: Text(
+                        L.of(context)!.auto_transcribe_description),
                     value: _autoTranscribe,
                     onChanged: (v) => toggle('transcribe', v),
                   ),
                   SwitchListTile(
-                    title: const Text('Auto-detect ads'),
+                    title: Text(L.of(context)!.auto_detect_ads),
                     subtitle: Text(_autoTranscribe
-                        ? 'Scan transcripts for ad segments to skip.'
-                        : 'Enable auto-transcribe first.'),
+                        ? L.of(context)!.auto_detect_ads_description
+                        : L.of(context)!.enable_auto_transcribe_first),
                     value: _autoAdDetect,
                     onChanged:
                         _autoTranscribe ? (v) => toggle('ad_detect', v) : null,
                   ),
                   if (_autoTranscribe && _autoAdDetect)
                     SwitchListTile(
-                      title: const Text('Auto-skip detected ads'),
+                      title: Text(L.of(context)!.auto_skip_detected_ads),
                       subtitle: Text(_adSkipAutoActivate
-                          ? 'Skip detected ads automatically.'
-                          : 'Require confirmation before skipping.'),
+                          ? L.of(context)!.auto_skip_ads_on
+                          : L.of(context)!.auto_skip_ads_off),
                       value: _adSkipAutoActivate,
                       onChanged: (v) => toggle('ad_skip_auto', v),
                     ),
@@ -602,22 +604,21 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                    child: Text('Server downloads',
+                    child: Text(L.of(context)!.server_downloads,
                         style: theme.textTheme.titleLarge!
                             .copyWith(fontWeight: FontWeight.bold)),
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
-                      'Downloads kept on your Pinepods server (separate from '
-                      'downloads on this device).',
+                      L.of(context)!.server_downloads_description,
                       style: theme.textTheme.bodySmall,
                     ),
                   ),
                   SwitchListTile(
-                    title: const Text('Auto-download to server'),
-                    subtitle: const Text(
-                        'Download new episodes to the server as they arrive.'),
+                    title: Text(L.of(context)!.auto_download_to_server),
+                    subtitle: Text(
+                        L.of(context)!.auto_download_to_server_description),
                     value: autoDownload,
                     onChanged: (v) async {
                       if (await _pinepodsService.setServerAutoDownload(
@@ -630,10 +631,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     },
                   ),
                   ListTile(
-                    title: const Text('Delete when finished'),
-                    subtitle: const Text(
-                        'Remove the server download about an hour after you '
-                        'finish the episode.'),
+                    title: Text(L.of(context)!.delete_when_finished),
+                    subtitle: Text(
+                        L.of(context)!.delete_server_when_finished_description),
                     trailing: DropdownButton<String>(
                       value: whenFinished,
                       onChanged: (v) async {
@@ -650,16 +650,16 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                         DropdownMenuItem(
                             value: 'default',
                             child: Text(
-                                'Default (${deleteDefault ? 'on' : 'off'})')),
-                        const DropdownMenuItem(value: 'on', child: Text('On')),
-                        const DropdownMenuItem(value: 'off', child: Text('Off')),
+                                L.of(context)!.default_value(deleteDefault ? L.of(context)!.option_on : L.of(context)!.option_off))),
+                        DropdownMenuItem(value: 'on', child: Text(L.of(context)!.option_on)),
+                        DropdownMenuItem(value: 'off', child: Text(L.of(context)!.option_off)),
                       ],
                     ),
                   ),
                   ListTile(
-                    title: const Text('Delete after'),
-                    subtitle: const Text(
-                        'Remove server downloads older than this.'),
+                    title: Text(L.of(context)!.delete_after),
+                    subtitle: Text(
+                        L.of(context)!.delete_server_downloads_after_description),
                     trailing: DropdownButton<int?>(
                       value: afterDays,
                       onChanged: (v) async {
@@ -674,10 +674,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                         DropdownMenuItem<int?>(
                             value: null,
                             child:
-                                Text('Default (${deleteAfterDaysLabel(daysDefault)})')),
+                                Text(L.of(context)!.default_value(deleteAfterDaysLabel(context, daysDefault)))),
                         for (final d in {...deleteAfterDayChoices, if (afterDays != null) afterDays!})
                           DropdownMenuItem<int?>(
-                              value: d, child: Text(deleteAfterDaysLabel(d))),
+                              value: d, child: Text(deleteAfterDaysLabel(context, d))),
                       ],
                     ),
                   ),
@@ -722,22 +722,21 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                    child: Text('Device downloads',
+                    child: Text(L.of(context)!.device_downloads,
                         style: theme.textTheme.titleLarge!
                             .copyWith(fontWeight: FontWeight.bold)),
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
-                      'Downloads kept on this device (separate from '
-                      'downloads on your server).',
+                      L.of(context)!.device_downloads_description,
                       style: theme.textTheme.bodySmall,
                     ),
                   ),
                   SwitchListTile(
-                    title: const Text('Auto-download to device'),
-                    subtitle: const Text(
-                        'Download new episodes to this device as they arrive.'),
+                    title: Text(L.of(context)!.auto_download_to_device),
+                    subtitle: Text(
+                        L.of(context)!.auto_download_to_device_description),
                     value: _isAutoDownloadEnabled,
                     onChanged: (_) async {
                       await _toggleAutoDownload();
@@ -745,10 +744,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     },
                   ),
                   ListTile(
-                    title: const Text('Delete when finished'),
-                    subtitle: const Text(
-                        'Remove the download about an hour after you finish '
-                        'the episode.'),
+                    title: Text(L.of(context)!.delete_when_finished),
+                    subtitle: Text(
+                        L.of(context)!.delete_device_when_finished_description),
                     trailing: DropdownButton<String>(
                       value: whenFinished,
                       onChanged: (v) async {
@@ -761,15 +759,15 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                         DropdownMenuItem(
                             value: 'default',
                             child: Text(
-                                'Default (${settings.deleteDownloadedPlayedEpisodes ? 'on' : 'off'})')),
-                        const DropdownMenuItem(value: 'on', child: Text('On')),
-                        const DropdownMenuItem(value: 'off', child: Text('Off')),
+                                L.of(context)!.default_value(settings.deleteDownloadedPlayedEpisodes ? L.of(context)!.option_on : L.of(context)!.option_off))),
+                        DropdownMenuItem(value: 'on', child: Text(L.of(context)!.option_on)),
+                        DropdownMenuItem(value: 'off', child: Text(L.of(context)!.option_off)),
                       ],
                     ),
                   ),
                   ListTile(
-                    title: const Text('Delete after'),
-                    subtitle: const Text('Remove downloads older than this.'),
+                    title: Text(L.of(context)!.delete_after),
+                    subtitle: Text(L.of(context)!.delete_device_downloads_after_description),
                     trailing: DropdownButton<int?>(
                       value: afterDays,
                       onChanged: (v) async {
@@ -781,10 +779,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                         DropdownMenuItem<int?>(
                             value: null,
                             child: Text(
-                                'Default (${deleteAfterDaysLabel(settings.deleteDownloadsAfterDays)})')),
+                                L.of(context)!.default_value(deleteAfterDaysLabel(context, settings.deleteDownloadsAfterDays)))),
                         for (final d in {...deleteAfterDayChoices, if (afterDays != null) afterDays!})
                           DropdownMenuItem<int?>(
-                              value: d, child: Text(deleteAfterDaysLabel(d))),
+                              value: d, child: Text(deleteAfterDaysLabel(context, d))),
                       ],
                     ),
                   ),
@@ -814,7 +812,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       cutoff = results[0] as int?;
       filter = results[1] as YouTubeVideoFilter;
     } catch (e) {
-      _showSnackBar("Couldn't load video settings: $e", Colors.red);
+      _showSnackBar(L.current.couldnt_load_video_settings(e.toString()), Colors.red);
       return;
     }
     if (!mounted) return;
@@ -858,11 +856,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                 ),
               );
               navigator.pop();
-              messenger.showSnackBar(const SnackBar(content: Text('Video settings saved')));
+              messenger.showSnackBar(SnackBar(content: Text(L.current.video_settings_saved)));
             } catch (e) {
               setSheetState(() => saving = false);
               messenger.showSnackBar(
-                  SnackBar(content: Text("Couldn't save: ${e.toString().replaceFirst('Exception: ', '')}")));
+                  SnackBar(content: Text(L.current.couldnt_save(e.toString().replaceFirst('Exception: ', '')))));
             }
           }
 
@@ -873,18 +871,17 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Video settings',
+                  Text(L.of(context)!.video_settings,
                       style: theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Text(
-                      'Leave a field empty for no limit. Older videos are removed from your server; '
-                      'length and title limits apply to new videos.',
+                      L.of(context)!.video_settings_description,
                       style: theme.textTheme.bodySmall),
                   const SizedBox(height: 16),
                   TextField(
                     controller: cutoffCtl,
                     keyboardType: TextInputType.number,
-                    decoration: deco('Keep videos for', suffix: 'days'),
+                    decoration: deco(L.of(context)!.keep_videos_for, suffix: L.of(context)!.unit_days),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -893,7 +890,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                         child: TextField(
                           controller: minCtl,
                           keyboardType: TextInputType.number,
-                          decoration: deco('Shortest', suffix: 'min'),
+                          decoration: deco(L.of(context)!.shortest, suffix: L.of(context)!.unit_min),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -901,7 +898,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                         child: TextField(
                           controller: maxCtl,
                           keyboardType: TextInputType.number,
-                          decoration: deco('Longest', suffix: 'min'),
+                          decoration: deco(L.of(context)!.longest, suffix: L.of(context)!.unit_min),
                         ),
                       ),
                     ],
@@ -910,14 +907,14 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                   TextField(
                     controller: titleCtl,
                     maxLength: 255,
-                    decoration: deco('Title contains', hint: 'e.g. Full Episode'),
+                    decoration: deco(L.of(context)!.title_contains, hint: L.of(context)!.title_contains_hint),
                   ),
                   const SizedBox(height: 4),
                   FilledButton(
                     onPressed: saving ? null : save,
                     child: saving
                         ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('Save'),
+                        : Text(L.of(context)!.save),
                   ),
                 ],
               ),
@@ -1147,7 +1144,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     if (userId == null ||
         settings.pinepodsServer == null ||
         settings.pinepodsApiKey == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -1173,10 +1170,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     });
 
     if (!success) {
-      _showSnackBar('Failed to update favorite', Colors.red);
+      _showSnackBar(L.of(context)!.failed_to_update_favorite, Colors.red);
     } else {
       _showSnackBar(
-        newValue ? 'Added to favorites' : 'Removed from favorites',
+        newValue ? L.of(context)!.added_to_favorites : L.of(context)!.removed_from_favorites,
         Colors.green,
       );
     }
@@ -1294,7 +1291,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         } catch (e) {
           print('Error loading episodes from RSS feed: $e');
           setState(() {
-            _errorMessage = 'Failed to load podcast feed';
+            _errorMessage = L.of(context)!.failed_to_load_podcast_feed;
             _isLoading = false;
           });
           return;
@@ -1311,7 +1308,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       setState(() {
         _episodes = [];
         _isLoading = false;
-        _errorMessage = 'Failed to load episodes';
+        _errorMessage = L.of(context)!.failed_to_load_episodes;
       });
     }
   }
@@ -1361,7 +1358,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in to PinePods server', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in_to_server, Colors.red);
       return;
     }
 
@@ -1371,23 +1368,23 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         context: context,
         barrierDismissible: false, // Prevent dismissing by tapping outside
         builder: (context) => AlertDialog(
-          title: Text(_isYoutube ? 'Unsubscribe' : 'Unfollow Podcast'),
+          title: Text(_isYoutube ? L.of(context)!.unsubscribe : L.of(context)!.unfollow_podcast),
           content: Text(
             _isYoutube
-                ? 'Unsubscribe from "${_podcast.title}"? Its videos and your history with them are removed.'
-                : 'Are you sure you want to unfollow "${_podcast.title}"?\n\nThis will remove the podcast and all episode history from your library.',
+                ? L.of(context)!.unsubscribe_channel_confirm(_podcast.title)
+                : L.of(context)!.unfollow_podcast_confirm(_podcast.title),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+              child: Text(L.of(context)!.cancel_button_label),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
               style: TextButton.styleFrom(
                 foregroundColor: Colors.red,
               ),
-              child: Text(_isYoutube ? 'Unsubscribe' : 'Unfollow'),
+              child: Text(_isYoutube ? L.of(context)!.unsubscribe : L.of(context)!.unfollow),
             ),
           ],
         ),
@@ -1425,7 +1422,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             _peoplePodcastId = null;
           });
           widget.onFollowChanged?.call(false);
-          _showSnackBar(_isYoutube ? 'Unsubscribed' : 'Podcast removed', Colors.orange);
+          _showSnackBar(_isYoutube ? L.current.unsubscribed : L.current.podcast_removed, Colors.orange);
         }
       } else {
         print('PinePods: Attempting to add podcast');
@@ -1444,7 +1441,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           });
           widget.onFollowChanged?.call(true);
           _showSnackBar(
-              _isYoutube ? 'Subscribed. Videos are being added in the background.' : 'Podcast added', Colors.green);
+              _isYoutube ? L.current.subscribed_videos_adding : L.current.podcast_added, Colors.green);
         }
       }
 
@@ -1458,11 +1455,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         setState(() {
           _isFollowing = oldFollowingState;
         });
-        _showSnackBar('Failed to ${oldFollowingState ? 'remove' : 'add'} podcast', Colors.red);
+        _showSnackBar(oldFollowingState ? L.current.failed_to_remove_podcast : L.current.failed_to_add_podcast, Colors.red);
       }
     } catch (e) {
       print('PinePods: Error in _toggleFollow: $e');
-      _showSnackBar('Error: $e', Colors.red);
+      _showSnackBar(L.current.error_with_detail(e.toString()), Colors.red);
     } finally {
       // Always reset loading state
       if (mounted) {
@@ -1573,7 +1570,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
   Future<void> _playEpisode(PinepodsEpisode episode) async {
     if (_audioService == null) {
-      _showSnackBar('Audio service not available', Colors.red);
+      _showSnackBar(L.of(context)!.audio_service_not_available, Colors.red);
       return;
     }
 
@@ -1587,7 +1584,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         resume: episode.isStarted,
       );
     } catch (e) {
-      _showSnackBar('Failed to play episode: $e', Colors.red);
+      _showSnackBar(L.current.failed_to_play_episode(e.toString()), Colors.red);
     } finally {
       if (mounted) setState(() => _pendingEpisode = null);
     }
@@ -1600,7 +1597,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -1618,12 +1615,12 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, saved: true);
           _filterEpisodes();
         });
-        _showSnackBar('Episode saved!', Colors.green);
+        _showSnackBar(L.current.episode_saved, Colors.green);
       } else {
-        _showSnackBar('Failed to save episode', Colors.red);
+        _showSnackBar(L.current.failed_to_save_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error saving episode: $e', Colors.red);
+      _showSnackBar(L.current.error_saving_episode(e.toString()), Colors.red);
     }
 
     _hideEpisodeContextMenu();
@@ -1636,7 +1633,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -1654,12 +1651,12 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, saved: false);
           _filterEpisodes();
         });
-        _showSnackBar('Removed from saved episodes', Colors.orange);
+        _showSnackBar(L.current.removed_from_saved_episodes, Colors.orange);
       } else {
-        _showSnackBar('Failed to remove saved episode', Colors.red);
+        _showSnackBar(L.current.failed_to_remove_saved_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error removing saved episode: $e', Colors.red);
+      _showSnackBar(L.current.error_removing_saved_episode(e.toString()), Colors.red);
     }
 
     _hideEpisodeContextMenu();
@@ -1672,7 +1669,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -1690,12 +1687,12 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: true);
           _filterEpisodes();
         });
-        _showSnackBar('Episode download started!', Colors.green);
+        _showSnackBar(L.current.episode_download_started_excl, Colors.green);
       } else {
-        _showSnackBar('Failed to download episode', Colors.red);
+        _showSnackBar(L.current.failed_to_download_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error downloading episode: $e', Colors.red);
+      _showSnackBar(L.current.error_downloading_episode(e.toString()), Colors.red);
     }
 
     _hideEpisodeContextMenu();
@@ -1708,7 +1705,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -1726,12 +1723,12 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: false);
           _filterEpisodes();
         });
-        _showSnackBar('Episode deleted from server', Colors.orange);
+        _showSnackBar(L.current.episode_deleted_from_server, Colors.orange);
       } else {
-        _showSnackBar('Failed to delete episode', Colors.red);
+        _showSnackBar(L.current.failed_to_delete_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error deleting episode: $e', Colors.red);
+      _showSnackBar(L.current.error_deleting_episode(e.toString()), Colors.red);
     }
 
     _hideEpisodeContextMenu();
@@ -1744,7 +1741,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -1763,7 +1760,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: false);
             _filterEpisodes();
           });
-          _showSnackBar('Removed from queue', Colors.orange);
+          _showSnackBar(L.current.removed_from_queue, Colors.orange);
         }
       } else {
         success = await _pinepodsService.queueEpisode(
@@ -1777,15 +1774,15 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: true);
             _filterEpisodes();
           });
-          _showSnackBar('Added to queue!', Colors.green);
+          _showSnackBar(L.current.added_to_queue_excl, Colors.green);
         }
       }
 
       if (!success) {
-        _showSnackBar('Failed to update queue', Colors.red);
+        _showSnackBar(L.current.failed_to_update_queue, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error updating queue: $e', Colors.red);
+      _showSnackBar(L.current.error_updating_queue(e.toString()), Colors.red);
     }
 
     _hideEpisodeContextMenu();
@@ -1798,7 +1795,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -1816,9 +1813,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: false);
             _filterEpisodes();
           });
-          _showSnackBar('Episode marked as incomplete', Colors.green);
+          _showSnackBar(L.current.episode_marked_incomplete, Colors.green);
         } else {
-          _showSnackBar('Failed to mark episode incomplete', Colors.red);
+          _showSnackBar(L.current.failed_to_mark_incomplete, Colors.red);
         }
       } else {
         final success = await _pinepodsService.markEpisodeCompleted(
@@ -1831,13 +1828,13 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: true);
             _filterEpisodes();
           });
-          _showSnackBar('Episode marked as complete', Colors.green);
+          _showSnackBar(L.current.episode_marked_complete, Colors.green);
         } else {
-          _showSnackBar('Failed to mark episode complete', Colors.red);
+          _showSnackBar(L.current.failed_to_mark_complete, Colors.red);
         }
       }
     } catch (e) {
-      _showSnackBar('Error marking episode complete: $e', Colors.red);
+      _showSnackBar(L.current.error_marking_complete(e.toString()), Colors.red);
     }
 
     _hideEpisodeContextMenu();
@@ -1849,9 +1846,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final success = await LocalDownloadUtils.localDownloadEpisode(context, episode);
     
     if (success) {
-      _showSnackBar('Episode download started', Colors.green);
+      _showSnackBar(L.current.episode_download_started, Colors.green);
     } else {
-      _showSnackBar('Failed to start download', Colors.red);
+      _showSnackBar(L.current.failed_to_start_download, Colors.red);
     }
 
     _hideEpisodeContextMenu();
@@ -1864,11 +1861,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     
     if (deletedCount > 0) {
       _showSnackBar(
-        'Deleted $deletedCount local download${deletedCount > 1 ? 's' : ''}', 
+        L.current.deleted_local_downloads(deletedCount), 
         Colors.orange
       );
     } else {
-      _showSnackBar('Local download not found', Colors.red);
+      _showSnackBar(L.current.local_download_not_found, Colors.red);
     }
 
     _hideEpisodeContextMenu();
@@ -1959,7 +1956,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
               Row(
                 children: [
                   Expanded(
-                    child: Text('${_selected.length} selected',
+                    child: Text(L.of(context)!.selected_count(_selected.length),
                         style: theme.textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w600)),
                   ),
                   if (_bulkBusy)
@@ -1975,10 +1972,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                         _selected.addAll(allIds);
                       }
                     }),
-                    child: Text(allSelected ? 'Select none' : 'Select all'),
+                    child: Text(allSelected ? L.of(context)!.select_none : L.of(context)!.select_all),
                   ),
                   IconButton(
-                    tooltip: 'Done',
+                    tooltip: L.of(context)!.done,
                     icon: const Icon(PhosphorIconsRegular.x),
                     onPressed: () => _setSelecting(false),
                   ),
@@ -1989,23 +1986,23 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                 child: ListView(
                   scrollDirection: Axis.horizontal,
                   children: [
-                    action(PhosphorIconsRegular.folderPlus, 'Collection', () {
+                    action(PhosphorIconsRegular.folderPlus, L.of(context)!.collection_action, () {
                       showAddToCollectionSheet(context,
                           episodes: [for (final id in _selectedIds) (id, _isYoutube)]);
                     }),
                     if (_aiAvailable && !_isYoutube)
-                      action(PhosphorIconsRegular.textAa, 'Transcribe', () {
+                      action(PhosphorIconsRegular.textAa, L.of(context)!.transcribe, () {
                         // Kept selected so the same episodes can go into a collection too.
                         _runBulk(_pinepodsService.bulkTranscribeEpisodes, keepSelection: true);
                       }),
-                    action(PhosphorIconsRegular.queue, 'Queue',
+                    action(PhosphorIconsRegular.queue, L.of(context)!.queue,
                         () => _bulkAction('queue_episodes', apply: (e) => _updateEpisodeProperty(e, queued: true))),
-                    action(PhosphorIconsRegular.bookmarkSimple, 'Save',
+                    action(PhosphorIconsRegular.bookmarkSimple, L.of(context)!.save,
                         () => _bulkAction('save_episodes', apply: (e) => _updateEpisodeProperty(e, saved: true))),
-                    action(PhosphorIconsRegular.checkCircle, 'Complete',
+                    action(PhosphorIconsRegular.checkCircle, L.of(context)!.complete_action,
                         () => _bulkAction('mark_episodes_completed',
                             apply: (e) => _updateEpisodeProperty(e, completed: true))),
-                    action(PhosphorIconsRegular.cloudArrowDown, 'Download',
+                    action(PhosphorIconsRegular.cloudArrowDown, L.of(context)!.download,
                         () => _bulkAction('download_episodes')),
                   ],
                 ),
@@ -2138,8 +2135,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final muted = theme.hintColor;
     final count = _episodes.isNotEmpty ? _episodes.length : _podcast.episodeCount;
     final meta = [
-      if (count > 0) '$count ${_isYoutube ? 'video' : 'episode'}${count == 1 ? '' : 's'}',
-      if (_podcast.explicit) 'Explicit',
+      if (count > 0) _isYoutube ? L.of(context)!.videos_count(count) : L.of(context)!.episodes_count(count),
+      if (_podcast.explicit) L.of(context)!.explicit,
     ].join('  ·  ');
 
     return DecoratedBox(
@@ -2210,15 +2207,15 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             if (_credits.people.isNotEmpty || _peoplePodcastId != null) ...[
               const SizedBox(height: 16),
               PeopleStrip(
-                title: 'Hosts',
+                title: L.of(context)!.hosts,
                 people: _credits.people,
                 onAdd: _peoplePodcastId != null ? _addPeople : null,
-                emptyPrompt: 'Who hosts this show? Add them so everyone can find them.',
+                emptyPrompt: L.of(context)!.hosts_empty_prompt,
               ),
             ],
             if (_credits.guests.isNotEmpty) ...[
               const SizedBox(height: 16),
-              PeopleStrip(title: 'Guests', people: _credits.guests, showEpisodeCount: true),
+              PeopleStrip(title: L.of(context)!.guests, people: _credits.guests, showEpisodeCount: true),
             ],
           ],
         ),
@@ -2246,7 +2243,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         icon: _isFollowButtonLoading
             ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: onAccent))
             : const Icon(PhosphorIconsBold.plus, size: 18),
-        label: Text(_isYoutube ? 'Subscribe' : 'Follow'),
+        label: Text(_isYoutube ? L.of(context)!.subscribe : L.of(context)!.follow),
       );
     } else {
       final latest = _latestUnplayed;
@@ -2257,7 +2254,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         icon: starting
             ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: onAccent))
             : const Icon(PhosphorIconsFill.play, size: 18),
-        label: Text(latest != null && latest.isStarted ? 'Resume latest' : 'Play latest'),
+        label: Text(latest != null && latest.isStarted ? L.of(context)!.resume_latest : L.of(context)!.play_latest),
       );
     }
 
@@ -2267,7 +2264,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         if (_isFollowing) ...[
           const SizedBox(width: 10),
           CircleAction(
-            tooltip: _isYoutube ? 'Unsubscribe' : 'Unfollow',
+            tooltip: _isYoutube ? L.of(context)!.unsubscribe : L.of(context)!.unfollow,
             icon: _isFollowButtonLoading
                 ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: accent))
                 : Icon(PhosphorIconsBold.check, color: accent, size: 20),
@@ -2277,7 +2274,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         if (_podcast.id > 0) ...[
           const SizedBox(width: 10),
           CircleAction(
-            tooltip: _isFavorite ? 'Remove from favorites' : 'Add to favorites',
+            tooltip: _isFavorite ? L.of(context)!.remove_from_favorites : L.of(context)!.add_to_favorites,
             icon: Icon(
               _isFavorite ? PhosphorIconsFill.star : PhosphorIconsRegular.star,
               color: _isFavorite ? Colors.amber : softNeutral(theme).withOpacity(0.8),
@@ -2294,7 +2291,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
   Widget _buildOptionsMenu(ThemeData theme) {
     return PopupMenuButton<String>(
-      tooltip: 'Podcast options',
+      tooltip: L.of(context)!.podcast_options,
       onSelected: (value) {
         switch (value) {
           case 'device_downloads':
@@ -2328,34 +2325,34 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       },
       itemBuilder: (context) => [
         if (_isFollowing && _podcast.id > 0) ...[
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: 'device_downloads',
             child: ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(PhosphorIconsRegular.deviceMobile),
-              title: Text('Device downloads'),
+              leading: const Icon(PhosphorIconsRegular.deviceMobile),
+              title: Text(L.of(context)!.device_downloads),
             ),
           ),
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: 'server_downloads',
             child: ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(PhosphorIconsRegular.hardDrives),
-              title: Text('Server downloads'),
+              leading: const Icon(PhosphorIconsRegular.hardDrives),
+              title: Text(L.of(context)!.server_downloads),
             ),
           ),
           CheckedPopupMenuItem<String>(
             value: 'autoplay',
             checked: _isAutoPlayNextEnabled,
-            child: const Text('Auto-play next'),
+            child: Text(L.of(context)!.auto_play_next),
           ),
           if (_isYoutube)
-            const PopupMenuItem<String>(
+            PopupMenuItem<String>(
               value: 'youtube',
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(PhosphorIconsRegular.slidersHorizontal),
-                title: Text('Video settings'),
+                leading: const Icon(PhosphorIconsRegular.slidersHorizontal),
+                title: Text(L.of(context)!.video_settings),
               ),
             ),
           PopupMenuItem<String>(
@@ -2364,31 +2361,31 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             child: ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(PhosphorIconsRegular.arrowsClockwise),
-              title: Text(_isYoutube ? 'Check for new videos' : 'Check for new episodes'),
+              title: Text(_isYoutube ? L.of(context)!.check_for_new_videos : L.of(context)!.check_for_new_episodes),
             ),
           ),
           CheckedPopupMenuItem<String>(
             value: 'auto_refresh',
             checked: _isAutoRefreshEnabled,
-            child: const Text('Refresh automatically'),
+            child: Text(L.of(context)!.refresh_automatically),
           ),
           if (!_isYoutube && !_isLocal)
             PopupMenuItem<String>(
               value: 'refresh_details',
               enabled: !_isRefreshingDetails,
-              child: const ListTile(
+              child: ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(PhosphorIconsRegular.article),
-                title: Text('Refresh details from feed'),
+                leading: const Icon(PhosphorIconsRegular.article),
+                title: Text(L.of(context)!.refresh_details_from_feed),
               ),
             ),
           if (_aiAvailable)
-            const PopupMenuItem<String>(
+            PopupMenuItem<String>(
               value: 'ai',
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(PhosphorIconsRegular.sparkle),
-                title: Text('AI features'),
+                leading: const Icon(PhosphorIconsRegular.sparkle),
+                title: Text(L.of(context)!.ai_features),
               ),
             ),
           const PopupMenuDivider(),
@@ -2400,8 +2397,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             contentPadding: EdgeInsets.zero,
             leading: Icon(_isFollowing ? PhosphorIconsRegular.minusCircle : PhosphorIconsRegular.plusCircle),
             title: Text(_isYoutube
-                ? (_isFollowing ? 'Unsubscribe' : 'Subscribe')
-                : (_isFollowing ? 'Unfollow' : 'Follow')),
+                ? (_isFollowing ? L.of(context)!.unsubscribe : L.of(context)!.subscribe)
+                : (_isFollowing ? L.of(context)!.unfollow : L.of(context)!.follow)),
           ),
         ),
       ],
@@ -2430,8 +2427,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     }
     if (_errorMessage != null) {
       return [
-        message(PhosphorIconsRegular.warningCircle, _errorMessage!, 'Check your connection and try again.',
-            action: FilledButton.tonal(onPressed: _loadPodcastFeed, child: const Text('Retry'))),
+        message(PhosphorIconsRegular.warningCircle, _errorMessage!, L.of(context)!.check_connection_try_again,
+            action: FilledButton.tonal(onPressed: _loadPodcastFeed, child: Text(L.of(context)!.retry))),
       ];
     }
     if (_episodes.isEmpty) {
@@ -2439,16 +2436,16 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         message(
           PhosphorIconsRegular.info,
           _isYoutube
-              ? (_isFollowing ? 'No videos yet' : 'Videos available after subscribing')
-              : (_isFollowing ? 'No episodes found' : 'Episodes available after following'),
+              ? (_isFollowing ? L.of(context)!.no_videos_yet : L.of(context)!.videos_available_after_subscribing)
+              : (_isFollowing ? L.of(context)!.no_episodes_found : L.of(context)!.episodes_available_after_following),
           _isYoutube
               ? (_isFollowing
-                  ? 'Your server is still adding this channel\'s videos, or none match its video settings'
-                  : 'Subscribe to add this channel to your library and play its videos')
+                  ? L.of(context)!.channel_videos_still_adding
+                  : L.of(context)!.subscribe_channel_prompt)
               : _isFollowing
-                  ? 'Episodes from your PinePods library will appear here'
-                  : 'Follow this podcast to add it to your library and view episodes',
-          action: _isFollowing ? FilledButton.tonal(onPressed: _loadPodcastFeed, child: const Text('Retry')) : null,
+                  ? L.of(context)!.library_episodes_appear_here
+                  : L.of(context)!.follow_podcast_prompt,
+          action: _isFollowing ? FilledButton.tonal(onPressed: _loadPodcastFeed, child: Text(L.of(context)!.retry)) : null,
         ),
       ];
     }
@@ -2458,8 +2455,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       if (_filteredEpisodes.isEmpty)
         message(
           PhosphorIconsRegular.magnifyingGlassMinus,
-          'No episodes found',
-          _searchQuery.isNotEmpty ? 'No episodes match "$_searchQuery"' : 'No episodes match this filter',
+          L.of(context)!.no_episodes_found,
+          _searchQuery.isNotEmpty ? L.of(context)!.no_episodes_match_query(_searchQuery) : L.of(context)!.no_episodes_match_filter,
         )
       else
         _buildEpisodesList(),
@@ -2479,11 +2476,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     return ListToolbar<EpisodeSortDirection>(
       accent: accent,
       searchController: _searchController,
-      searchHint: 'Search episodes',
+      searchHint: L.of(context)!.search_episodes,
       filters: [
         for (final f in _EpisodeFilter.values)
           ToolbarFilter(
-            label: f.label,
+            label: f.label(context),
             selected: f == current,
             onTap: () {
               _applyEpisodeFilter(f);
@@ -2491,13 +2488,13 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             },
           ),
       ],
-      sortOptions: const {
-        EpisodeSortDirection.newestFirst: 'Newest first',
-        EpisodeSortDirection.oldestFirst: 'Oldest first',
-        EpisodeSortDirection.shortestFirst: 'Shortest first',
-        EpisodeSortDirection.longestFirst: 'Longest first',
-        EpisodeSortDirection.titleAZ: 'Title A–Z',
-        EpisodeSortDirection.titleZA: 'Title Z–A',
+      sortOptions: {
+        EpisodeSortDirection.newestFirst: L.of(context)!.sort_newest_first,
+        EpisodeSortDirection.oldestFirst: L.of(context)!.sort_oldest_first,
+        EpisodeSortDirection.shortestFirst: L.of(context)!.sort_shortest_first,
+        EpisodeSortDirection.longestFirst: L.of(context)!.sort_longest_first,
+        EpisodeSortDirection.titleAZ: L.of(context)!.sort_title_az,
+        EpisodeSortDirection.titleZA: L.of(context)!.sort_title_za,
       },
       sortValue: _sortDirection,
       onSort: (value) {
@@ -2510,7 +2507,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       trailing: [
         if (_isFollowing && _episodes.any((e) => e.episodeId > 0))
           IconButton(
-            tooltip: _selecting ? 'Done selecting' : 'Select episodes',
+            tooltip: _selecting ? L.of(context)!.done_selecting : L.of(context)!.select_episodes,
             icon: Icon(_selecting ? PhosphorIconsFill.checkSquare : PhosphorIconsRegular.checkSquare,
                 color: _selecting ? accent : null),
             onPressed: () => _setSelecting(!_selecting),
@@ -2590,13 +2587,17 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 }
 
 enum _EpisodeFilter {
-  all('All'),
-  unplayed('Unplayed'),
-  inProgress('In progress'),
-  played('Played');
+  all,
+  unplayed,
+  inProgress,
+  played;
 
-  final String label;
-  const _EpisodeFilter(this.label);
+  String label(BuildContext context) => switch (this) {
+        all => L.of(context)!.filter_all,
+        unplayed => L.of(context)!.episode_filter_unplayed_label,
+        inProgress => L.of(context)!.filter_in_progress,
+        played => L.of(context)!.episode_filter_played_label,
+      };
 }
 
 /// Lowercased search text and parsed date, computed once per episode instead
@@ -2645,7 +2646,7 @@ class _ExpandableDescriptionState extends State<_ExpandableDescription> {
             ),
             const SizedBox(height: 2),
             Text(
-              _expanded ? 'Less' : 'More',
+              _expanded ? L.of(context)!.less : L.of(context)!.more_label,
               style: TextStyle(fontSize: 13, color: widget.accent, fontWeight: FontWeight.w600),
             ),
           ],
@@ -2778,7 +2779,7 @@ class _PendingMiniPlayerState extends State<_PendingMiniPlayer>
   }
 }
 
-/// Shown under "Auto-detect ads": whether ads will be found on the copy that
+/// Shown under L.of(context)!.auto_detect_ads: whether ads will be found on the copy that
 /// gets played. Many podcasts insert different ads each time an episode is
 /// fetched, so only a server download keeps detection and playback on one copy.
 class _AdDownloadNotice extends StatelessWidget {
@@ -2820,15 +2821,8 @@ class _AdDownloadNotice extends StatelessWidget {
               Expanded(
                 child: Text(
                   serverAutoDownload
-                      ? 'Episodes download to the server, so ads are found on '
-                          "the copy you'll play and skips line up exactly."
-                      : 'Server auto-download is off. Many podcasts insert '
-                          'different ads every time an episode is fetched, so '
-                          'ads found on one copy can land at the wrong times in '
-                          'the copy you stream. Pinepods holds off skipping when '
-                          "the stream doesn't match, so some ads won't be "
-                          'skipped. Turn on server auto-download for exact skips; '
-                          '"Delete when finished" keeps it from filling the disk.',
+                      ? L.of(context)!.ad_skip_server_copy_ok
+                      : L.of(context)!.ad_skip_server_copy_off,
                   style: theme.textTheme.bodySmall,
                 ),
               ),
@@ -2843,11 +2837,11 @@ class _AdDownloadNotice extends StatelessWidget {
                 OutlinedButton.icon(
                   onPressed: onEnable,
                   icon: const Icon(PhosphorIconsRegular.cloudArrowDown, size: 18),
-                  label: const Text('Turn on server auto-download'),
+                  label: Text(L.of(context)!.turn_on_server_auto_download),
                 ),
               TextButton(
                 onPressed: onServerDownloads,
-                child: const Text('Server download settings'),
+                child: Text(L.of(context)!.server_download_settings),
               ),
             ],
           ),

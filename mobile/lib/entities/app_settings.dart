@@ -5,8 +5,9 @@
 import 'package:pinepods_mobile/entities/search_providers.dart';
 
 /// Every bottom-bar page, in the default order.
+/// These are page ids, not display text; see bottomNavLabel.
 const List<String> defaultBottomBarOrder = [
-  'Home', 'Feed', 'Saved', 'Podcasts', 'People', 'Downloads', 'History', 'Playlists', 'Search',
+  'Home', 'Feed', 'Saved', 'Podcasts', 'People', 'Downloads', 'History', 'Playlists', 'Search', // i18n-ignore
 ];
 
 /// A saved bar order made usable: pages it doesn't know are dropped, and pages
@@ -103,6 +104,9 @@ class AppSettings {
   /// Tint episode cards with a colour pulled from the podcast artwork.
   final bool artworkAccentColors;
 
+  /// UI language code (e.g. en, pt-BR, zh-Hans); empty follows the device.
+  final String language;
+
   AppSettings({
     required this.theme,
     required this.markDeletedEpisodesAsPlayed,
@@ -134,10 +138,11 @@ class AppSettings {
     this.deleteDownloadsAfterDays = 0,
     this.playButtonStyle = 'ring',
     this.artworkAccentColors = true,
+    this.language = '',
   });
 
   AppSettings.sensibleDefaults()
-      : theme = 'Dark',
+      : theme = 'Dark', // i18n-ignore
         markDeletedEpisodesAsPlayed = false,
         deleteDownloadedPlayedEpisodes = false,
         storeDownloadsSDCard = false,
@@ -166,7 +171,8 @@ class AppSettings {
         mirrorServerDownloads = false,
         deleteDownloadsAfterDays = 0,
         playButtonStyle = 'ring',
-        artworkAccentColors = true;
+        artworkAccentColors = true,
+        language = '';
 
   AppSettings copyWith({
     String? theme,
@@ -199,6 +205,7 @@ class AppSettings {
     int? deleteDownloadsAfterDays,
     String? playButtonStyle,
     bool? artworkAccentColors,
+    String? language,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -231,5 +238,6 @@ class AppSettings {
         deleteDownloadsAfterDays: deleteDownloadsAfterDays ?? this.deleteDownloadsAfterDays,
         playButtonStyle: playButtonStyle ?? this.playButtonStyle,
         artworkAccentColors: artworkAccentColors ?? this.artworkAccentColors,
+        language: language ?? this.language,
       );
 }

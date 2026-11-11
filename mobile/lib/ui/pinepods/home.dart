@@ -39,6 +39,7 @@ import 'package:intl/intl.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
 import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class PinepodsHome extends StatefulWidget {
   const PinepodsHome({Key? key}) : super(key: key);
@@ -154,7 +155,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         settings.pinepodsApiKey == null ||
         settings.pinepodsUserId == null) {
       setState(() {
-        _errorMessage = 'Not connected to PinePods server. Please connect in Settings.';
+        _errorMessage = L.of(context)!.not_connected_connect_in_settings;
         _isLoading = false;
       });
       return;
@@ -222,7 +223,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Error loading home content: $e';
+        _errorMessage = L.of(context)!.error_loading_home(e.toString());
         _isLoading = false;
       });
     }
@@ -232,7 +233,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
 
   Future<void> _playEpisode(HomeEpisode homeEpisode) async {
     if (_audioService == null) {
-      _showSnackBar('Audio service not available', Colors.red);
+      _showSnackBar(L.of(context)!.audio_service_not_available, Colors.red);
       return;
     }
 
@@ -246,7 +247,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
       );
     } catch (e) {
       if (mounted) {
-        _showSnackBar('Failed to play episode: $e', Colors.red);
+        _showSnackBar(L.of(context)!.failed_to_play_episode(e.toString()), Colors.red);
       }
     }
   }
@@ -276,7 +277,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -299,12 +300,12 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             _homeData!.recentEpisodes[episodeIndex] = _updateHomeEpisodeProperty(homeEpisode, saved: true);
           }
         });
-        _showSnackBar('Episode saved!', Colors.green);
+        _showSnackBar(L.current.episode_saved, Colors.green);
       } else {
-        _showSnackBar('Failed to save episode', Colors.red);
+        _showSnackBar(L.current.failed_to_save_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error saving episode: $e', Colors.red);
+      _showSnackBar(L.current.error_saving_episode(e.toString()), Colors.red);
     }
   }
 
@@ -319,7 +320,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -341,12 +342,12 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             _homeData!.recentEpisodes[episodeIndex] = _updateHomeEpisodeProperty(homeEpisode, saved: false);
           }
         });
-        _showSnackBar('Removed from saved episodes', Colors.orange);
+        _showSnackBar(L.current.removed_from_saved_episodes, Colors.orange);
       } else {
-        _showSnackBar('Failed to remove saved episode', Colors.red);
+        _showSnackBar(L.current.failed_to_remove_saved_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error removing saved episode: $e', Colors.red);
+      _showSnackBar(L.current.error_removing_saved_episode(e.toString()), Colors.red);
     }
   }
 
@@ -361,7 +362,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -383,12 +384,12 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             _homeData!.recentEpisodes[episodeIndex] = _updateHomeEpisodeProperty(homeEpisode, downloaded: true);
           }
         });
-        _showSnackBar('Episode download queued!', Colors.green);
+        _showSnackBar(L.current.episode_download_queued, Colors.green);
       } else {
-        _showSnackBar('Failed to queue download', Colors.red);
+        _showSnackBar(L.current.failed_to_queue_download, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error downloading episode: $e', Colors.red);
+      _showSnackBar(L.current.error_downloading_episode(e.toString()), Colors.red);
     }
   }
 
@@ -402,12 +403,12 @@ class _PinepodsHomeState extends State<PinepodsHome> {
       final success = await LocalDownloadUtils.localDownloadEpisode(context, homeEpisode.toPinepodsEpisode());
 
       if (success) {
-        _showSnackBar('Episode download started', Colors.green);
+        _showSnackBar(L.current.episode_download_started, Colors.green);
       } else {
-        _showSnackBar('Failed to start download', Colors.red);
+        _showSnackBar(L.current.failed_to_start_download, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error starting local download: $e', Colors.red);
+      _showSnackBar(L.current.error_starting_local_download(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -424,7 +425,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -446,12 +447,12 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             _homeData!.recentEpisodes[episodeIndex] = _updateHomeEpisodeProperty(homeEpisode, downloaded: false);
           }
         });
-        _showSnackBar('Episode deleted from server', Colors.orange);
+        _showSnackBar(L.current.episode_deleted_from_server, Colors.orange);
       } else {
-        _showSnackBar('Failed to delete episode', Colors.red);
+        _showSnackBar(L.current.failed_to_delete_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error deleting episode: $e', Colors.red);
+      _showSnackBar(L.current.error_deleting_episode(e.toString()), Colors.red);
     }
   }
 
@@ -466,7 +467,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -489,7 +490,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               _homeData!.recentEpisodes[episodeIndex] = _updateHomeEpisodeProperty(homeEpisode, queued: false);
             }
           });
-          _showSnackBar('Removed from queue', Colors.orange);
+          _showSnackBar(L.current.removed_from_queue, Colors.orange);
           // The per-card flag above is enough for this card's own icon, but
           // the "Up Next" preview and the Queue stat count are a separate
           // snapshot that needs its own refresh.
@@ -510,16 +511,16 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               _homeData!.recentEpisodes[episodeIndex] = _updateHomeEpisodeProperty(homeEpisode, queued: true);
             }
           });
-          _showSnackBar('Added to queue!', Colors.green);
+          _showSnackBar(L.current.added_to_queue_excl, Colors.green);
           _refreshHomeContentSilently();
         }
       }
 
       if (!success) {
-        _showSnackBar('Failed to update queue', Colors.red);
+        _showSnackBar(L.current.failed_to_update_queue, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error updating queue: $e', Colors.red);
+      _showSnackBar(L.current.error_updating_queue(e.toString()), Colors.red);
     }
   }
 
@@ -534,7 +535,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -557,7 +558,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               _homeData!.recentEpisodes[episodeIndex] = _updateHomeEpisodeProperty(homeEpisode, completed: false);
             }
           });
-          _showSnackBar('Marked as incomplete', Colors.orange);
+          _showSnackBar(L.current.marked_as_incomplete, Colors.orange);
         }
       } else {
         success = await _pinepodsService.markEpisodeCompleted(
@@ -573,15 +574,15 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               _homeData!.recentEpisodes[episodeIndex] = _updateHomeEpisodeProperty(homeEpisode, completed: true);
             }
           });
-          _showSnackBar('Marked as complete!', Colors.green);
+          _showSnackBar(L.current.marked_as_complete, Colors.green);
         }
       }
 
       if (!success) {
-        _showSnackBar('Failed to update completion status', Colors.red);
+        _showSnackBar(L.current.failed_to_update_completion, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error updating completion: $e', Colors.red);
+      _showSnackBar(L.current.error_updating_completion(e.toString()), Colors.red);
     }
   }
 
@@ -639,7 +640,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
   Future<void> _playLocalDownload(Episode episode) async {
     final audioService = GlobalServices.pinepodsAudioService;
     if (audioService == null) {
-      _showSnackBar('Audio service not available', Colors.red);
+      _showSnackBar(L.of(context)!.audio_service_not_available, Colors.red);
       return;
     }
     try {
@@ -651,7 +652,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         resume: true,
       );
     } catch (e) {
-      _showSnackBar('Failed to play episode: $e', Colors.red);
+      _showSnackBar(L.current.failed_to_play_episode(e.toString()), Colors.red);
     }
   }
 
@@ -681,7 +682,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Offline mode',
+                        L.of(context)!.offline_mode,
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.orange[800],
@@ -689,9 +690,8 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'Your PinePods server is unreachable. You can still '
-                        'browse and play episodes downloaded to this device.',
+                      Text(
+                        L.of(context)!.server_unreachable_offline_body,
                       ),
                     ],
                   ),
@@ -713,9 +713,9 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               final downloads =
                   (snapshot.data ?? []).where((e) => e.downloaded).toList();
               if (downloads.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16.0),
-                  child: Text('No downloaded episodes on this device yet.'),
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16.0),
+                  child: Text(L.of(context)!.no_downloaded_episodes_on_device),
                 );
               }
               final preview = downloads.take(5).toList();
@@ -723,7 +723,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'On this device (${downloads.length})',
+                    L.of(context)!.on_this_device_count(downloads.length),
                     style: theme.textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
@@ -732,7 +732,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(PhosphorIconsRegular.checkCircle),
                       title: Text(
-                        e.title ?? 'Untitled episode',
+                        e.title ?? L.of(context)!.untitled_episode,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -755,7 +755,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
           ElevatedButton.icon(
             onPressed: _goToDownloads,
             icon: const Icon(PhosphorIconsRegular.downloadSimple),
-            label: const Text('Go to Downloads'),
+            label: Text(L.of(context)!.go_to_downloads),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -764,7 +764,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               _loadHomeContent();
             },
             icon: const Icon(PhosphorIconsRegular.arrowClockwise),
-            label: const Text('Retry connection'),
+            label: Text(L.of(context)!.retry_connection),
           ),
         ],
       ),
@@ -875,8 +875,8 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             ServerErrorPage(
               errorMessage: _errorMessage,
               onRetry: _loadHomeContent,
-              title: 'Home Unavailable',
-              subtitle: 'Failed to load home content',
+              title: L.of(context)!.home_unavailable,
+              subtitle: L.of(context)!.failed_to_load_home,
             )
         else if (_homeData != null)
           Padding(
@@ -941,12 +941,12 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SoftSectionHeader(title: 'Your Library', padding: EdgeInsets.only(bottom: 10)),
+        SoftSectionHeader(title: L.of(context)!.your_library, padding: const EdgeInsets.only(bottom: 10)),
         Row(
           children: [
             Expanded(
               child: _StatTile(
-                title: 'Saved',
+                title: L.of(context)!.saved,
                 value: '${_homeData!.savedCount}',
                 icon: PhosphorIconsFill.bookmarkSimple,
                 color: Colors.orange,
@@ -955,7 +955,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             const SizedBox(width: 12),
             Expanded(
               child: _StatTile(
-                title: 'Downloaded',
+                title: L.of(context)!.downloaded,
                 value: '${_homeData!.downloadedCount}',
                 icon: PhosphorIconsRegular.downloadSimple,
                 color: Colors.green,
@@ -964,7 +964,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             const SizedBox(width: 12),
             Expanded(
               child: _StatTile(
-                title: 'Queue',
+                title: L.of(context)!.queue,
                 value: '${_homeData!.queueCount}',
                 icon: PhosphorIconsRegular.queue,
                 color: Colors.blue,
@@ -980,7 +980,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SoftSectionHeader(title: 'Continue Listening', padding: EdgeInsets.only(bottom: 10)),
+        SoftSectionHeader(title: L.of(context)!.continue_listening, padding: const EdgeInsets.only(bottom: 10)),
         ...(_homeData!.inProgressEpisodes.take(3).map((episode) =>
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -1010,7 +1010,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SoftSectionHeader(title: 'Top Podcasts', padding: EdgeInsets.only(bottom: 10)),
+        SoftSectionHeader(title: L.of(context)!.top_podcasts, padding: const EdgeInsets.only(bottom: 10)),
         SizedBox(
           height: 180,
           child: ListView.builder(
@@ -1035,7 +1035,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SoftSectionHeader(title: 'Up Next', padding: EdgeInsets.only(bottom: 10)),
+        SoftSectionHeader(title: L.of(context)!.up_next_queue_label, padding: const EdgeInsets.only(bottom: 10)),
         ...(_homeData!.queuePreview.map((episode) =>
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -1065,12 +1065,12 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SoftSectionHeader(title: 'This Week', padding: EdgeInsets.only(bottom: 10)),
+        SoftSectionHeader(title: L.of(context)!.this_week, padding: const EdgeInsets.only(bottom: 10)),
         Row(
           children: [
             Expanded(
               child: _StatTile(
-                title: 'Listened',
+                title: L.of(context)!.listened,
                 value: stats.formattedListened,
                 icon: PhosphorIconsRegular.headphones,
                 color: Colors.purple,
@@ -1079,7 +1079,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             const SizedBox(width: 12),
             Expanded(
               child: _StatTile(
-                title: 'Completed',
+                title: L.of(context)!.completed,
                 value: stats.episodesCompleted.toString(),
                 icon: PhosphorIconsFill.checkCircle,
                 color: Colors.green,
@@ -1095,7 +1095,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SoftSectionHeader(title: 'Smart Playlists', padding: EdgeInsets.only(bottom: 10)),
+        SoftSectionHeader(title: L.of(context)!.smart_playlists, padding: const EdgeInsets.only(bottom: 10)),
         SizedBox(
           height: 120,
           child: ListView.builder(
@@ -1120,7 +1120,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SoftSectionHeader(title: 'Recent Episodes', padding: EdgeInsets.only(bottom: 10)),
+        SoftSectionHeader(title: L.of(context)!.recent_episodes, padding: const EdgeInsets.only(bottom: 10)),
         ...(_homeData!.recentEpisodes.take(5).map((episode) =>
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -1147,10 +1147,10 @@ class _PinepodsHomeState extends State<PinepodsHome> {
   }
 
   Widget _buildEmptyState() {
-    return const SoftEmptyState(
+    return SoftEmptyState(
       icon: PhosphorIconsRegular.microphoneStage,
-      title: 'Welcome to PinePods',
-      body: 'Search for podcasts to follow and they\'ll show up here.',
+      title: L.of(context)!.welcome_to_pinepods,
+      body: L.of(context)!.home_empty_body,
     );
   }
 }
@@ -1307,7 +1307,7 @@ class _PlaylistCard extends StatelessWidget {
                 if (playlist.episodeCount != null) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '${playlist.episodeCount} episodes',
+                    L.of(context)!.episodes_count(playlist.episodeCount ?? 0),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).hintColor,
                     ),
@@ -1330,8 +1330,8 @@ class _PlaylistCard extends StatelessWidget {
         settings.pinepodsUserId == null) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Not connected to PinePods server. Please connect in Settings.'),
+          SnackBar(
+            content: Text(L.of(context)!.not_connected_connect_in_settings),
             backgroundColor: Colors.red,
           ),
         );
@@ -1364,7 +1364,7 @@ class _PlaylistCard extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error opening playlist: $e'),
+            content: Text(L.of(context)!.error_opening_playlist(e.toString())),
             backgroundColor: Colors.red,
           ),
         );

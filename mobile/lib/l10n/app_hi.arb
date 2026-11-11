@@ -1,0 +1,18 @@
+{
+  "@@locale": "hi",
+  "cancel_button_label": "रद्द करें",
+  "cancel_option_label": "रद्द करें",
+  "podcast_details_refreshed": "पॉडकास्ट की जानकारी फ़ीड से रीफ़्रेश हुई",
+  "title_contains": "शीर्षक में शामिल है",
+  "save": "सहेजें",
+  "unsubscribe": "सदस्यता छोड़ें",
+  "copy": "कॉपी करें",
+  "remove": "हटाएँ",
+  "refresh": "रीफ़्रेश करें",
+  "search_failed": "खोज विफल रही",
+  "try_again": "फिर कोशिश करें",
+  "server_url": "सर्वर URL",
+  "username": "उपयोगकर्ता नाम",
+  "password": "पासवर्ड",
+  "sync_now": "अभी सिंक करें"
+}

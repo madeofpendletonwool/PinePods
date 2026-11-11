@@ -1,0 +1,18 @@
+{
+  "@@locale": "gu",
+  "cancel_button_label": "રદ કરો",
+  "cancel_option_label": "રદ કરો",
+  "podcast_details_refreshed": "પોડકાસ્ટની વિગતો ફીડમાંથી રિફ્રેશ થઈ",
+  "title_contains": "શીર્ષકમાં સમાવે છે",
+  "save": "સાચવો",
+  "unsubscribe": "સબ્સ્ક્રિપ્શન રદ કરો",
+  "copy": "કૉપિ કરો",
+  "remove": "દૂર કરો",
+  "refresh": "રિફ્રેશ કરો",
+  "search_failed": "શોધ નિષ્ફળ ગઈ",
+  "try_again": "ફરી પ્રયત્ન કરો",
+  "server_url": "સર્વર URL",
+  "username": "વપરાશકર્તા નામ",
+  "password": "પાસવર્ડ",
+  "sync_now": "હમણાં સિંક કરો"
+}

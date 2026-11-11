@@ -24,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// Sort direction options for downloads
 enum DownloadSortDirection {
@@ -262,7 +263,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
     } catch (e) {
       log.severe('Error loading server download summary: $e');
       setState(() {
-        _errorMessage = 'Failed to load server downloads: $e';
+        _errorMessage = L.of(context)!.failed_to_load_server_downloads(e.toString());
         _isLoadingServerSummary = false;
       });
     }
@@ -353,7 +354,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
     final grouped = <String, List<Episode>>{};
 
     for (final episode in episodes) {
-      final podcastName = episode.podcast ?? 'Unknown Podcast';
+      final podcastName = episode.podcast ?? L.of(context)!.unknown_podcast;
       if (!grouped.containsKey(podcastName)) {
         grouped[podcastName] = [];
       }
@@ -422,12 +423,12 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
             }).where((s) => s.episodeCount > 0 || (_podcastPageState[s.podcastId]?.episodes.isNotEmpty ?? false)).toList();
           });
         } else {
-          _showErrorSnackBar('Failed to delete episode from server');
+          _showErrorSnackBar(L.current.failed_to_delete_from_server);
         }
       }
     } catch (e) {
       log.severe('Error deleting server episode: $e');
-      _showErrorSnackBar('Error deleting episode: $e');
+      _showErrorSnackBar(L.current.error_deleting_episode(e.toString()));
     }
   }
 
@@ -455,12 +456,12 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
       final success = await LocalDownloadUtils.localDownloadEpisode(context, episode);
 
       if (success) {
-        _showSnackBar('Episode download started', Colors.green);
+        _showSnackBar(L.current.episode_download_started, Colors.green);
       } else {
-        _showSnackBar('Failed to start download', Colors.red);
+        _showSnackBar(L.current.failed_to_start_download, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error starting local download: $e', Colors.red);
+      _showSnackBar(L.current.error_starting_local_download(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -503,7 +504,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
     if (userId == null ||
         settings.pinepodsServer == null ||
         settings.pinepodsApiKey == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return null;
     }
     _pinepodsService.setCredentials(
@@ -538,13 +539,13 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
               episode.episodeId, userId, episode.isYoutube);
       if (success) {
         onUpdated(_updateEpisodeFlags(episode, saved: !wasSaved));
-        _showSnackBar(wasSaved ? 'Removed from saved' : 'Episode saved!',
+        _showSnackBar(wasSaved ? 'Removed from saved' : L.current.episode_saved,
             wasSaved ? Colors.orange : Colors.green);
       } else {
-        _showSnackBar('Failed to update saved status', Colors.red);
+        _showSnackBar(L.current.failed_to_update_saved_status, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error updating saved status: $e', Colors.red);
+      _showSnackBar(L.current.error_updating_saved_status(e.toString()), Colors.red);
     }
   }
 
@@ -564,13 +565,13 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
               episode.episodeId, userId, episode.isYoutube, position: position);
       if (success) {
         onUpdated(_updateEpisodeFlags(episode, queued: !wasQueued));
-        _showSnackBar(wasQueued ? 'Removed from queue' : 'Added to queue!',
+        _showSnackBar(wasQueued ? 'Removed from queue' : L.current.added_to_queue_excl,
             wasQueued ? Colors.orange : Colors.green);
       } else {
-        _showSnackBar('Failed to update queue', Colors.red);
+        _showSnackBar(L.current.failed_to_update_queue, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error updating queue: $e', Colors.red);
+      _showSnackBar(L.current.error_updating_queue(e.toString()), Colors.red);
     }
   }
 
@@ -590,13 +591,13 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
       if (success) {
         onUpdated(_updateEpisodeFlags(episode, completed: !wasCompleted));
         _showSnackBar(
-            wasCompleted ? 'Marked as incomplete' : 'Marked as complete!',
+            wasCompleted ? 'Marked as incomplete' : L.current.marked_as_complete,
             wasCompleted ? Colors.orange : Colors.green);
       } else {
-        _showSnackBar('Failed to update completion', Colors.red);
+        _showSnackBar(L.current.failed_to_update_completion_short, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error updating completion: $e', Colors.red);
+      _showSnackBar(L.current.error_updating_completion(e.toString()), Colors.red);
     }
   }
 
@@ -654,7 +655,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
               summary.podcastName,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            subtitle: Text('$total episode${total != 1 ? 's' : ''}'),
+            subtitle: Text(L.of(context)!.episodes_count(total)),
             trailing: Icon(isExpanded ? PhosphorIconsRegular.caretUp : PhosphorIconsRegular.caretDown),
             onTap: () => _togglePodcastExpansion(podcastKey, podcastId: summary.podcastId),
           ),
@@ -677,7 +678,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                   child: TextButton.icon(
                     onPressed: () => _loadEpisodesForPodcast(summary.podcastId),
                     icon: const Icon(PhosphorIconsRegular.caretDown),
-                    label: Text('Load More (${total - offset} remaining)'),
+                    label: Text(L.of(context)!.load_more_remaining(total - offset)),
                   ),
                 ),
             ],
@@ -898,7 +899,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                     const SizedBox(height: 16),
-                    ElevatedButton(onPressed: _loadDownloads, child: const Text('Retry')),
+                    ElevatedButton(onPressed: _loadDownloads, child: Text(L.of(context)!.retry)),
                   ],
                 ),
               ),
@@ -921,9 +922,9 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                 SliverToBoxAdapter(
                   child: SoftEmptyState(
                     icon: PhosphorIconsRegular.funnelSimpleX,
-                    title: 'No downloads found',
+                    title: L.of(context)!.no_downloads_found,
                     body: _getNoResultsMessage(),
-                    action: TextButton(onPressed: _clearAllFilters, child: const Text('Clear filters')),
+                    action: TextButton(onPressed: _clearAllFilters, child: Text(L.of(context)!.clear_filters)),
                   ),
                 ),
               ],
@@ -932,13 +933,13 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
             return MultiSliver(
               children: [
                 SliverToBoxAdapter(child: _buildSectionHeader()),
-                const SliverFillRemaining(
+                SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
                     child: SoftEmptyState(
                       icon: PhosphorIconsRegular.downloadSimple,
-                      title: 'No downloads yet',
-                      body: 'Downloaded episodes will appear here',
+                      title: L.of(context)!.no_downloads_yet,
+                      body: L.of(context)!.downloads_empty_body,
                     ),
                   ),
                 ),
@@ -970,7 +971,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
           builder: (context, snapshot) {
             final count = snapshot.data ?? 0;
             return IconButton(
-              tooltip: count > 0 ? 'Action queue ($count pending)' : 'Action queue',
+              tooltip: count > 0 ? L.of(context)!.action_queue_pending(count) : L.of(context)!.action_queue,
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ActionQueue()),
               ),
@@ -991,11 +992,11 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
 
   Widget _buildSectionHeader() {
     return SoftSectionHeader(
-      title: 'Downloads',
+      title: L.of(context)!.downloads,
       trailing: [
         _buildActionQueueButton(),
         IconButton(
-          tooltip: 'Download activity',
+          tooltip: L.of(context)!.download_activity,
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const DownloadActivity()),
           ),
@@ -1012,31 +1013,31 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
         context,
         ListToolbar<DownloadSortDirection>(
           searchController: _searchController,
-          searchHint: 'Search downloads',
+          searchHint: L.of(context)!.search_downloads,
           filters: [
             ToolbarFilter(
-              label: 'All',
+              label: L.of(context)!.filter_all,
               selected: _typeFilter == DownloadTypeFilter.all,
               onTap: () => _setTypeFilter(DownloadTypeFilter.all),
             ),
             ToolbarFilter(
-              label: 'Server',
+              label: L.of(context)!.server,
               icon: PhosphorIconsRegular.cloud,
               selected: _typeFilter == DownloadTypeFilter.serverOnly,
               onTap: () => _setTypeFilter(DownloadTypeFilter.serverOnly),
             ),
             ToolbarFilter(
-              label: 'On device',
+              label: L.of(context)!.on_device,
               icon: PhosphorIconsRegular.deviceMobile,
               selected: _typeFilter == DownloadTypeFilter.localOnly,
               onTap: () => _setTypeFilter(DownloadTypeFilter.localOnly),
             ),
           ],
-          sortOptions: const {
-            DownloadSortDirection.newestFirst: 'Newest first',
-            DownloadSortDirection.oldestFirst: 'Oldest first',
-            DownloadSortDirection.titleAZ: 'Title A–Z',
-            DownloadSortDirection.titleZA: 'Title Z–A',
+          sortOptions: {
+            DownloadSortDirection.newestFirst: L.of(context)!.sort_newest_first,
+            DownloadSortDirection.oldestFirst: L.of(context)!.sort_oldest_first,
+            DownloadSortDirection.titleAZ: L.of(context)!.sort_title_az,
+            DownloadSortDirection.titleZA: L.of(context)!.sort_title_za,
           },
           sortValue: _sortDirection,
           onSort: _setSortDirection,
@@ -1056,7 +1057,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                 Icon(PhosphorIconsRegular.deviceMobile, color: Colors.green[600]),
                 const SizedBox(width: 8),
                 Text(
-                  'Local Downloads',
+                  L.of(context)!.local_downloads,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.green[600]),
                 ),
               ],
@@ -1073,7 +1074,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                 Icon(PhosphorIconsFill.cloudArrowDown, color: Colors.blue[600]),
                 const SizedBox(width: 8),
                 Text(
-                  'Server Downloads',
+                  L.of(context)!.server_downloads_title,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.blue[600]),
                 ),
               ],
@@ -1088,12 +1089,15 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
   }
 
   String _getNoResultsMessage() {
-    final parts = <String>[];
-    if (_searchQuery.isNotEmpty) parts.add('matching "$_searchQuery"');
-    if (_typeFilter == DownloadTypeFilter.serverOnly) parts.add('in server downloads');
-    else if (_typeFilter == DownloadTypeFilter.localOnly) parts.add('in local downloads');
-    if (parts.isEmpty) return 'No downloads match your filters';
-    return 'No downloads ${parts.join(' ')}';
+    final l = L.of(context)!;
+    final hasQuery = _searchQuery.isNotEmpty;
+    if (_typeFilter == DownloadTypeFilter.serverOnly) {
+      return hasQuery ? l.no_server_downloads_match_query(_searchQuery) : l.no_server_downloads;
+    }
+    if (_typeFilter == DownloadTypeFilter.localOnly) {
+      return hasQuery ? l.no_local_downloads_match_query(_searchQuery) : l.no_local_downloads;
+    }
+    return hasQuery ? l.no_downloads_match_query(_searchQuery) : l.no_downloads_match_filters;
   }
 
   Future<void> _playServerEpisode(PinepodsEpisode episode) async {
@@ -1101,7 +1105,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
       log.info('Playing server episode: ${episode.episodeTitle}');
       final audioService = GlobalServices.pinepodsAudioService;
       if (audioService == null) {
-        _showErrorSnackBar('Audio service not available');
+        _showErrorSnackBar(L.of(context)!.audio_service_not_available);
         return;
       }
       // Route through the unified PinePods path. The audio service prefers an
@@ -1117,7 +1121,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
       log.info('Successfully started server episode playback');
     } catch (e) {
       log.severe('Error playing server episode: $e');
-      _showErrorSnackBar('Failed to play episode: $e');
+      _showErrorSnackBar(L.current.failed_to_play_episode(e.toString()));
     }
   }
 
@@ -1126,7 +1130,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
       log.info('Playing local episode: ${episode.title}');
       final audioService = GlobalServices.pinepodsAudioService;
       if (audioService == null) {
-        _showErrorSnackBar('Audio service not available');
+        _showErrorSnackBar(L.of(context)!.audio_service_not_available);
         return;
       }
       // Play through the unified PinePods path so position/duration tracking and
@@ -1141,7 +1145,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
       log.info('Successfully started local episode playback');
     } catch (e) {
       log.severe('Error playing local episode: $e');
-      _showErrorSnackBar('Failed to play episode: $e');
+      _showErrorSnackBar(L.current.failed_to_play_episode(e.toString()));
     }
   }
 
@@ -1165,9 +1169,9 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Offline', style: TextStyle(fontWeight: FontWeight.w700, color: warn, fontSize: 15)),
+                      Text(L.of(context)!.offline, style: TextStyle(fontWeight: FontWeight.w700, color: warn, fontSize: 15)),
                       const SizedBox(height: 2),
-                      Text('Server unavailable. Showing downloads on this device.',
+                      Text(L.of(context)!.server_unavailable_showing_local,
                           style: TextStyle(color: warn, fontSize: 13)),
                     ],
                   ),
@@ -1178,7 +1182,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                     _loadDownloads();
                   },
                   style: TextButton.styleFrom(foregroundColor: warn),
-                  child: const Text('Retry'),
+                  child: Text(L.of(context)!.retry),
                 ),
               ],
             ),
@@ -1186,13 +1190,13 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
         ),
         ..._buildHeaderSlivers(),
         if (localDownloadsByPodcast.isEmpty)
-          const SliverFillRemaining(
+          SliverFillRemaining(
             hasScrollBody: false,
             child: Center(
               child: SoftEmptyState(
                 icon: PhosphorIconsRegular.cloudSlash,
-                title: 'No downloads on this device',
-                body: 'Download episodes while online to access them here',
+                title: L.of(context)!.no_downloads_on_device,
+                body: L.of(context)!.no_downloads_on_device_body,
               ),
             ),
           )

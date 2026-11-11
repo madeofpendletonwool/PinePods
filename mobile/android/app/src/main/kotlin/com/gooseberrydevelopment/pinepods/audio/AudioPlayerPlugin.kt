@@ -78,9 +78,19 @@ class AudioPlayerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
         Log.d(TAG, "AudioPlayerPlugin attached to engine")
         logToFlutter("INFO", TAG, "AudioPlayerPlugin attached to engine - native logging active")
+
+        // Bound with the engine, not the activity: the engine also runs without
+        // UI for Android Auto, and outlives the activity.
+        val intent = Intent(context, PinepodsMediaService::class.java)
+        context?.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        Log.d(TAG, "Binding to media service")
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        if (serviceBound) {
+            context?.unbindService(serviceConnection)
+            serviceBound = false
+        }
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
         context = null
@@ -88,10 +98,7 @@ class AudioPlayerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
-        // Bind to the media service
-        val intent = Intent(context, PinepodsMediaService::class.java)
-        context?.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-        Log.d(TAG, "Binding to media service")
+        // Nothing needed: the service is bound in onAttachedToEngine
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
@@ -103,11 +110,7 @@ class AudioPlayerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     }
 
     override fun onDetachedFromActivity() {
-        if (serviceBound) {
-            context?.unbindService(serviceConnection)
-            serviceBound = false
-            Log.d(TAG, "Unbound from media service")
-        }
+        // Stay bound: the engine (and Android Auto browsing) outlives the activity
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
@@ -156,6 +159,11 @@ class AudioPlayerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
                 "stop" -> {
                     mediaService?.stop()
+                    result.success(null)
+                }
+
+                "refreshCarBrowse" -> {
+                    mediaService?.notifyBrowseContentChanged()
                     result.success(null)
                 }
 

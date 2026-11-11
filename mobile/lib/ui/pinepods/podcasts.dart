@@ -209,7 +209,7 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
         settings.pinepodsApiKey == null ||
         settings.pinepodsUserId == null) {
       setState(() {
-        _errorMessage = 'Not connected to PinePods server. Please connect in Settings.';
+        _errorMessage = L.of(context)!.not_connected_connect_in_settings;
         _isLoading = false;
       });
       return;
@@ -258,11 +258,11 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
     return [
       SliverToBoxAdapter(
         child: SoftSectionHeader(
-          title: 'Podcasts',
+          title: L.of(context)!.podcasts,
           count: _filteredPodcasts?.length,
           trailing: [
             IconButton(
-              tooltip: 'Layout',
+              tooltip: L.of(context)!.layout_label,
               icon: const Icon(PhosphorIconsRegular.squaresFour),
               onPressed: () => showModalBottomSheet<void>(
                 context: context,
@@ -277,10 +277,10 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
         context,
         ListToolbar<PodcastSortDirection>(
           searchController: _searchController,
-          searchHint: 'Search podcasts',
+          searchHint: L.of(context)!.search_podcasts,
           filters: [
             ToolbarFilter(
-              label: 'All',
+              label: L.of(context)!.filter_all,
               selected: _selectedCategory == null,
               onTap: () => _setCategory(null),
             ),
@@ -291,13 +291,13 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
                 onTap: () => _setCategory(_selectedCategory == category ? null : category),
               ),
           ],
-          sortOptions: const {
-            PodcastSortDirection.titleAZ: 'Title A–Z',
-            PodcastSortDirection.titleZA: 'Title Z–A',
-            PodcastSortDirection.mostEpisodes: 'Most episodes',
-            PodcastSortDirection.leastEpisodes: 'Fewest episodes',
-            PodcastSortDirection.newestSubscribed: 'Recently followed',
-            PodcastSortDirection.oldestSubscribed: 'First followed',
+          sortOptions: {
+            PodcastSortDirection.titleAZ: L.of(context)!.sort_title_az,
+            PodcastSortDirection.titleZA: L.of(context)!.sort_title_za,
+            PodcastSortDirection.mostEpisodes: L.of(context)!.sort_most_episodes,
+            PodcastSortDirection.leastEpisodes: L.of(context)!.sort_fewest_episodes,
+            PodcastSortDirection.newestSubscribed: L.of(context)!.sort_recently_followed,
+            PodcastSortDirection.oldestSubscribed: L.of(context)!.sort_first_followed,
           },
           sortValue: _sortDirection,
           onSort: _setSortDirection,
@@ -314,9 +314,9 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
       return SliverToBoxAdapter(
         child: SoftEmptyState(
           icon: PhosphorIconsRegular.funnelSimpleX,
-          title: 'No podcasts found',
+          title: L.of(context)!.no_search_results_message,
           body: _getNoResultsMessage(),
-          action: TextButton(onPressed: _clearAllFilters, child: const Text('Clear filters')),
+          action: TextButton(onPressed: _clearAllFilters, child: Text(L.of(context)!.clear_filters)),
         ),
       );
     }
@@ -376,10 +376,10 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
           ? null 
           : _errorMessage,
         onRetry: _loadPodcasts,
-        title: 'Podcasts Unavailable',
+        title: L.of(context)!.podcasts_unavailable,
         subtitle: _errorMessage!.isServerConnectionError
-          ? 'Unable to connect to the PinePods server'
-          : 'Failed to load your podcasts',
+          ? L.of(context)!.unable_to_connect_server
+          : L.of(context)!.failed_to_load_podcasts,
       );
     }
 
@@ -399,13 +399,13 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
               ),
               const SizedBox(height: 16),
               Text(
-                'No podcasts found',
+                L.of(context)!.no_search_results_message,
                 style: Theme.of(context).textTheme.titleLarge,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
-                'You haven\'t subscribed to any podcasts yet. Search for podcasts to get started!',
+                L.of(context)!.no_podcasts_subscribed,
                 style: Theme.of(context).textTheme.bodyMedium,
                 textAlign: TextAlign.center,
               ),
@@ -439,20 +439,14 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
   }
 
   String _getNoResultsMessage() {
-    final parts = <String>[];
-
-    if (_searchQuery.isNotEmpty) {
-      parts.add('matching "$_searchQuery"');
+    final l = L.of(context)!;
+    final hasQuery = _searchQuery.isNotEmpty;
+    final category = _selectedCategory;
+    if (category != null) {
+      return hasQuery
+          ? l.no_podcasts_match_query_in_category(_searchQuery, category)
+          : l.no_podcasts_in_category(category);
     }
-
-    if (_selectedCategory != null) {
-      parts.add('in category "$_selectedCategory"');
-    }
-
-    if (parts.isEmpty) {
-      return 'No podcasts match your filters';
-    }
-
-    return 'No podcasts ${parts.join(' ')}';
+    return hasQuery ? l.no_podcasts_match_query(_searchQuery) : l.no_podcasts_match_filters;
   }
 }

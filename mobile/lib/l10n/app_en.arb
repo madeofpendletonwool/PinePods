@@ -1,28 +1,12 @@
 {
   "@@locale": "en",
-  "app_title": "PinePods Podcast Player",
-  "@app_title": {
-    "description": "Full title for the application"
-  },
-  "app_title_short": "Pinepods",
-  "@app_title_short": {
-    "description": "Title for the application"
-  },
   "library": "Library",
   "@library": {
     "description": "Library tab label"
   },
-  "discover": "Discover",
-  "@discover": {
-    "description": "Discover tab label"
-  },
   "downloads": "Downloads",
   "@downloads": {
     "description": "Downloads tab label"
-  },
-  "subscribe_button_label": "Follow",
-  "@subscribe_button_label": {
-    "description": "Subscribe button label"
   },
   "unsubscribe_button_label": "Unfollow",
   "@unsubscribe_button_label": {
@@ -80,10 +64,6 @@
   "@delete_episode_title": {
     "description": "Delete label"
   },
-  "no_downloads_message": "You do not have any downloaded episodes",
-  "@no_downloads_message": {
-    "description": "Displayed on the library tab when the user has no subscriptions"
-  },
   "no_search_results_message": "No podcasts found",
   "@no_search_results_message": {
     "description": "Displayed on the library tab when the user has no subscriptions"
@@ -112,10 +92,6 @@
   "@close_button_label": {
     "description": "Close button label"
   },
-  "search_button_label": "Search",
-  "@search_button_label": {
-    "description": "Search button label"
-  },
   "clear_search_button_label": "Clear search text",
   "@clear_search_button_label": {
     "description": "Search button label"
@@ -136,10 +112,6 @@
   "@fast_forward_button_label": {
     "description": "Fast forward tooltip"
   },
-  "about_label": "About",
-  "@about_label": {
-    "description": "About menu item"
-  },
   "mark_episodes_played_label": "Mark all episodes as played",
   "@mark_episodes_played_label": {
     "description": "Mark all episodes played menu item"
@@ -159,14 +131,6 @@
   "stop_download_title": "Stop Download",
   "@stop_download_title": {
     "description": "Stop download label"
-  },
-  "settings_mark_deleted_played_label": "Mark deleted episodes as played",
-  "@settings_mark_deleted_played_label": {
-    "description": "Mark deleted episodes as played setting"
-  },
-  "settings_delete_played_label": "Delete downloaded episodes once played",
-  "@settings_delete_played_label": {
-    "description": "Delete downloaded episodes once played setting"
   },
   "settings_download_sd_card_label": "Download episodes to SD card",
   "@settings_download_sd_card_label": {
@@ -196,10 +160,6 @@
   "@playback_speed_label": {
     "description": "Set playback speed icon label"
   },
-  "show_notes_label": "Show notes",
-  "@show_notes_label": {
-    "description": "Set show notes icon label"
-  },
   "search_provider_label": "Search provider",
   "@search_provider_label": {
     "description": "Set search provider label"
@@ -219,10 +179,6 @@
   "consent_message": "This funding link will take you to an external site where you will be able to directly support the show. Links are provided by the podcast authors and is not controlled by PinePods.",
   "@consent_message": {
     "description": "Display when first accessing external funding link"
-  },
-  "episode_label": "Episode",
-  "@episode_label": {
-    "description": "Tab label on now playing screen."
   },
   "chapters_label": "Chapters",
   "@chapters_label": {
@@ -251,18 +207,6 @@
   "add_rss_feed_option": "Add RSS Feed",
   "@add_rss_feed_option": {
     "description": "Option label for adding manual RSS feed url"
-  },
-  "settings_import_opml": "Import OPML",
-  "@settings_import_opml": {
-    "description": "Option label importing OPML file"
-  },
-  "settings_export_opml": "Export OPML",
-  "@settings_export_opml": {
-    "description": "Option label exporting OPML file"
-  },
-  "label_opml_importing": "Importing",
-  "@label_opml_importing": {
-    "description": "Label for importing OPML dialog"
   },
   "settings_auto_update_episodes_heading": "Refresh episodes on details screen after",
   "@settings_auto_update_episodes_heading": {
@@ -316,17 +260,9 @@
   "@settings_personalisation_divider_label": {
     "description": "Settings divider label for personalisation"
   },
-  "settings_episodes_divider_label": "EPISODES",
-  "@settings_episodes_divider_label": {
-    "description": "Settings divider label for episodes"
-  },
   "settings_playback_divider_label": "Playback",
   "@settings_playback_divider_label": {
     "description": "Settings divider label for playback"
-  },
-  "settings_data_divider_label": "DATA",
-  "@settings_data_divider_label": {
-    "description": "Settings divider label for data"
   },
   "audio_effect_trim_silence_label": "Trim Silence",
   "@audio_effect_trim_silence_label": {
@@ -340,18 +276,6 @@
   "@audio_settings_playback_speed_label": {
     "description": "Label for playback settings widget"
   },
-  "empty_queue_message": "Your queue is empty",
-  "@empty_queue_message": {
-    "description": "Displayed when there are no items left in the queue"
-  },
-  "clear_queue_button_label": "CLEAR QUEUE",
-  "@clear_queue_button_label": {
-    "description": "Clear queue button label"
-  },
-  "now_playing_queue_label": "Now Playing",
-  "@now_playing_queue_label": {
-    "description": "Now playing label on queue"
-  },
   "up_next_queue_label": "Up Next",
   "@up_next_queue_label": {
     "description": "Up next label on queue"
@@ -359,38 +283,6 @@
   "more_label": "More",
   "@more_label": {
     "description": "More label"
-  },
-  "queue_add_label": "Add",
-  "@queue_add_label": {
-    "description": "Queue add label"
-  },
-  "queue_remove_label": "Remove",
-  "@queue_remove_label": {
-    "description": "Queue remove label"
-  },
-  "opml_import_button_label": "Import",
-  "@opml_import_button_label": {
-    "description": "OPML Import button label"
-  },
-  "opml_export_button_label": "Export",
-  "@opml_export_button_label": {
-    "description": "OPML Export button label"
-  },
-  "opml_import_export_label": "OPML Import/Export",
-  "@opml_import_export_label": {
-    "description": "OPML Import/Export label"
-  },
-  "queue_clear_label": "Are you sure you wish to clear the queue?",
-  "@queue_clear_label": {
-    "description": "Shown on dialog box when clearing queue"
-  },
-  "queue_clear_button_label": "Clear",
-  "@queue_clear_button_label": {
-    "description": "Shown on dialog box when clearing queue"
-  },
-  "queue_clear_label_title": "Clear Queue",
-  "@queue_clear_label_title": {
-    "description": "Shown on dialog box when clearing queue"
   },
   "layout_label": "Layout",
   "@layout_label": {
@@ -407,26 +299,6 @@
   "transcript_label": "Transcript",
   "@transcript_label": {
     "description": "Transcript label"
-  },
-  "no_transcript_available_label": "A transcript is not available for this podcast",
-  "@no_transcript_available_label": {
-    "description": "Displayed in transcript view when no transcript is available"
-  },
-  "search_transcript_label": "Search transcript",
-  "@search_transcript_label": {
-    "description": "Hint text for transcript search box"
-  },
-  "auto_scroll_transcript_label": "Follow transcript",
-  "@auto_scroll_transcript_label": {
-    "description": "Auto scroll switch label"
-  },
-  "transcript_why_not_label": "Why not?",
-  "@transcript_why_not_label": {
-    "description": "Link to why no transcript is available"
-  },
-  "transcript_why_not_url": "https://www.pinepods.online/docs/Features/Transcript",
-  "@transcript_why_not_url": {
-    "description": "Language specific link"
   },
   "semantics_podcast_details_header": "Podcast details and episodes page",
   "@semantics_podcast_details_header": {
@@ -451,10 +323,6 @@
   "semantics_main_player_header": "Main player window",
   "@semantics_main_player_header": {
     "description": "Describes the main player"
-  },
-  "semantics_play_pause_toggle": "Play/pause toggle",
-  "@semantics_play_pause_toggle": {
-    "description": "Describes play/pause toggle button"
   },
   "semantics_decrease_playback_speed": "Decrease playback speed",
   "@semantics_decrease_playback_speed": {
@@ -487,22 +355,6 @@
   "semantics_mark_episode_unplayed": "Mark Episode as un-played",
   "@semantics_mark_episode_unplayed": {
     "description": "Describes mark unplayed button"
-  },
-  "semantics_episode_tile_collapsed": "Episode list item. Showing image, summary and main controls.",
-  "@semantics_episode_tile_collapsed": {
-    "description": "Describes episode tile options when collapsed"
-  },
-  "semantics_episode_tile_expanded": "Episode list item. Showing description, main controls and additional controls.",
-  "@semantics_episode_tile_expanded": {
-    "description": "Describes episode tile options when expanded"
-  },
-  "semantics_episode_tile_collapsed_hint": "expand and show more details and additional options",
-  "@semantics_episode_tile_collapsed_hint": {
-    "description": "Describes episode tile options when collapsed"
-  },
-  "semantics_episode_tile_expanded_hint": "collapse and show summary, download and play control",
-  "@semantics_episode_tile_expanded_hint": {
-    "description": "Describes episode tile options when expanded"
   },
   "sleep_off_label": "Off",
   "@sleep_off_label": {
@@ -537,21 +389,9 @@
   "@semantic_announce_searching": {
     "description": "Spoken when search in progress."
   },
-  "semantic_playing_options_expand_label": "Open playing options slider",
-  "@semantic_playing_options_expand_label": {
-    "description": "Placed on options handle when screen reader enabled."
-  },
-  "semantic_playing_options_collapse_label": "Close playing options slider",
-  "@semantic_playing_options_collapse_label": {
-    "description": "Placed on options handle when screen reader enabled."
-  },
   "semantic_podcast_artwork_label": "Podcast artwork",
   "@semantic_podcast_artwork_label": {
     "description": "Placed around podcast image on main player"
-  },
-  "semantic_chapter_link_label": "Chapter web link",
-  "@semantic_chapter_link_label": {
-    "description": "Placed around chapter link"
   },
   "semantic_current_chapter_label": "Current chapter",
   "@semantic_current_chapter_label": {
@@ -580,10 +420,6 @@
   "episode_filter_no_episodes_title_description": "This podcast has no episodes matching your search criteria and filter",
   "@episode_filter_no_episodes_title_description": {
     "description": "No episodes found description"
-  },
-  "episode_filter_clear_filters_button_label": "Clear Filters",
-  "@episode_filter_clear_filters_button_label": {
-    "description": "Clear filters button"
   },
   "episode_filter_semantic_label": "Filter episodes",
   "@episode_filter_semantic_label": {
@@ -676,5 +512,1859 @@
   "search_episodes_label": "Search episodes",
   "@search_episodes_label": {
     "description": "Hint text for episode search box"
-  }
+  },
+  "failed_to_remove_podcast": "Failed to remove podcast",
+  "failed_to_add_podcast": "Failed to add podcast",
+  "no_episodes_match_query": "No episodes match \"{query}\"",
+  "@no_episodes_match_query": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "auto_download_enabled": "Auto-download enabled",
+  "auto_download_disabled": "Auto-download disabled",
+  "refreshing_automatically": "Refreshing automatically",
+  "automatic_refresh_off": "Automatic refresh off",
+  "checked_channel_new_videos": "Checked the channel for new videos",
+  "no_new_episodes": "No new episodes",
+  "podcast_details_refreshed": "Podcast details refreshed from the feed",
+  "auto_play_next_enabled": "Auto-play next enabled",
+  "auto_play_next_disabled": "Auto-play next disabled",
+  "ai_features_title": "AI Features",
+  "auto_transcribe": "Auto-transcribe",
+  "auto_transcribe_description": "Transcribe new episodes automatically as they arrive.",
+  "auto_detect_ads": "Auto-detect ads",
+  "auto_detect_ads_description": "Scan transcripts for ad segments to skip.",
+  "enable_auto_transcribe_first": "Enable auto-transcribe first.",
+  "auto_skip_detected_ads": "Auto-skip detected ads",
+  "auto_skip_ads_on": "Skip detected ads automatically.",
+  "auto_skip_ads_off": "Require confirmation before skipping.",
+  "server_downloads": "Server downloads",
+  "auto_download_to_server": "Auto-download to server",
+  "auto_download_to_server_description": "Download new episodes to the server as they arrive.",
+  "delete_when_finished": "Delete when finished",
+  "option_on": "On",
+  "option_off": "Off",
+  "delete_after": "Delete after",
+  "delete_server_downloads_after_description": "Remove server downloads older than this.",
+  "device_downloads": "Device downloads",
+  "auto_download_to_device": "Auto-download to device",
+  "auto_download_to_device_description": "Download new episodes to this device as they arrive.",
+  "delete_device_downloads_after_description": "Remove downloads older than this.",
+  "video_settings_saved": "Video settings saved",
+  "video_settings": "Video settings",
+  "keep_videos_for": "Keep videos for",
+  "unit_days": "days",
+  "shortest": "Shortest",
+  "longest": "Longest",
+  "unit_min": "min",
+  "title_contains": "Title contains",
+  "title_contains_hint": "e.g. Full Episode",
+  "save": "Save",
+  "not_logged_in": "Not logged in",
+  "failed_to_update_favorite": "Failed to update favorite",
+  "added_to_favorites": "Added to favorites",
+  "removed_from_favorites": "Removed from favorites",
+  "failed_to_load_podcast_feed": "Failed to load podcast feed",
+  "failed_to_load_episodes": "Failed to load episodes",
+  "not_logged_in_to_server": "Not logged in to PinePods server",
+  "unsubscribe": "Unsubscribe",
+  "unfollow_podcast": "Unfollow Podcast",
+  "unfollow": "Unfollow",
+  "unsubscribed": "Unsubscribed",
+  "podcast_removed": "Podcast removed",
+  "subscribed_videos_adding": "Subscribed. Videos are being added in the background.",
+  "podcast_added": "Podcast added",
+  "audio_service_not_available": "Audio service not available",
+  "episode_saved": "Episode saved!",
+  "failed_to_save_episode": "Failed to save episode",
+  "removed_from_saved_episodes": "Removed from saved episodes",
+  "failed_to_remove_saved_episode": "Failed to remove saved episode",
+  "episode_download_started_excl": "Episode download started!",
+  "failed_to_download_episode": "Failed to download episode",
+  "episode_deleted_from_server": "Episode deleted from server",
+  "failed_to_delete_episode": "Failed to delete episode",
+  "removed_from_queue": "Removed from queue",
+  "added_to_queue_excl": "Added to queue!",
+  "failed_to_update_queue": "Failed to update queue",
+  "episode_marked_incomplete": "Episode marked as incomplete",
+  "failed_to_mark_incomplete": "Failed to mark episode incomplete",
+  "episode_marked_complete": "Episode marked as complete",
+  "failed_to_mark_complete": "Failed to mark episode complete",
+  "episode_download_started": "Episode download started",
+  "failed_to_start_download": "Failed to start download",
+  "local_download_not_found": "Local download not found",
+  "explicit": "Explicit",
+  "hosts": "Hosts",
+  "hosts_empty_prompt": "Who hosts this show? Add them so everyone can find them.",
+  "guests": "Guests",
+  "subscribe": "Subscribe",
+  "follow": "Follow",
+  "resume_latest": "Resume latest",
+  "play_latest": "Play latest",
+  "remove_from_favorites": "Remove from favorites",
+  "add_to_favorites": "Add to favorites",
+  "podcast_options": "Podcast options",
+  "auto_play_next": "Auto-play next",
+  "check_for_new_videos": "Check for new videos",
+  "check_for_new_episodes": "Check for new episodes",
+  "refresh_automatically": "Refresh automatically",
+  "refresh_details_from_feed": "Refresh details from feed",
+  "ai_features": "AI features",
+  "check_connection_try_again": "Check your connection and try again.",
+  "retry": "Retry",
+  "no_videos_yet": "No videos yet",
+  "videos_available_after_subscribing": "Videos available after subscribing",
+  "no_episodes_found": "No episodes found",
+  "episodes_available_after_following": "Episodes available after following",
+  "channel_videos_still_adding": "Your server is still adding this channel's videos, or none match its video settings",
+  "subscribe_channel_prompt": "Subscribe to add this channel to your library and play its videos",
+  "library_episodes_appear_here": "Episodes from your PinePods library will appear here",
+  "follow_podcast_prompt": "Follow this podcast to add it to your library and view episodes",
+  "no_episodes_match_filter": "No episodes match this filter",
+  "search_episodes": "Search episodes",
+  "sort_newest_first": "Newest first",
+  "sort_oldest_first": "Oldest first",
+  "sort_shortest_first": "Shortest first",
+  "sort_longest_first": "Longest first",
+  "sort_title_az": "Title A–Z",
+  "sort_title_za": "Title Z–A",
+  "less": "Less",
+  "turn_on_server_auto_download": "Turn on server auto-download",
+  "server_download_settings": "Server download settings",
+  "couldnt_change_auto_refresh": "Couldn't change automatic refresh: {error}",
+  "@couldnt_change_auto_refresh": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "couldnt_check_new_episodes": "Couldn't check for new episodes: {error}",
+  "@couldnt_check_new_episodes": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "couldnt_refresh_from_feed": "Couldn't refresh from the feed: {error}",
+  "@couldnt_refresh_from_feed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "couldnt_load_video_settings": "Couldn't load video settings: {error}",
+  "@couldnt_load_video_settings": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "couldnt_save": "Couldn't save: {error}",
+  "@couldnt_save": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "server_downloads_description": "Downloads kept on your Pinepods server (separate from downloads on this device).",
+  "delete_server_when_finished_description": "Remove the server download about an hour after you finish the episode.",
+  "device_downloads_description": "Downloads kept on this device (separate from downloads on your server).",
+  "delete_device_when_finished_description": "Remove the download about an hour after you finish the episode.",
+  "video_settings_description": "Leave a field empty for no limit. Older videos are removed from your server; length and title limits apply to new videos.",
+  "default_value": "Default ({value})",
+  "@default_value": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "unsubscribe_channel_confirm": "Unsubscribe from \"{title}\"? Its videos and your history with them are removed.",
+  "@unsubscribe_channel_confirm": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "unfollow_podcast_confirm": "Are you sure you want to unfollow \"{title}\"?\n\nThis will remove the podcast and all episode history from your library.",
+  "@unfollow_podcast_confirm": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "error_with_detail": "Error: {error}",
+  "@error_with_detail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_play_episode": "Failed to play episode: {error}",
+  "@failed_to_play_episode": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_saving_episode": "Error saving episode: {error}",
+  "@error_saving_episode": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_removing_saved_episode": "Error removing saved episode: {error}",
+  "@error_removing_saved_episode": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_downloading_episode": "Error downloading episode: {error}",
+  "@error_downloading_episode": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_deleting_episode": "Error deleting episode: {error}",
+  "@error_deleting_episode": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_updating_queue": "Error updating queue: {error}",
+  "@error_updating_queue": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_marking_complete": "Error marking episode complete: {error}",
+  "@error_marking_complete": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "deleted_local_downloads": "{count, plural, =1{Deleted 1 local download} other{Deleted {count} local downloads}}",
+  "@deleted_local_downloads": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ad_skip_server_copy_ok": "Episodes download to the server, so ads are found on the copy you'll play and skips line up exactly.",
+  "ad_skip_server_copy_off": "Server auto-download is off. Many podcasts insert different ads every time an episode is fetched, so ads found on one copy can land at the wrong times in the copy you stream. Pinepods holds off skipping when the stream doesn't match, so some ads won't be skipped. Turn on server auto-download for exact skips; \"Delete when finished\" keeps it from filling the disk.",
+  "filter_all": "All",
+  "filter_in_progress": "In progress",
+  "days_count": "{count, plural, =1{1 day} other{{count} days}}",
+  "@days_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "error_updating_completion": "Error updating completion: {error}",
+  "@error_updating_completion": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_create_share_link": "Failed to create share link: {error}",
+  "@failed_to_create_share_link": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_loading_episode_details": "Error loading episode details: {error}",
+  "@error_loading_episode_details": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_control_playback": "Failed to control playback: {error}",
+  "@failed_to_control_playback": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_jump_to_timestamp": "Failed to jump to timestamp: {error}",
+  "@failed_to_jump_to_timestamp": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_updating_download": "Error updating download: {error}",
+  "@error_updating_download": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "resume_time_left": "Resume  ·  {time} left",
+  "@resume_time_left": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "episode_download_queued": "Episode download queued!",
+  "marked_as_incomplete": "Marked as incomplete",
+  "marked_as_complete": "Marked as complete!",
+  "failed_to_update_completion": "Failed to update completion status",
+  "not_connected_to_server": "Not connected to a server",
+  "creating_share_link": "Creating share link…",
+  "share_episode_title": "Share Episode",
+  "share_link_description": "Anyone with this link can listen to the episode. The link expires in 60 days.",
+  "link_copied": "Link copied",
+  "copy": "Copy",
+  "share": "Share",
+  "saved_sync_when_online": "Saved — will sync when online",
+  "removed_sync_when_online": "Removed — will sync when online",
+  "failed_to_update_download": "Failed to update download",
+  "marked_incomplete_sync_when_online": "Marked incomplete — will sync when online",
+  "marked_complete_sync_when_online": "Marked complete — will sync when online",
+  "podcast_id_not_available": "Podcast ID not available",
+  "episode_details_title": "Episode Details",
+  "in_this_episode": "In This Episode",
+  "episode_people_empty_prompt": "Know who's in this episode? Add the hosts and guests.",
+  "pause": "Pause",
+  "play_again": "Play again",
+  "play": "Play",
+  "saved": "Saved",
+  "queued": "Queued",
+  "queue": "Queue",
+  "on_device": "On device",
+  "download": "Download",
+  "remove_download_title": "Remove download?",
+  "remove_download_description": "This deletes the copy stored on this device.",
+  "remove": "Remove",
+  "remove_server_download": "Remove server download",
+  "download_to_server": "Download to server",
+  "stored_on_server": "Stored on your PinePods server",
+  "go_to_podcast": "Go to podcast",
+  "share_episode": "Share episode",
+  "error_loading_home": "Error loading home content: {error}",
+  "@error_loading_home": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_starting_local_download": "Error starting local download: {error}",
+  "@error_starting_local_download": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_opening_playlist": "Error opening playlist: {error}",
+  "@error_opening_playlist": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "server_unreachable_offline_body": "Your PinePods server is unreachable. You can still browse and play episodes downloaded to this device.",
+  "on_this_device_count": "On this device ({count})",
+  "@on_this_device_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "not_connected_connect_in_settings": "Not connected to PinePods server. Please connect in Settings.",
+  "failed_to_queue_download": "Failed to queue download",
+  "offline_mode": "Offline mode",
+  "no_downloaded_episodes_on_device": "No downloaded episodes on this device yet.",
+  "untitled_episode": "Untitled episode",
+  "go_to_downloads": "Go to Downloads",
+  "retry_connection": "Retry connection",
+  "home_unavailable": "Home Unavailable",
+  "failed_to_load_home": "Failed to load home content",
+  "your_library": "Your Library",
+  "downloaded": "Downloaded",
+  "continue_listening": "Continue Listening",
+  "top_podcasts": "Top Podcasts",
+  "this_week": "This Week",
+  "listened": "Listened",
+  "completed": "Completed",
+  "smart_playlists": "Smart Playlists",
+  "recent_episodes": "Recent Episodes",
+  "welcome_to_pinepods": "Welcome to PinePods",
+  "home_empty_body": "Search for podcasts to follow and they'll show up here.",
+  "no_completed_episodes_match_query": "No completed episodes match \"{query}\"",
+  "@no_completed_episodes_match_query": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "no_completed_episodes": "No completed episodes",
+  "no_in_progress_episodes_match_query": "No in-progress episodes match \"{query}\"",
+  "@no_in_progress_episodes_match_query": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "no_in_progress_episodes": "No episodes in progress",
+  "no_episodes_match_filters": "No episodes match your filters",
+  "no_server_downloads_match_query": "No server downloads match \"{query}\"",
+  "@no_server_downloads_match_query": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "no_server_downloads": "No server downloads",
+  "no_local_downloads_match_query": "No local downloads match \"{query}\"",
+  "@no_local_downloads_match_query": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "no_local_downloads": "No local downloads",
+  "no_downloads_match_query": "No downloads match \"{query}\"",
+  "@no_downloads_match_query": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "no_downloads_match_filters": "No downloads match your filters",
+  "failed_to_load_saved_episodes_error": "Failed to load saved episodes: {error}",
+  "@failed_to_load_saved_episodes_error": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "not_connected_please_login": "Not connected to PinePods server. Please login first.",
+  "unable_to_connect_server": "Unable to connect to the PinePods server",
+  "refresh": "Refresh",
+  "favorites": "Favorites",
+  "clear_filters": "Clear filters",
+  "loading_saved_episodes": "Loading saved episodes...",
+  "saved_episodes_unavailable": "Saved Episodes Unavailable",
+  "failed_to_load_saved_episodes": "Failed to load saved episodes",
+  "no_saved_episodes": "No saved episodes",
+  "saved_empty_body": "Episodes you save will appear here",
+  "failed_to_load_history_error": "Failed to load listening history: {error}",
+  "@failed_to_load_history_error": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "loading_listening_history": "Loading listening history...",
+  "history_unavailable": "History Unavailable",
+  "failed_to_load_history": "Failed to load listening history",
+  "no_listening_history": "No listening history",
+  "history_empty_body": "Episodes you listen to will appear here",
+  "history": "History",
+  "failed_to_load_recent_episodes_error": "Failed to load recent episodes: {error}",
+  "@failed_to_load_recent_episodes_error": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_deleting_local_download": "Error deleting local download: {error}",
+  "@error_deleting_local_download": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "feed_unavailable": "Feed Unavailable",
+  "failed_to_load_recent_episodes": "Failed to load recent episodes",
+  "no_recent_episodes": "No recent episodes",
+  "feed_empty_body": "Episodes from the last 30 days will appear here",
+  "feed": "Feed",
+  "no_favorite_episodes": "No favorite episodes",
+  "favorites_empty_body": "Star podcasts to see their new episodes here",
+  "failed_to_load_server_downloads": "Failed to load server downloads: {error}",
+  "@failed_to_load_server_downloads": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_updating_saved_status": "Error updating saved status: {error}",
+  "@error_updating_saved_status": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "load_more_remaining": "Load more ({count} remaining)",
+  "@load_more_remaining": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "action_queue_pending": "Action queue ({count} pending)",
+  "@action_queue_pending": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "unknown_podcast": "Unknown Podcast",
+  "failed_to_delete_from_server": "Failed to delete episode from server",
+  "failed_to_update_saved_status": "Failed to update saved status",
+  "failed_to_update_completion_short": "Failed to update completion",
+  "no_downloads_found": "No downloads found",
+  "no_downloads_yet": "No downloads yet",
+  "downloads_empty_body": "Downloaded episodes will appear here",
+  "action_queue": "Action queue",
+  "download_activity": "Download activity",
+  "search_downloads": "Search downloads",
+  "server": "Server",
+  "local_downloads": "Local Downloads",
+  "server_downloads_title": "Server Downloads",
+  "offline": "Offline",
+  "server_unavailable_showing_local": "Server unavailable. Showing downloads on this device.",
+  "no_downloads_on_device": "No downloads on this device",
+  "no_downloads_on_device_body": "Download episodes while online to access them here",
+  "failed_to_load_queue_error": "Failed to load queued episodes: {error}",
+  "@failed_to_load_queue_error": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_updating_queue_order": "Error updating queue order: {error}",
+  "@error_updating_queue_order": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_update_queue_order": "Failed to update queue order",
+  "couldnt_load_queue": "Couldn't load the queue",
+  "queue_empty": "Your queue is empty",
+  "queue_empty_body": "Episodes you queue will appear here",
+  "playing_title": "Playing {title}",
+  "@playing_title": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "download_started_for": "Download started for {title}",
+  "@download_started_for": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "delete_requested_for": "Delete requested for {title}",
+  "@delete_requested_for": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "local_download_started_for": "Local download started for {title}",
+  "@local_download_started_for": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "error_updating_completion_status": "Error updating completion status: {error}",
+  "@error_updating_completion_status": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "not_said_in_transcripts": "{count, plural, =1{Not said in your 1 episode with a transcript.} other{Not said in any of your {count} episodes with transcripts.}}",
+  "@not_said_in_transcripts": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "episode_saved_plain": "Episode saved",
+  "episode_removed_from_saved": "Episode removed from saved",
+  "episode_removed_from_queue": "Episode removed from queue",
+  "episode_added_to_queue": "Episode added to queue",
+  "clear_search": "Clear search",
+  "transcripts": "Transcripts",
+  "server_needs_update_transcripts": "Your server needs an update to search inside transcripts.",
+  "couldnt_search_transcripts": "Couldn't search transcripts. Try again in a moment.",
+  "no_transcripts_yet": "No transcripts to search yet. They come from podcasts that publish them and from AI transcription, if it's set up on your server.",
+  "more_episodes": "More episodes",
+  "said_in_episodes": "Said in episodes",
+  "most_played_in_library": "Most Played in Your Library",
+  "browse_by_category": "Browse by Category",
+  "try_different_search": "Try different search terms or categories",
+  "search_failed": "Search failed",
+  "unknown_error_occurred": "Unknown error occurred",
+  "try_again": "Try again",
+  "recent_searches": "Recent searches",
+  "clear": "Clear",
+  "no_matches_titles_notes": "No matches in episode titles or show notes.",
+  "titles_and_show_notes": "Titles and show notes",
+  "no_api_key_returned": "no API key returned",
+  "unknown": "unknown",
+  "web_app_settings_description": "Many more server side and user settings available from the PinePods web app. Please head to {url} to adjust much more",
+  "@web_app_settings_description": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "show_my_gravatar": "Show my Gravatar",
+  "show_my_gravatar_description": "Loads an image from gravatar.com using a hash of your email",
+  "play_button_style": "Play button style",
+  "play_button_ring": "Ring",
+  "play_button_outline": "Outline",
+  "play_button_bare": "Bare",
+  "play_button_tinted": "Tinted",
+  "artwork_colours": "Artwork colours",
+  "artwork_colours_description": "Tint episode cards with a colour from each podcast's artwork",
+  "settings_navigation": "Navigation",
+  "reorganize_bottom_bar": "Reorganize Bottom Bar",
+  "reorganize_bottom_bar_description": "Customize the order of bottom navigation items",
+  "fast_forward_interval": "Fast-forward interval",
+  "rewind_interval": "Rewind interval",
+  "download_management": "Download Management",
+  "auto_download_wifi_only": "Auto-download on WiFi only",
+  "auto_download_wifi_only_description": "Only run automatic downloads (auto-download, queue and mirror) while on WiFi",
+  "prefer_server_download_source": "Prefer server download source",
+  "prefer_server_download_source_description": "Download from the server's copy when available, else the original feed",
+  "auto_download_queued": "Auto-download queued episodes",
+  "auto_download_queued_description": "Keep the next N queued episodes downloaded",
+  "mirror_server_downloads": "Mirror server downloads",
+  "mirror_server_downloads_description": "Keep this device in sync with the episodes downloaded on the server",
+  "delete_downloads_when_finished": "Delete downloads when finished",
+  "delete_downloads_when_finished_description": "Remove an episode's download from this device about an hour after you finish it",
+  "delete_downloads_after": "Delete downloads after",
+  "delete_downloads_after_description": "Remove downloads on this device older than this",
+  "settings_debug": "Debug",
+  "app_logs": "App Logs",
+  "app_logs_description": "View debug logs and device information",
+  "certificates": "Certificates",
+  "could_not_update_gravatar": "Could not update the Gravatar setting",
+  "web_app_settings": "Web App Settings",
+  "error_creating_playlist": "Error creating playlist: {error}",
+  "@error_creating_playlist": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "not_connected_to_pinepods": "Not connected to PinePods server",
+  "playlist_created": "Playlist created successfully!",
+  "failed_to_create_playlist": "Failed to create playlist",
+  "create_playlist_title": "Create Playlist",
+  "create": "Create",
+  "playlist_name": "Playlist Name",
+  "playlist_name_hint": "Enter playlist name",
+  "playlist_name_required": "Please enter a playlist name",
+  "description_optional": "Description (Optional)",
+  "playlist_description_hint": "Enter playlist description",
+  "icon": "Icon",
+  "episode_filters": "Episode Filters",
+  "include_unplayed": "Include Unplayed",
+  "include_partially_played": "Include Partially Played",
+  "include_played": "Include Played",
+  "duration_range_minutes": "Duration Range (minutes)",
+  "min": "Min",
+  "max": "Max",
+  "any": "Any",
+  "sort_order": "Sort Order",
+  "max_episodes_optional": "Max Episodes (Optional)",
+  "leave_blank_no_limit": "Leave blank for no limit",
+  "group_by_podcast": "Group by Podcast",
+  "group_by_podcast_description": "Group episodes by their podcast",
+  "not_downloaded_ads_explainer": "Many podcasts insert different ads each time an episode is fetched, so ads found on a one-off copy can land at the wrong times when you play it. For exact skips, download it to the server first; ads are then detected on the copy you'll play.",
+  "ads_match_server_download": "Ads were found on your server download, so skips line up exactly.",
+  "ads_mismatch_server_download": "Your server download is a different copy from the one these ads were found on, so their times may be off. Detect ads again to match your download.",
+  "ads_streaming_explainer": "You're streaming this episode. If the podcast inserts ads dynamically, they can sit at different times than detected; Pinepods only skips them when the stream's length matches the analyzed copy. Download it to the server for exact skips.",
+  "could_not_export_transcript": "Could not export the transcript: {error}",
+  "@could_not_export_transcript": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "not_downloaded_to_server": "Not downloaded to the server",
+  "detect_anyway": "Detect anyway",
+  "download_first": "Download first",
+  "ai_unavailable": "AI is unavailable right now.",
+  "downloading_to_server_for_ads": "Downloading to the server — ads will be detected on that copy.",
+  "ad_detection_queued": "Ad detection queued — this can take a few minutes.",
+  "transcription_queued": "Transcription queued — this can take a few minutes.",
+  "ad_confirmed": "Ad confirmed",
+  "ad_kept": "Ad kept",
+  "could_not_update_ad": "Could not update ad",
+  "detect_ads": "Detect ads",
+  "export_transcript": "Export transcript",
+  "export_srt": "Subtitles (.srt)",
+  "export_vtt": "WebVTT (.vtt)",
+  "export_txt": "Plain text (.txt)",
+  "re_transcribe": "Re-transcribe",
+  "transcribe": "Transcribe",
+  "detected_ads": "Detected ads",
+  "transcribing": "Transcribing…",
+  "ad_skipping": "Skipping",
+  "ad_kept_label": "Kept",
+  "confirm_ad_skip": "Confirm ad (skip)",
+  "keep_ad_no_skip": "Keep (do not skip)",
+  "authentication_failed": "Authentication failed: {error}",
+  "@authentication_failed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "oidc_login_error": "OIDC login error: {error}",
+  "@oidc_login_error": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_complete_login": "Failed to complete login: {error}",
+  "@failed_to_complete_login": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "enter_server_url_first": "Please enter a server URL first",
+  "failed_to_prepare_oidc": "Failed to prepare OIDC authentication URL",
+  "auth_state_mismatch": "Authentication failed: login state mismatch",
+  "mfa_verification_failed": "MFA verification failed",
+  "enter_mfa_code": "Please enter your MFA code",
+  "login_failed": "Login failed",
+  "connect_to_get_started": "Connect to your PinePods server to get started",
+  "server_url": "Server URL",
+  "enter_server_url": "Please enter a server URL",
+  "url_must_start_with_http": "URL must start with http:// or https://",
+  "username": "Username",
+  "enter_username": "Please enter your username",
+  "password": "Password",
+  "enter_password": "Please enter your password",
+  "mfa_code": "MFA Code",
+  "mfa_code_hint": "Enter 6-digit code",
+  "cancel_mfa": "Cancel MFA",
+  "mfa_code_six_digits": "MFA code must be 6 digits",
+  "advanced_certificates": "Advanced: Certificates",
+  "advanced_certificates_description": "Custom server CA / client certificate (mTLS)",
+  "verify_mfa_code": "Verify MFA Code",
+  "connect_to_pinepods": "Connect to PinePods",
+  "or_continue_with": "Or continue with",
+  "no_server_learn_more": "Don't have a PinePods server? Visit pinepods.online to learn more.",
+  "failed_to_load_stats": "Failed to load stats: {error}",
+  "@failed_to_load_stats": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "could_not_open_link": "Could not open link: {url}",
+  "@could_not_open_link": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "app_server_versions": "App v{app}  ·  Server {server}",
+  "@app_server_versions": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      },
+      "server": {
+        "type": "String"
+      }
+    }
+  },
+  "sync_status": "Sync Status",
+  "about_thanks": "Thanks for using PinePods! This app was born from a love for podcasts, of homelabs, and a desire to have a secure and central location to manage personal data.",
+  "pinepods_documentation": "PinePods documentation",
+  "pinepods_on_github": "PinePods on GitHub",
+  "buy_me_a_coffee": "Buy me a coffee",
+  "open_source_licenses": "Open source licenses",
+  "view_original_project": "View original project on GitHub",
+  "user_statistics": "User Statistics",
+  "couldnt_load_stats": "Couldn't load stats",
+  "stat_user_created": "User Created",
+  "stat_podcasts_played": "Podcasts Played",
+  "stat_time_listened": "Time Listened",
+  "stat_podcasts_added": "Podcasts Added",
+  "stat_episodes_saved": "Episodes Saved",
+  "stat_episodes_downloaded": "Episodes Downloaded",
+  "delete_playlists_confirm": "{count, plural, =1{Are you sure you want to delete 1 playlist?} other{Are you sure you want to delete {count} playlists?}}",
+  "@delete_playlists_confirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "error_deleting_playlists": "Error deleting playlists: {error}",
+  "@error_deleting_playlists": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "delete_playlist_confirm": "Are you sure you want to delete \"{name}\"?",
+  "@delete_playlist_confirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "error_deleting_playlist": "Error deleting playlist: {error}",
+  "@error_deleting_playlist": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "delete_selected_count": "Delete selected ({count})",
+  "@delete_selected_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "delete_playlists": "Delete Playlists",
+  "playlists_deleted": "Playlists deleted successfully",
+  "delete_playlist": "Delete Playlist",
+  "playlist_deleted": "Playlist deleted successfully",
+  "playlists_unavailable": "Playlists Unavailable",
+  "failed_to_load_playlists": "Failed to load your playlists",
+  "no_playlists_yet": "No playlists yet",
+  "playlists_empty_body": "Create a smart playlist to get started",
+  "create_playlist": "Create playlist",
+  "playlists": "Playlists",
+  "select_multiple": "Select multiple",
+  "system_playlists_cannot_be_deleted": "System playlists cannot be deleted.",
+  "system": "System",
+  "playlist_options": "Playlist options",
+  "modified_at": "Modified: {time}",
+  "@modified_at": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "modified_at_current": "Modified: {time} (Current)",
+  "@modified_at_current": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "no_podcasts_match_query_in_category": "No podcasts match \"{query}\" in category \"{category}\"",
+  "@no_podcasts_match_query_in_category": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      },
+      "category": {
+        "type": "String"
+      }
+    }
+  },
+  "no_podcasts_in_category": "No podcasts in category \"{category}\"",
+  "@no_podcasts_in_category": {
+    "placeholders": {
+      "category": {
+        "type": "String"
+      }
+    }
+  },
+  "no_podcasts_match_query": "No podcasts match \"{query}\"",
+  "@no_podcasts_match_query": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "no_podcasts_match_filters": "No podcasts match your filters",
+  "failed_to_copy_logs": "Failed to copy logs: {error}",
+  "@failed_to_copy_logs": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "session_file_copied": "Session {name} copied to clipboard!",
+  "@session_file_copied": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_copy_session_file": "Failed to copy session file: {error}",
+  "@failed_to_copy_session_file": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_copy_crash_log": "Failed to copy crash log: {error}",
+  "@failed_to_copy_crash_log": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "could_not_open_bug_tracker": "Could not open bug tracker: {error}",
+  "@could_not_open_bug_tracker": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "total_entries": "Total Entries: {count}",
+  "@total_entries": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "logs_copied": "Logs copied to clipboard!",
+  "session_logs_copied": "Current session logs copied to clipboard!",
+  "device_info_not_available": "Device info not available",
+  "crash_log_copied": "Crash log copied to clipboard!",
+  "clear_logs": "Clear Logs",
+  "clear_logs_confirm": "Are you sure you want to clear all logs? This action cannot be undone.",
+  "logs_cleared": "Logs cleared",
+  "debug_logs": "Debug Logs",
+  "filter": "Filter",
+  "scroll_to_bottom_title": "Scroll to Bottom",
+  "copy_current": "Copy Current",
+  "report_bug": "Report Bug",
+  "session_files_crash_logs": "Session Files & Crash Logs",
+  "previous_crash_log": "Previous Crash Log",
+  "previous_crash_log_description": "Tap to copy crash log to clipboard",
+  "no_session_files": "No session files available yet",
+  "device_information": "Device Information",
+  "no_logs_found": "No logs found",
+  "no_logs_found_body": "Use the app to generate logs",
+  "scroll_to_bottom": "Scroll to bottom",
+  "stack_trace": "Stack Trace:",
+  "log_entry_copied": "Log entry copied to clipboard",
+  "filter_logs": "Filter Logs",
+  "show_only_level": "Show only logs of level:",
+  "all_levels": "All Levels",
+  "apply": "Apply",
+  "server_ca_imported": "Server CA imported: {name}",
+  "@server_ca_imported": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "client_certificate_imported": "Client certificate imported: {name}",
+  "@client_certificate_imported": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "could_not_open_file_picker": "Could not open file picker: {error}",
+  "@could_not_open_file_picker": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "could_not_read_file": "Could not read the selected file.",
+  "certificate_password": "Certificate password",
+  "leave_blank_if_none": "Leave blank if none",
+  "import": "Import",
+  "server_ca_certificate": "Server CA certificate",
+  "server_ca_certificate_description": "For private or self-signed server certificates",
+  "server_ca_removed": "Server CA removed (restart to fully apply).",
+  "client_certificate_mtls": "Client certificate (mTLS)",
+  "client_certificate_description": "A .p12 / .pfx certificate to present to the server",
+  "client_certificate_removed": "Client certificate removed (restart to fully apply).",
+  "replace": "Replace",
+  "fill_in_all_fields": "Please fill in all fields",
+  "pinepods_server": "PinePods Server",
+  "pinepods_connection": "PinePods Connection",
+  "log_out": "Log Out",
+  "connect": "Connect",
+  "failed_to_load_server_download_activity": "Failed to load server download activity.",
+  "local_download_failed": "Local download failed",
+  "download_cancelled": "Download cancelled",
+  "episode_no_longer_available": "Episode no longer available",
+  "local_download_restarted": "Local download restarted",
+  "failed_to_restart_download": "Failed to restart download",
+  "download_activity_title": "Download Activity",
+  "no_recent_download_activity": "No recent download activity",
+  "download_activity_empty_body": "Downloads triggered in the last 7 days will appear here.",
+  "unknown_episode": "Unknown episode",
+  "playing_on_device": "Playing on {device}",
+  "@playing_on_device": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "send_to_device": "Send to {device}",
+  "@send_to_device": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "sent_to_device": "Sent to {device}",
+  "@sent_to_device": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "device": "Device",
+  "play_on": "Play on…",
+  "no_other_devices_online": "No other devices are online.",
+  "other_devices": "Other devices",
+  "skip_back_15s": "Skip back 15s",
+  "skip_forward_30s": "Skip forward 30s",
+  "play_here": "Play here",
+  "podcasts": "Podcasts",
+  "search_podcasts": "Search podcasts",
+  "sort_most_episodes": "Most episodes",
+  "sort_fewest_episodes": "Fewest episodes",
+  "sort_recently_followed": "Recently followed",
+  "sort_first_followed": "First followed",
+  "podcasts_unavailable": "Podcasts Unavailable",
+  "failed_to_load_podcasts": "Failed to load your podcasts",
+  "no_podcasts_subscribed": "You haven't subscribed to any podcasts yet. Search for podcasts to get started!",
+  "could_not_play_episode": "Could not play episode: {error}",
+  "@could_not_play_episode": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_removing_from_queue": "Error removing from queue: {error}",
+  "@error_removing_from_queue": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_clearing_queue": "Error clearing queue: {error}",
+  "@error_clearing_queue": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_remove_from_queue": "Failed to remove from queue",
+  "clear_queue": "Clear Queue",
+  "clear_queue_confirm": "Are you sure you want to clear the entire queue?",
+  "queue_cleared": "Queue cleared",
+  "error_loading_queue": "Error loading queue",
+  "up_next_empty": "Your queue is empty. Add episodes to see them here.",
+  "search_failed_error": "Search failed: {error}",
+  "@search_failed_error": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "latest_title": "Latest: {title}",
+  "@latest_title": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "search_for_podcasts": "Search for podcasts",
+  "search_empty_body": "Find new shows to follow by name, topic or host",
+  "search_youtube_channels": "Search YouTube channels",
+  "search_unavailable": "Search Unavailable",
+  "failed_to_search_youtube": "Failed to search YouTube",
+  "failed_to_search_podcasts": "Failed to search for podcasts",
+  "try_different_keywords": "Try different keywords or another search provider",
+  "couldnt_open_name": "Couldn't open {name}",
+  "@couldnt_open_name": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "following_count": "Following · {count}",
+  "@following_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "not_connected_to_a_pinepods_server": "Not connected to a PinePods server",
+  "find_hosts_and_guests": "Find hosts and guests",
+  "nobody_found": "Nobody found. People are added from podcast and episode pages.",
+  "not_following_anyone": "Not following anyone yet",
+  "latest_episodes": "Latest episodes",
+  "no_episodes_yet": "No episodes yet.",
+  "oidc_authentication_failed": "OIDC authentication failed: {error}",
+  "@oidc_authentication_failed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_processing_oidc_callback": "Error processing OIDC callback: {error}",
+  "@error_processing_oidc_callback": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_complete_oidc_login": "Failed to complete OIDC login: {error}",
+  "@failed_to_complete_oidc_login": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_load_podcast": "Failed to load podcast: {error}",
+  "@failed_to_load_podcast": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "oidc_callback_no_api_key": "OIDC callback received but no API key found",
+  "oidc_authentication_successful": "OIDC authentication successful!",
+  "not_following_anyone_body": "Search above, or tap a host or guest on a podcast or episode, then Follow. Their new episodes on any show will show up here.",
+  "added_name": "Added {name}",
+  "@added_name": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "added_people_count": "Added {count} people",
+  "@added_people_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "add_people_count": "Add {count} people",
+  "@add_people_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "could_not_save_queue_position": "Could not save the queue position",
+  "add_to_queue_position": "Add to queue position",
+  "add_to_queue_position_description": "Where Add to Queue puts an episode. The arrow beside it picks the other end.",
+  "queue_bottom": "Bottom",
+  "queue_top": "Top",
+  "bottom_bar_order_description": "Drag to reorder. The first {count} appear in the bottom bar; the rest are under More (everything shows when the screen is wide enough).",
+  "@bottom_bar_order_description": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bottom_bar_order_saved": "Bottom bar order saved!",
+  "in_bottom_bar": "In bottom bar",
+  "under_more": "Under More",
+  "reset_to_default": "Reset to Default",
+  "delete_server_downloads_when_finished_description": "Remove an episode's server download about an hour after you finish it. With server auto-download, the server keeps only what you haven't heard.",
+  "delete_server_downloads_when_finished": "Delete server downloads when finished",
+  "delete_server_downloads_after": "Delete server downloads after",
+  "subscribed_to_channel": "Subscribed to {name}. Videos are being added in the background.",
+  "@subscribed_to_channel": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "couldnt_subscribe": "Couldn't subscribe: {error}",
+  "@couldnt_subscribe": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "couldnt_unsubscribe_error": "Couldn't unsubscribe: {error}",
+  "@couldnt_unsubscribe_error": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "youtube_subscribe_explainer": "Subscribing adds the channel to your library. Your server downloads the audio of its videos so you can play them like podcast episodes.",
+  "couldnt_unsubscribe": "Couldn't unsubscribe",
+  "couldnt_open_youtube": "Couldn't open YouTube",
+  "open_on_youtube": "Open on YouTube",
+  "open_channel": "Open channel",
+  "recent_videos": "Recent videos",
+  "more_options": "More Options",
+  "saved_episodes": "Saved Episodes",
+  "failed_to_start_playlist": "Failed to start playlist: {error}",
+  "@failed_to_start_playlist": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "playlist_empty_fresh": "No new episodes have been released in the last 24 hours. Check back later for fresh content!",
+  "playlist_empty_continue": "Start listening to some episodes and they'll appear here for easy access.",
+  "playlist_empty_almost_done": "You don't have any episodes that are near completion. Keep listening!",
+  "playlist_empty_default": "No episodes match the current playlist criteria. Try adjusting the filters or add more podcasts.",
+  "play_from_top": "Play from top",
+  "loading_playlist_episodes": "Loading playlist episodes...",
+  "error_loading_playlist": "Error loading playlist",
+  "no_data_available": "No data available",
+  "episode_number": "Episode #{id}",
+  "@episode_number": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "failed_times": "{count, plural, =1{Failed 1 time} other{Failed {count} times}}",
+  "@failed_times": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "action_queue_title": "Action Queue",
+  "sync_now": "Sync now",
+  "everything_synced": "Everything is synced",
+  "action_queue_empty_body": "Interactions made offline appear here until they reach the server.",
+  "now_playing_caps": "NOW PLAYING",
+  "previous_chapter": "Previous chapter",
+  "next_chapter": "Next chapter",
+  "no_transcript_available": "No transcript available",
+  "follow_along": "Follow along",
+  "load_more_episodes_remaining": "Load {count} more episodes ({remaining} remaining)",
+  "@load_more_episodes_remaining": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "remaining": {
+        "type": "int"
+      }
+    }
+  },
+  "all_episodes_loaded": "All {count} episodes loaded",
+  "@all_episodes_loaded": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "loading_more_episodes": "Loading more episodes...",
+  "play_from_time": "Play from {time}",
+  "@play_from_time": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "ai_transcript": "AI transcript",
+  "podcasts_transcript": "Podcast's transcript",
+  "sleep_chapter_label": "End of chapter",
+  "close_search": "Close search",
+  "search": "Search",
+  "sort": "Sort",
+  "remove_from_saved": "Remove from Saved",
+  "save_episode": "Save Episode",
+  "delete_from_server": "Delete from Server",
+  "download_to_server_title": "Download to Server",
+  "delete_local_download": "Delete Local Download",
+  "download_locally": "Download Locally",
+  "remove_from_queue": "Remove from Queue",
+  "add_to_queue": "Add to Queue",
+  "choose_top_or_bottom": "Choose top or bottom",
+  "add_to_top_of_queue": "Add to top of queue",
+  "add_to_bottom_of_queue": "Add to bottom of queue",
+  "mark_as_incomplete": "Mark as Incomplete",
+  "mark_as_complete": "Mark as Complete",
+  "play_on_device": "Play on device…",
+  "add": "Add",
+  "episode_actions": "Episode Actions",
+  "server_unavailable": "Server Unavailable",
+  "error_details": "Error Details",
+  "troubleshooting_tips": "Troubleshooting Tips",
+  "reorder_tabs": "Reorder tabs",
+  "episode_filter": "Episode Filter",
+  "whos_in_this_episode": "Who's in this episode?",
+  "who_hosts_this_show": "Who hosts this show?",
+  "podpeople_added_unverified": "Added to PodPeopleDB for everyone right away, marked unverified until reviewed.",
+  "host": "Host",
+  "guest": "Guest",
+  "add_people_hint": "Name, or several: Alice, Bob and Carol",
+  "add_another": "Add another",
+  "nobody_listed_yet": "Nobody listed yet.",
+  "unverified_person": "Unverified: added by the community, not yet reviewed",
+  "could_not_follow": "Could not follow",
+  "could_not_unfollow": "Could not unfollow",
+  "following": "Following",
+  "in_your_library_count": "In your library ({count})",
+  "@in_your_library_count": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "elsewhere_count": "Elsewhere ({count})",
+  "@elsewhere_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "no_episodes_with_person": "No episodes with {name} in your library.",
+  "@no_episodes_with_person": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "shows": "Shows",
+  "not_in_library": "Not in library",
+  "looking_for_episodes_elsewhere": "Looking for episodes on other shows…",
+  "no_episodes_outside_library": "No episodes found on shows outside your library.",
+  "load_more": "Load more",
+  "nav_home": "Home",
+  "nav_people": "People",
+  "language": "Language",
+  "language_system_default": "System default",
+  "action_save_progress_at": "Save progress ({seconds}s)",
+  "@action_save_progress_at": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "action_save_progress": "Save progress",
+  "rewind_seconds": "Rewind {seconds} seconds",
+  "@rewind_seconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "forward_seconds": "Forward {seconds} seconds",
+  "@forward_seconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "that_device": "That device",
+  "all_actions_synced": "All actions synced",
+  "actions_still_pending": "{count, plural, =1{1 action still pending} other{{count} actions still pending}}",
+  "@actions_still_pending": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "mentions_count": "{count, plural, =1{1 mention} other{{count} mentions}}",
+  "@mentions_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "show_fewer": "Show fewer",
+  "more_moments": "{count, plural, =1{1 more moment} other{{count} more moments}}",
+  "@more_moments": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "episodes_count": "{count, plural, =1{1 episode} other{{count} episodes}}",
+  "@episodes_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "videos_count": "{count, plural, =1{1 video} other{{count} videos}}",
+  "@videos_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "seconds_short": "{count} sec",
+  "@seconds_short": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "minutes_short": "{count} min",
+  "@minutes_short": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "seconds_left_short": "{count} sec left",
+  "@seconds_left_short": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "minutes_left_short": "{count} min left",
+  "@minutes_left_short": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tip_check_internet": "Check your internet connection",
+  "tip_verify_settings_in_app": "Verify server settings in the app",
+  "tip_server_running": "Ensure the PinePods server is running",
+  "tip_contact_admin_persists": "Contact your administrator if the issue persists",
+  "days_ago": "{count, plural, =1{1 day ago} other{{count} days ago}}",
+  "@days_ago": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "weeks_ago": "{count, plural, =1{1 week ago} other{{count} weeks ago}}",
+  "@weeks_ago": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "months_ago": "{count, plural, =1{1 month ago} other{{count} months ago}}",
+  "@months_ago": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "today": "Today",
+  "yesterday": "Yesterday",
+  "action_mark_completed": "Mark completed",
+  "action_mark_not_completed": "Mark not completed",
+  "action_save_episode": "Save episode",
+  "action_remove_saved": "Remove saved episode",
+  "action_add_to_queue": "Add to queue",
+  "action_add_to_history": "Add to history",
+  "sync_internal_gpodder": "Internal gpodder",
+  "sync_external_gpodder": "External gpodder",
+  "not_syncing": "Not Syncing",
+  "unknown_sync_type": "Unknown sync type",
+  "server_http_not_pinepods": "Server responded with HTTP {status}. This does not look like a PinePods server.",
+  "@server_http_not_pinepods": {
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  },
+  "couldnt_reach_server": "Couldn't reach the server (connection/DNS failure): {error}",
+  "@couldnt_reach_server": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connection_failed": "Connection failed: {error}",
+  "@connection_failed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "could_not_connect": "Could not connect: {error}",
+  "@could_not_connect": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "tls_not_trusted": "The server's TLS certificate isn't trusted. If it uses a private or self-signed certificate, import its CA under Advanced → Certificates. If the server requires a client certificate (mTLS), import that too.",
+  "not_a_pinepods_server": "Reachable, but this does not look like a PinePods server.",
+  "server_too_slow": "The server took too long to respond. Check the address and your connection.",
+  "invalid_server_address": "That doesn't look like a valid server address.",
+  "authentication_failed_plain": "Authentication failed",
+  "not_a_valid_pinepods_server": "Not a valid PinePods server",
+  "invalid_mfa_code": "Invalid MFA code",
+  "api_key_verification_failed": "API key verification failed",
+  "failed_to_get_user_id": "Failed to get user ID",
+  "failed_to_get_user_details": "Failed to get user details",
+  "failed_to_get_server_config": "Failed to get server configuration",
+  "login_with_provider": "Login with {provider}",
+  "@login_with_provider": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
+  "network_error": "Network error: {error}",
+  "@network_error": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "error_unknown": "An unknown error occurred",
+  "error_cannot_connect_long": "Unable to connect to the PinePods server. Please check your internet connection and server settings.",
+  "error_auth_long": "Authentication failed. Please check your login credentials.",
+  "error_server_long": "The PinePods server is experiencing issues. Please try again later.",
+  "error_title": "Error",
+  "authentication_error": "Authentication Error",
+  "server_error": "Server Error",
+  "tip_try_later": "Please try again later",
+  "tip_verify_url": "Verify server URL in settings",
+  "tip_port_accessible": "Check if the server port is accessible",
+  "tip_check_credentials": "Check your username and password",
+  "tip_account_active": "Ensure your account is still active",
+  "tip_relogin": "Try logging out and logging back in",
+  "tip_contact_admin_help": "Contact your administrator for help",
+  "tip_wait": "Wait a few minutes and try again",
+  "tip_overloaded": "Check if the server is overloaded",
+  "tip_contact_admin": "Contact your administrator",
+  "tip_server_logs": "Check server logs for more details",
+  "tip_refresh": "Try refreshing the page",
+  "tip_restart_app": "Restart the app if the issue persists",
+  "tip_contact_support": "Contact support for assistance",
+  "car_current": "Current",
+  "car_tap_to_pause": "Tap to pause",
+  "car_tap_to_play": "Tap to play",
+  "now_playing": "Now Playing",
+  "car_up_next": "Up next",
+  "car_downloaded_episodes": "Downloaded episodes",
+  "car_recently_played": "Recently played",
+  "car_your_subscriptions": "Your subscriptions",
+  "car_your_playlists": "Your playlists",
+  "podcast": "Podcast",
+  "device_offline_not_delivered": "{name} is offline — command not delivered",
+  "@device_offline_not_delivered": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "itunes_no_descriptions": "Descriptions not provided by iTunes",
+  "new_episodes_added": "{count, plural, =1{1 new episode added} other{{count} new episodes added}}",
+  "@new_episodes_added": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "subscribers_count": "{count} subscribers",
+  "@subscribers_count": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "minutes_ago_short": "{count}m ago",
+  "@minutes_ago_short": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hours_ago_short": "{count}h ago",
+  "@hours_ago_short": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "days_ago_short": "{count}d ago",
+  "@days_ago_short": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "time_left": "{time} left",
+  "@time_left": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "minutes_count": "{count, plural, =1{1 minute} other{{count} minutes}}",
+  "@minutes_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hours_count": "{count, plural, =1{1 hour} other{{count} hours}}",
+  "@hours_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hours_minutes": "{hours} {minutes}",
+  "@hours_minutes": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "co_host": "Co-host",
+  "saved_and_collections": "Saved & Collections",
+  "add_to_collection": "Add to collection",
+  "add_to_collection_menu": "Add to Collection…",
+  "remove_from_collection": "Remove from Collection",
+  "add_episodes_to_collection_title": "{count, plural, =1{Add 1 episode to…} other{Add {count} episodes to…}}",
+  "@add_episodes_to_collection_title": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "added_episodes_to_collection": "{count, plural, =1{Added 1 episode to {name}} other{Added {count} episodes to {name}}}",
+  "@added_episodes_to_collection": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "no_collections_yet": "No collections yet.",
+  "collection_episode_count": "{count, plural, =1{1 episode} other{{count} episodes}}",
+  "@collection_episode_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "new_collection": "New collection",
+  "edit_collection": "Edit collection",
+  "collection_name_required": "Give the collection a name",
+  "delete_collection_confirm_title": "Delete collection?",
+  "delete_collection_confirm_body": "\"{name}\" will be removed. Its episodes stay in your library.",
+  "@delete_collection_confirm_body": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "delete_collection": "Delete collection",
+  "collection_name": "Collection name",
+  "auto_add_by_category": "Auto-add by category",
+  "auto_add_by_category_body": "New episodes from podcasts in these categories are added automatically.",
+  "no_podcast_categories": "Your podcasts have no categories.",
+  "add_existing_matching_episodes": "Add existing matching episodes now",
+  "saving_ellipsis": "Saving…",
+  "selected_count": "{count} selected",
+  "@selected_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "select_all": "Select all",
+  "select_none": "Select none",
+  "done": "Done",
+  "collection_action": "Collection",
+  "complete_action": "Complete",
+  "select_episodes": "Select episodes",
+  "done_selecting": "Done selecting",
+  "removed_from_collection": "Removed from {name}",
+  "@removed_from_collection": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_remove_error": "Failed to remove: {error}",
+  "@failed_to_remove_error": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "collection_empty_title": "Nothing in {name} yet",
+  "@collection_empty_title": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "collection_empty_body": "Long-press an episode and choose Add to Collection, or select several on a podcast's page.",
+  "new_collection_chip": "New"
 }

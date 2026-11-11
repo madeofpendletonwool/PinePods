@@ -37,7 +37,7 @@ class LocalDownloadUtils {
   /// (server) episode. The reverse of [localDownloadEpisode]'s conversion.
   static PinepodsEpisode toPinepodsEpisode(Episode episode) {
     return PinepodsEpisode(
-      podcastName: episode.podcast ?? 'Unknown Podcast',
+      podcastName: episode.podcast ?? 'Unknown Podcast', // i18n-ignore
       episodeTitle: episode.title ?? '',
       episodePubDate: episode.publicationDate?.toIso8601String() ?? '',
       episodeDescription: episode.description ?? '',
