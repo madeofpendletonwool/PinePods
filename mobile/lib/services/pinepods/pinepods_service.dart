@@ -59,6 +59,10 @@ class PinepodsService {
     return _client.put(url, headers: headers, body: body).timeout(_timeout);
   }
 
+  Future<http.Response> _delete(Uri url, {Map<String, String>? headers, Object? body}) {
+    return _client.delete(url, headers: headers, body: body).timeout(_timeout);
+  }
+
   // Method to initialize with existing credentials
   void initializeWithCredentials(String server, String apiKey) {
     _server = server;
@@ -2718,7 +2722,7 @@ class PinepodsService {
       throw Exception('Not authenticated');
     }
 
-    final url = Uri.parse('$_server/api/data/id_from_api_key');
+    final url = Uri.parse('$_server/api/data/get_user');
 
     try {
       final response = await _get(
@@ -2727,8 +2731,7 @@ class PinepodsService {
       );
 
       if (response.statusCode == 200) {
-        final userId = int.tryParse(response.body.trim());
-        return userId;
+        return jsonDecode(response.body)['retrieved_id'] as int?;
       } else {
         throw Exception('Failed to get user ID: ${response.statusCode}');
       }
@@ -2926,7 +2929,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await _post(
+      final response = await _delete(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode({'user_id': userId, 'playlist_id': playlistId}),

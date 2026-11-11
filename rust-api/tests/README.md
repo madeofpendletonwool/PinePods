@@ -72,7 +72,9 @@ integration/
   foreign_resources.rs  probes every operation with another user's resource ids
   gpodder/           gpodder protocol conformance (see below)
   accounts.rs, settings.rs, podcasts.rs, queue.rs, playback.rs, library.rs,
-  feeds.rs, opml.rs, podcasting20.rs   feature behaviour
+  feeds.rs, opml.rs, podcasting20.rs, downloads.rs, backups.rs, local_media.rs,
+  email.rs, translations.rs, ai.rs, now_playing.rs, timers.rs   feature behaviour
+  mobile_contract.rs  the mobile app's API client against this server
 ```
 
 The first four files are driven by the OpenAPI spec, so a **new endpoint is covered by the
@@ -125,8 +127,31 @@ without `started >= 0`, `position > 0` and `total > 0` resets the episode to 0 t
 
 Library assertions are skipped against `mock`, which has no Pinepods database behind it.
 
+## Files, mail, AI and sockets
+
+- **Files.** `PINEPODS_DATA_DIR` and `PINEPODS_WEB_ROOT` move the server's storage, so tests use a
+  sandbox instead of `/opt/pinepods` (`harness/files.rs`). They're process-wide: tests tell their
+  files apart by unique podcast and folder names.
+- **Backups** run the real `pg_dump`/`psql`/`mysqldump`/`mysql`. They read `DB_*` from the
+  environment and share a folder, so those tests take turns through `BackupEnv`. Without the tools
+  installed, the script runs the ones inside the test containers.
+- **AI** uses a stand-in sidecar with the real protocol (`harness/mock_ai.rs`). Tests choose the
+  outcome through the audio or model name it's given.
+- **Email** goes to a small SMTP server on a real socket (`harness/mock_smtp.rs`).
+- **WebSockets** need a real socket: `app.listen()` serves the router on one.
+- **Silence detection** needs `ffmpeg`.
+
+## The mobile app against this server
+
+`mobile_contract.rs` boots the server, seeds it, and runs `mobile/test/contract/` with `flutter test`,
+so the app's API client is tested against real responses. It needs Flutter, so it's ignored by default:
+
+```sh
+scripts/integration-tests.sh --db postgres -- -- --ignored mobile_contract
+```
+
 ## Not covered yet
 
-Downloads and backups (paths under `/opt/pinepods` are hard-coded), the translations list
-(`/var/www/html/static/translations`), Pinepods' own gpodder/Nextcloud sync client, and
-YouTube channels.
+External services are stood in for rather than called: real ntfy/Gotify servers, real OIDC providers,
+real whisper and LLM models. On-device playback (CarPlay, Android Auto, Bluetooth, background audio)
+needs hardware.

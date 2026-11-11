@@ -1093,3 +1093,72 @@ pub fn toast_notification() -> Html {
         </div>
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    fn task(id: &str, status: &str, progress: f64, group: Option<&str>) -> TaskProgress {
+        serde_json::from_value(serde_json::json!({
+            "task_id": id,
+            "user_id": 1,
+            "item_id": null,
+            "type": "download_episode",
+            "progress": progress,
+            "status": status,
+            "started_at": "2026-01-01T00:00:00Z",
+            "completed_at": null,
+            "details": null,
+            "group": group,
+        }))
+        .expect("task")
+    }
+
+    #[wasm_bindgen_test]
+    fn statuses_are_classified_for_the_tabs() {
+        for status in ["PROGRESS", "STARTED", "DOWNLOADING", "PROCESSING", "FINALIZING", "PENDING"] {
+            assert!(is_active(status), "{status}");
+            assert!(!is_done(status), "{status}");
+        }
+        for status in ["SUCCESS", "FAILED"] {
+            assert!(is_done(status), "{status}");
+            assert!(!is_active(status), "{status}");
+        }
+        assert_eq!(kind_class("PENDING"), "queued");
+        assert_eq!(kind_class("DOWNLOADING"), "active");
+        assert_eq!(kind_class("FAILED"), "failed");
+    }
+
+    #[wasm_bindgen_test]
+    fn running_tasks_sort_first_and_finished_last() {
+        let sorted = sort_tasks(vec![
+            task("done", "SUCCESS", 100.0, None),
+            task("broken", "FAILED", 10.0, None),
+            task("waiting", "PENDING", 0.0, None),
+            task("running", "DOWNLOADING", 50.0, None),
+        ]);
+        let order: Vec<&str> = sorted.iter().map(|t| t.task_id.as_str()).collect();
+        assert_eq!(order, ["running", "waiting", "broken", "done"]);
+    }
+
+    #[wasm_bindgen_test]
+    fn tasks_with_a_group_fold_into_one_row_with_totals() {
+        let nodes = group_tasks(vec![
+            task("solo", "DOWNLOADING", 10.0, None),
+            task("a", "SUCCESS", 100.0, Some("bulk")),
+            task("b", "DOWNLOADING", 50.0, Some("bulk")),
+            task("c", "FAILED", 0.0, Some("bulk")),
+        ]);
+        assert_eq!(nodes.len(), 2);
+        assert!(matches!(&nodes[0], RenderNode::Task(t) if t.task_id == "solo"));
+        let RenderNode::Group(group) = &nodes[1] else { panic!("expected a group") };
+        assert_eq!(group.children.len(), 3);
+        assert_eq!(group.count, 3);
+        assert_eq!(group.done_count, 2);
+        assert_eq!(group.active_count, 1);
+        assert_eq!(group.progress, 50.0);
+        assert!(!group.all_done);
+        assert!(group.any_failed);
+    }
+}

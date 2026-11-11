@@ -17,7 +17,6 @@ use crate::{
     AppState,
 };
 
-const LOCAL_MEDIA_ROOT: &str = "/opt/pinepods/local-media";
 const ARTWORK_DIR: &str = "_artwork";
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "ogg", "flac", "wav", "aac", "opus"];
 
@@ -64,7 +63,7 @@ pub struct LocalEpisodeCandidate {
 }
 
 pub(crate) fn validate_local_media_path(input: &str) -> Result<PathBuf, AppError> {
-    let root = Path::new(LOCAL_MEDIA_ROOT);
+    let root = PathBuf::from(crate::paths::local_media_dir());
     // Canonicalize resolves symlinks and `..` segments, blocking traversal
     let candidate = root.join(input);
     let canonical = candidate
@@ -77,7 +76,7 @@ pub(crate) fn validate_local_media_path(input: &str) -> Result<PathBuf, AppError
 }
 
 fn ensure_artwork_dir() -> Result<PathBuf, AppError> {
-    let artwork_dir = PathBuf::from(LOCAL_MEDIA_ROOT).join(ARTWORK_DIR);
+    let artwork_dir = PathBuf::from(crate::paths::local_media_dir()).join(ARTWORK_DIR);
     std::fs::create_dir_all(&artwork_dir)
         .map_err(|e| AppError::internal(format!("Failed to create artwork directory: {}", e)))?;
     Ok(artwork_dir)
@@ -122,7 +121,7 @@ fn find_cover_art_in_dir(dir: &Path, artwork_dir: &Path) -> Option<String> {
 /// before their tags are read.
 pub fn scan_local_directory(dir: &Path, known: &HashSet<String>) -> Result<Vec<LocalEpisodeCandidate>, AppError> {
     // Created when there's an image to save.
-    let artwork_dir = PathBuf::from(LOCAL_MEDIA_ROOT).join(ARTWORK_DIR);
+    let artwork_dir = PathBuf::from(crate::paths::local_media_dir()).join(ARTWORK_DIR);
 
     // The folder's cover, looked up once and only when there's a new file.
     let mut dir_artwork: Option<Option<String>> = None;
@@ -664,7 +663,7 @@ pub async fn list_local_directories(
     // Resolve the directory to list. Empty path = the local-media root (create it if it
     // does not exist yet so first-time users get an empty list rather than an error).
     let target = if query.path.trim().is_empty() {
-        let root = PathBuf::from(LOCAL_MEDIA_ROOT);
+        let root = PathBuf::from(crate::paths::local_media_dir());
         std::fs::create_dir_all(&root)
             .map_err(|e| AppError::internal(format!("Failed to access local-media root: {}", e)))?;
         root.canonicalize()
@@ -678,9 +677,9 @@ pub async fn list_local_directories(
     }
 
     // Canonical root, used to compute paths relative to the local-media mount.
-    let root_canonical = PathBuf::from(LOCAL_MEDIA_ROOT)
+    let root_canonical = PathBuf::from(crate::paths::local_media_dir())
         .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from(LOCAL_MEDIA_ROOT));
+        .unwrap_or_else(|_| PathBuf::from(crate::paths::local_media_dir()));
 
     let mut directories: Vec<LocalDirectoryEntry> = Vec::new();
 

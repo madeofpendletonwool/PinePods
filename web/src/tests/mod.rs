@@ -2,12 +2,14 @@ use wasm_bindgen_test::*;
 use crate::components::context::{AppState, PageLoadState};
 use crate::pages::routes::Route;
 
+#[cfg(not(feature = "browser_tests"))]
 wasm_bindgen_test_configure!(run_in_node_experimental);
+#[cfg(feature = "browser_tests")]
+wasm_bindgen_test_configure!(run_in_browser);
 
-#[wasm_bindgen_test]
-fn test_app_compiles() {
-    assert!(true);
-}
+mod logic;
+#[cfg(feature = "browser_tests")]
+mod pages;
 
 #[wasm_bindgen_test]
 fn test_basic_state() {
@@ -16,21 +18,29 @@ fn test_basic_state() {
 }
 
 #[wasm_bindgen_test]
-fn test_with_output() {
-    assert_eq!(2 + 2, 4);
-}
-
-#[wasm_bindgen_test]
-fn test_route_variants_exist() {
-    let routes = vec![
-        Route::Home,
-        Route::Login,
-        Route::NotFound,
-        Route::Settings,
-        Route::Search,
-        Route::Queue,
-    ];
-    assert!(!routes.is_empty());
+fn every_address_opens_the_page_it_should() {
+    use yew_router::Routable;
+    for (path, route) in [
+        ("/", Route::Login),
+        ("/home", Route::Home),
+        ("/feed", Route::Feed),
+        ("/queue", Route::Queue),
+        ("/saved", Route::Saved),
+        ("/collections", Route::Collections),
+        ("/settings", Route::Settings),
+        ("/history", Route::PodHistory),
+        ("/downloads", Route::Downloads),
+        ("/search", Route::Search),
+        ("/podcasts", Route::Podcasts),
+        ("/playlists", Route::Playlists),
+        ("/discover", Route::Discover),
+    ] {
+        assert!(Route::recognize(path) == Some(route.clone()), "{path}");
+        assert_eq!(route.to_path(), path);
+    }
+    assert!(Route::recognize("/playlist/7") == Some(Route::PlaylistDetail { id: 7 }));
+    assert!(Route::recognize("/playlist/not-a-number") == Some(Route::NotFound));
+    assert!(Route::recognize("/no/such/page") == Some(Route::NotFound));
 }
 
 #[wasm_bindgen_test]

@@ -344,9 +344,9 @@ impl BackgroundScheduler {
         if keep <= 0 {
             return;
         }
-        let backup_dir = "/opt/pinepods/backups";
+        let backup_dir = crate::paths::backups_dir();
         let mut files: Vec<(std::path::PathBuf, std::time::SystemTime)> = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(backup_dir) {
+        if let Ok(entries) = std::fs::read_dir(&backup_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
@@ -438,6 +438,10 @@ pub async fn run_refresh_job(state: &AppState) -> AppResult<()> {
 }
 
 /// The scheduled external sync.
+pub async fn run_backup_job(state: Arc<AppState>) -> AppResult<()> {
+    BackgroundScheduler::run_scheduled_backups(state).await
+}
+
 pub async fn run_sync_job(state: &AppState) -> AppResult<()> {
     if let Err(e) = crate::services::sync::imports::retry_due(&state.db_pool, &state.task_spawner).await {
         warn!("Retrying failed sync imports failed: {}", e);

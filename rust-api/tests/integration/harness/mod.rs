@@ -4,11 +4,14 @@
 pub mod antennapod;
 pub mod app;
 pub mod env;
+pub mod files;
 pub mod fixtures;
 pub mod flows;
 pub mod gpodder;
 pub mod http;
+pub mod mock_ai;
 pub mod mock_gpodder;
+pub mod mock_smtp;
 pub mod rss;
 pub mod sql;
 pub mod youtube;

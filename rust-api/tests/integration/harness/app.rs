@@ -271,6 +271,29 @@ impl TestApp {
         u
     }
 
+    /// Serve the router on a real socket, for WebSockets. Returns the port; the server stops
+    /// with the test's runtime.
+    pub async fn listen(&self) -> u16 {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let router = self.router.clone();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, router).await;
+        });
+        port
+    }
+
+    /// Run the server's AI health monitor and wait until it finds the sidecar.
+    pub async fn connect_ai(&self) {
+        pinepods_api::services::ai_client::spawn_health_monitor(self.state.ai_available.clone());
+        let flag = self.state.ai_available.clone();
+        super::flows::eventually("AI sidecar detected", || {
+            let flag = flag.clone();
+            async move { flag.is_available().then_some(()) }
+        })
+        .await;
+    }
+
     /// Username/password login → API key (`/api/data/get_key`, HTTP Basic).
     pub async fn login(&self, username: &str, password: &str) -> String {
         let resp = self.get("/api/data/get_key").basic_auth(username, password).send().await;

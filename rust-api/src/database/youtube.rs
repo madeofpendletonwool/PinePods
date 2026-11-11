@@ -668,8 +668,8 @@ impl DatabasePool {
         // Delete the MP3 files for each video
         for video_id in &video_ids {
             let file_paths = vec![
-                format!("/opt/pinepods/downloads/youtube/{}.mp3", video_id),
-                format!("/opt/pinepods/downloads/youtube/{}.mp3.mp3", video_id), // In case of double extension
+                format!("{}/{}.mp3", crate::paths::youtube_downloads_dir(), video_id),
+                format!("{}/{}.mp3.mp3", crate::paths::youtube_downloads_dir(), video_id), // In case of double extension
             ];
 
             for file_path in file_paths {

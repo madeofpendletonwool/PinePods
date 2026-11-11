@@ -757,7 +757,7 @@ async fn heal_channel_metadata(state: &AppState, podcast_id: i32, video: &VideoD
 async fn download_missing_audio(state: &AppState, video_ids: &[&str]) {
     let (mut downloaded, mut failed) = (0, 0);
     for video_id in video_ids {
-        let output_path = format!("/opt/pinepods/downloads/youtube/{}.mp3", video_id);
+        let output_path = format!("{}/{}.mp3", crate::paths::youtube_downloads_dir(), video_id);
         let output_path_double = format!("{}.mp3", output_path);
         if tokio::fs::metadata(&output_path).await.is_ok() || tokio::fs::metadata(&output_path_double).await.is_ok() {
             continue;

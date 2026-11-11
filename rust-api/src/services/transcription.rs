@@ -177,7 +177,6 @@ async fn fail_row(db_pool: &DatabasePool, transcript_id: i64) {
 
 /// Temp directory (under the shared downloads mount so the AI sidecar can read it) for audio we
 /// fetch only to transcribe and then delete.
-const TRANSCRIBE_TMP_DIR: &str = "/opt/pinepods/downloads/.transcribe-tmp";
 
 /// Download an episode's audio to a temp file under the shared downloads mount, so transcription
 /// works even when the user hasn't downloaded the episode. Returns the temp path; caller deletes it.
@@ -223,9 +222,9 @@ async fn fetch_episode_audio_temp(db_pool: &DatabasePool, episode_id: i32) -> Re
         .await
         .map_err(|reason| format!("refusing to fetch episode URL: {}", reason))?;
 
-    std::fs::create_dir_all(TRANSCRIBE_TMP_DIR)
+    std::fs::create_dir_all(crate::paths::transcribe_tmp_dir())
         .map_err(|e| format!("failed to create temp dir: {}", e))?;
-    let tmp_path = format!("{}/{}.mp3", TRANSCRIBE_TMP_DIR, episode_id);
+    let tmp_path = format!("{}/{}.mp3", crate::paths::transcribe_tmp_dir(), episode_id);
 
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::custom(|attempt| {

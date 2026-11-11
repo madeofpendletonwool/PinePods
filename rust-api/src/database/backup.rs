@@ -728,10 +728,10 @@ impl DatabasePool {
         // Generate backup filename with timestamp
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
         let backup_filename = format!("scheduled_backup_{}.sql", timestamp);
-        let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
+        let backup_path = format!("{}/{}", crate::paths::backups_dir(), backup_filename);
 
         // Ensure backup directory exists (matches manual_backup_to_directory)
-        if let Err(e) = std::fs::create_dir_all("/opt/pinepods/backups") {
+        if let Err(e) = std::fs::create_dir_all(crate::paths::backups_dir()) {
             return Err(AppError::internal(&format!("Failed to create backup directory: {}", e)));
         }
 

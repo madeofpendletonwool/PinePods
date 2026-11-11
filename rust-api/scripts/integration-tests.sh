@@ -64,6 +64,47 @@ if [[ -z "${PINEPODS_TEST_PYTHON:-}" ]]; then
   export PINEPODS_TEST_PYTHON="$VENV/bin/python"
 fi
 
+# Backup tests run the real dump tools. Where they aren't installed, run the ones in the test
+# containers instead, translating addresses and output files.
+install_db_tool_shims() {
+  local dir="$API_DIR/target/db-tools" compose_file="$API_DIR/tests/docker-compose.yml"
+  mkdir -p "$dir"
+  local tool service binary
+  for tool in pg_dump psql mysqldump mysql; do
+    command -v "$tool" >/dev/null && continue
+    case "$tool" in
+      pg_dump|psql) service=postgres binary=$tool ;;
+      mysqldump) service=mariadb binary=mariadb-dump ;;
+      mysql) service=mariadb binary=mariadb ;;
+    esac
+    cat > "$dir/$tool" <<SHIM
+#!/usr/bin/env bash
+args=(); out=""; prev=""
+for a in "\$@"; do
+  case "\$prev" in
+    -h|--host) args+=("127.0.0.1"); prev=""; continue ;;
+    -p|-P|--port) if [[ "$service" == postgres ]]; then args+=("5432"); else args+=("3306"); fi; prev=""; continue ;;
+    -f|--result-file) out="\$a"; args=("\${args[@]:0:\${#args[@]}-1}"); prev=""; continue ;;
+  esac
+  case "\$a" in
+    --ssl-verify-server-cert=0|--default-auth=*) prev=""; continue ;;
+  esac
+  args+=("\$a"); prev="\$a"
+done
+run=(docker compose -f "$compose_file" exec -T -e "PGPASSWORD=\${PGPASSWORD:-}" "$service" "$binary" "\${args[@]}")
+case "$tool" in
+  pg_dump|mysqldump) exec </dev/null ;;
+esac
+if [[ -n "\$out" ]]; then "\${run[@]}" > "\$out"; else "\${run[@]}"; fi
+SHIM
+    chmod +x "$dir/$tool"
+  done
+  export PATH="$PATH:$dir"
+}
+if [[ -z "${PINEPODS_TEST_EXTERNAL_SERVICES:-}" ]]; then
+  install_db_tool_shims
+fi
+
 cd "$API_DIR"
 status=0
 for db in "${DBS[@]}"; do

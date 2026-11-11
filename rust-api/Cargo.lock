@@ -2155,6 +2155,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-cron-scheduler",
+ "tokio-tungstenite",
  "tokio-util",
  "totp-rs",
  "tower",

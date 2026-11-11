@@ -46,6 +46,8 @@ pub struct TestEnv {
     pub fixtures: FixtureServer,
     /// Where the yt-dlp stub and its answers live (see `youtube.rs`).
     pub ytdlp_dir: PathBuf,
+    /// The AI sidecar the server is pointed at (see `mock_ai.rs`).
+    pub ai: super::mock_ai::MockAi,
 }
 
 static ENV: OnceLock<TestEnv> = OnceLock::new();
@@ -70,6 +72,10 @@ fn init() -> TestEnv {
     pinepods_api::services::url_guard::allow_loopback_for_tests();
     let ytdlp_dir = std::env::temp_dir().join(format!("pinepods-ytdlp-{}", std::process::id()));
     super::youtube::install_stub(&ytdlp_dir);
+    super::files::install_sandbox();
+    let ai = super::mock_ai::MockAi::start();
+    // SAFETY (edition 2021 API): runs once, before the server code under test starts.
+    std::env::set_var("PINEPODS_AI_URL", &ai.base_url);
 
     let backend = match var("PINEPODS_TEST_DB_TYPE", "postgresql").to_lowercase().as_str() {
         "postgresql" | "postgres" => Backend::Postgres,
@@ -94,6 +100,7 @@ fn init() -> TestEnv {
         template: String::new(),
         fixtures: FixtureServer::start(),
         ytdlp_dir,
+        ai,
     };
 
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();

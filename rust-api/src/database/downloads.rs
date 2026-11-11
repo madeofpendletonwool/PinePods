@@ -1254,8 +1254,8 @@ impl DatabasePool {
 
         debug!("Found YouTube ID: {}", youtube_id);
 
-        let file_path = format!("/opt/pinepods/downloads/youtube/{}.mp3", youtube_id);
-        let file_path_double = format!("/opt/pinepods/downloads/youtube/{}.mp3.mp3", youtube_id);
+        let file_path = format!("{}/{}.mp3", crate::paths::youtube_downloads_dir(), youtube_id);
+        let file_path_double = format!("{}/{}.mp3.mp3", crate::paths::youtube_downloads_dir(), youtube_id);
 
         debug!("Checking paths: {} and {}", file_path, file_path_double);
 

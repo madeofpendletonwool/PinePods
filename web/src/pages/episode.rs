@@ -3226,3 +3226,28 @@ pub fn epsiode() -> Html {
         </>
     }
 }
+
+#[cfg(test)]
+mod transcript_tests {
+    use super::parse_transcript_cues;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    #[wasm_bindgen_test]
+    fn srt_and_vtt_cues_are_timed_and_speakers_removed() {
+        let vtt = "WEBVTT\n\n00:00:01.500 --> 00:00:04.000\n<v Host>Welcome</v> back\nto the show\n\n1\n01:02:03,000 --> 01:02:05,000\nLater on\n";
+        let cues = parse_transcript_cues(vtt);
+        assert_eq!(cues.len(), 2);
+        assert_eq!(cues[0].start, 1.5);
+        assert_eq!(cues[0].end, 4.0);
+        assert_eq!(cues[0].text, "Welcome back to the show");
+        assert_eq!(cues[1].start, 3723.0);
+        assert_eq!(cues[1].text, "Later on");
+    }
+
+    #[wasm_bindgen_test]
+    fn plain_text_and_broken_cues_are_not_cues() {
+        assert!(parse_transcript_cues("just a transcript\nwith no times").is_empty());
+        assert!(parse_transcript_cues("nonsense --> 00:00:04\nHello\n").is_empty());
+        assert!(parse_transcript_cues("00:00:01 --> 00:00:04\n\n").is_empty(), "a cue needs text");
+    }
+}

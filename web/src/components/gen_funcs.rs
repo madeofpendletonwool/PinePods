@@ -108,7 +108,7 @@ pub fn format_datetime(
 }
 
 pub fn truncate_description(description: String, max_length: usize) -> (String, bool) {
-    let is_truncated = description.len() > max_length;
+    let is_truncated = description.chars().count() > max_length;
 
     let truncated_html = if is_truncated {
         description.chars().take(max_length).collect::<String>() + "..."

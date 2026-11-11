@@ -954,7 +954,14 @@ pub async fn save_email_settings(
         return Err(AppError::forbidden("Admin access required"));
     }
 
-    state.db_pool.save_email_settings(&request.email_settings).await?;
+    // The settings page never receives the stored password, so a blank one means "keep it".
+    let mut settings = request.email_settings;
+    if settings.email_password.is_empty() && settings.auth_required != 0 {
+        if let Some(current) = state.db_pool.get_email_settings().await? {
+            settings.email_password = current.password;
+        }
+    }
+    state.db_pool.save_email_settings(&settings).await?;
     Ok(Json(serde_json::json!({ "detail": "Email settings saved." })))
 }
 
@@ -1010,7 +1017,10 @@ pub async fn get_email_settings(
 
     let settings = state.db_pool.get_email_settings().await?;
     match settings {
-        Some(settings) => Ok(Json(settings)),
+        Some(mut settings) => {
+            settings.password = String::new();
+            Ok(Json(settings))
+        }
         None => Err(AppError::not_found("Email settings not found")),
     }
 }
@@ -1067,7 +1077,8 @@ async fn read_logo_as_base64() -> Result<String, AppError> {
     use std::path::Path;
     use tokio::fs;
     
-    let logo_path = Path::new("/var/www/html/static/assets/favicon.png");
+    let logo_file = crate::paths::logo_file();
+    let logo_path = Path::new(&logo_file);
     
     if !logo_path.exists() {
         return Err(AppError::internal("Logo file not found"));
@@ -1985,7 +1996,8 @@ pub async fn restore_server(
     // Stream the uploaded file to a temp file on the backups volume so memory usage
     // stays bounded for large dumps (a real instance backup can be hundreds of MB).
     // A ".tmp" extension keeps it out of list_backup_files (which only lists ".sql").
-    let backup_dir = std::path::Path::new("/opt/pinepods/backups");
+    let backup_dir = crate::paths::backups_dir();
+    let backup_dir = std::path::Path::new(&backup_dir);
     tokio::fs::create_dir_all(backup_dir).await
         .map_err(|e| AppError::internal(&format!("Failed to create backup directory: {}", e)))?;
     let tmp_path = backup_dir.join(format!(".restore_upload_{}.tmp", uuid::Uuid::new_v4()));
@@ -2043,8 +2055,10 @@ pub async fn restore_server(
             let db_pool = db_pool.clone();
             let tmp_path = tmp_path.clone();
             let merged = merged.clone();
-            let _restore_guard = restore_guard;
             async move {
+                // Must live inside the future: it's only captured if used here, and it has
+                // to stay held until the restore ends.
+                let _restore_guard = restore_guard;
                 reporter.update_progress(10.0, Some("Starting restore...".to_string())).await?;
                 reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
 
@@ -5107,7 +5121,7 @@ pub async fn verify_mfa(
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct ScheduleBackupRequest {
     pub user_id: i32,
-    pub cron_schedule: String, // e.g., "0 2 * * *" for daily at 2 AM
+    pub cron_schedule: String, // With seconds, e.g. "0 0 2 * * *" for daily at 2 AM
     pub enabled: bool,
     // Number of scheduled backups to keep; None/0 = keep all
     #[serde(default)]
@@ -5243,8 +5257,8 @@ pub async fn list_backup_files(
 
     use std::fs;
     
-    let backup_dir = "/opt/pinepods/backups";
-    let backup_files = match fs::read_dir(backup_dir) {
+    let backup_dir = crate::paths::backups_dir();
+    let backup_files = match fs::read_dir(&backup_dir) {
         Ok(entries) => {
             let mut files = Vec::new();
             for entry in entries {
@@ -5330,7 +5344,7 @@ pub async fn restore_from_backup_file(
         return Err(AppError::bad_request("Invalid backup filename"));
     }
 
-    let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
+    let backup_path = format!("{}/{}", crate::paths::backups_dir(), backup_filename);
 
     // Check if file exists
     if !std::path::Path::new(&backup_path).exists() {
@@ -5349,15 +5363,16 @@ pub async fn restore_from_backup_file(
     // Spawn restoration task
     let task_id = state.task_spawner.spawn_progress_task(
         "restore_from_backup_file".to_string(),
-        0, // System user
+        requesting_user_id,
         move |reporter| {
             let backup_path = backup_path.clone();
             let backup_filename = backup_filename_for_closure;
             let db_pool = db_pool.clone();
             let merged = merged.clone();
-            // Released (via Drop) when the restore task finishes.
-            let _restore_guard = restore_guard;
             async move {
+                // Must live inside the future: it's only captured if used here, and it has
+                // to stay held until the restore ends.
+                let _restore_guard = restore_guard;
                 reporter.update_progress(10.0, Some("Starting restoration from backup file...".to_string())).await?;
                 reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
 
@@ -5417,7 +5432,7 @@ pub async fn delete_backup_file(
         return Err(AppError::bad_request("Invalid backup filename"));
     }
 
-    let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
+    let backup_path = format!("{}/{}", crate::paths::backups_dir(), backup_filename);
 
     if !std::path::Path::new(&backup_path).exists() {
         return Err(AppError::not_found("Backup file not found"));
@@ -5468,10 +5483,10 @@ pub async fn manual_backup_to_directory(
     // Generate filename with timestamp
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
     let backup_filename = format!("manual_backup_{}.sql", timestamp);
-    let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
+    let backup_path = format!("{}/{}", crate::paths::backups_dir(), backup_filename);
 
     // Ensure backup directory exists
-    if let Err(e) = std::fs::create_dir_all("/opt/pinepods/backups") {
+    if let Err(e) = std::fs::create_dir_all(crate::paths::backups_dir()) {
         return Err(AppError::internal(&format!("Failed to create backup directory: {}", e)));
     }
     // Ownership is handled by running the process as PUID:PGID (see startup.sh); no chown needed.
@@ -5483,7 +5498,7 @@ pub async fn manual_backup_to_directory(
     // Spawn backup task
     let task_id = state.task_spawner.spawn_progress_task(
         "manual_backup_to_directory".to_string(),
-        0, // System user
+        requesting_user_id,
         move |reporter| {
             let backup_path = backup_path.clone();
             let backup_filename = backup_filename_for_closure;
@@ -5870,7 +5885,8 @@ pub async fn update_user_language(
     ),
 )]
 pub async fn get_available_languages() -> Result<Json<AvailableLanguagesResponse>, AppError> {
-    let translations_dir = std::path::Path::new("/var/www/html/static/translations");
+    let translations_dir = crate::paths::translations_dir();
+    let translations_dir = std::path::Path::new(&translations_dir);
     
     let mut languages = Vec::new();
     
