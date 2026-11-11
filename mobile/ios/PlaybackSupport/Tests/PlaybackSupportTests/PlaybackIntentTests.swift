@@ -68,6 +68,21 @@ final class PlaybackIntentTests: XCTestCase {
         }
     }
 
+    func testExplicitPlayRecoversFromInterruptionThatNeverEnded() {
+        var intent = PlaybackIntent()
+        let generation = intent.beginEpisode()
+        intent.completeLoad(generation: generation)
+        intent.interruptionBegan()
+        XCTAssertFalse(intent.canResumeLoadedEpisode)
+        intent.play()
+        XCTAssertTrue(intent.canResumeLoadedEpisode)
+
+        intent.interruptionBegan()
+        let next = intent.beginEpisode()
+        intent.completeLoad(generation: next)
+        XCTAssertTrue(intent.canResumeLoadedEpisode)
+    }
+
     func testManualPauseDuringInterruptionCancelsAutomaticResume() {
         var intent = PlaybackIntent()
         intent.play()

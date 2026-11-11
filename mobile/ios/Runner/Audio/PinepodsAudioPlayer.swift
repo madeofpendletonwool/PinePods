@@ -88,19 +88,34 @@ class PinepodsAudioPlayer: NSObject {
     private func setupAudioSession() {
         guard !isAudioSessionConfigured else { return }
 
+        // .allowBluetooth (HFP) is only valid for record categories; with
+        // .playback it can fail with OSStatus -50.
         do {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(
+            try AVAudioSession.sharedInstance().setCategory(
                 .playback,
                 mode: .spokenAudio,
-                options: [.allowBluetooth, .allowAirPlay, .allowBluetoothA2DP]
+                options: [.allowAirPlay, .allowBluetoothA2DP]
             )
-            try audioSession.setActive(true)
             isAudioSessionConfigured = true
             NSLog("[PinepodsAudioPlayer] Audio session configured successfully")
         } catch {
             NSLog("[PinepodsAudioPlayer] Failed to configure audio session: \(error)")
             sendError(code: -1, message: "Failed to configure audio session: \(error.localizedDescription)")
+        }
+        activateAudioSession()
+    }
+
+    /// Activation can fail at launch in the background and the system
+    /// deactivates the session on interruptions, so it is retried before
+    /// every resume rather than only once at setup.
+    @discardableResult
+    private func activateAudioSession() -> Bool {
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+            return true
+        } catch {
+            NSLog("[PinepodsAudioPlayer] Could not activate audio session: \(error)")
+            return false
         }
     }
 
@@ -309,13 +324,7 @@ class PinepodsAudioPlayer: NSObject {
             let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             if playbackIntent.interruptionEnded(shouldResume: options.contains(.shouldResume)) {
-                do {
-                    try AVAudioSession.sharedInstance().setActive(true)
-                    resumeRequestedPlayback()
-                } catch {
-                    pause()
-                    NSLog("[PinepodsAudioPlayer] Could not reactivate audio session: \(error)")
-                }
+                if activateAudioSession() { resumeRequestedPlayback() } else { pause() }
             }
 
         @unknown default:
@@ -491,6 +500,7 @@ class PinepodsAudioPlayer: NSObject {
 
     private func resumeRequestedPlayback() {
         guard playbackIntent.canResumeLoadedEpisode else { return }
+        activateAudioSession()
         player?.play()
         // AVPlayer.play() resets rate to 1.0, including lock-screen resume.
         if playbackIntent.rate != 1 { player?.rate = playbackIntent.rate }
