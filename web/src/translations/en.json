@@ -76,7 +76,12 @@
     "no_chapters_available": "No chapters available",
     "now_playing": "Now playing",
     "shownotes": "Shownotes",
-    "shownotes_unavailable": "Shownotes (Unavailable)"
+    "shownotes_unavailable": "Shownotes (Unavailable)",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "speed": "Speed",
+    "playback_speed": "Playback speed",
+    "volume": "Volume"
   },
   "auth": {
     "account_created_success": "Account created successfully! You can now login.",
@@ -434,6 +439,7 @@
     "completed": "Completed"
   },
   "episodes_layout": {
+    "transcribe": "Transcribe",
     "add": "Add",
     "add_remove_podcast": "Click to add or remove podcast from feed",
     "auto_play_next_episode": "Auto-play next episode",
@@ -1749,6 +1755,8 @@
     "youtube_channels": "YouTube Channels"
   },
   "collections": {
+    "add_episodes_count": "Add {count} episodes to a collection",
+    "bulk_added": "Added {count} episodes to {name}",
     "collections": "Collections",
     "add_to_collection": "Add to Collection",
     "new_collection": "New collection",

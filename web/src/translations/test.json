@@ -76,7 +76,12 @@
     "no_chapters_available": "ZZTEST-NO-CHAPTERS-AVAILABLE-ZZTEST",
     "now_playing": "",
     "shownotes": "ZZTEST-SHOWNOTES-ZZTEST",
-    "shownotes_unavailable": "ZZTEST-SHOWNOTES-UNAVAILABLE-ZZTEST"
+    "shownotes_unavailable": "ZZTEST-SHOWNOTES-UNAVAILABLE-ZZTEST",
+    "mute": "ZZTEST-MUTE-ZZTEST",
+    "unmute": "ZZTEST-UNMUTE-ZZTEST",
+    "speed": "ZZTEST-SPEED-ZZTEST",
+    "playback_speed": "ZZTEST-PLAYBACK-SPEED-ZZTEST",
+    "volume": "ZZTEST-VOLUME-ZZTEST"
   },
   "auth": {
     "account_created_success": "ZZTEST-ACCOUNT-CREATED-SUCCESS-ZZTEST",
@@ -427,6 +432,7 @@
     "completed": ""
   },
   "episodes_layout": {
+    "transcribe": "",
     "add": "ZZTEST-ADD-ZZTEST",
     "add_remove_podcast": "ZZTEST-ADD-REMOVE-PODCAST-ZZTEST",
     "auto_play_next_episode": "",
@@ -1725,6 +1731,8 @@
     "youtube_channels": "ZZTEST-YOUTUBE-CHANNELS-ZZTEST"
   },
   "collections": {
+    "add_episodes_count": "",
+    "bulk_added": "",
     "collections": "",
     "add_to_collection": "",
     "new_collection": "",

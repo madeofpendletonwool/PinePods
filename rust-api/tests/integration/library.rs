@@ -183,6 +183,39 @@ async fn custom_collection_lifecycle() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn multi_select_adds_episodes_to_a_collection_and_queues_transcripts() {
+    let app = TestApp::new().await;
+    let l = setup(&app).await;
+    let c = create_collection(&app, &l.user, json!({ "name": "Old run" })).await;
+
+    // Adding is idempotent: re-adding an episode already there is fine.
+    add_to_collection(&app, &l.user, c, l.ep[0]).await;
+    let episodes: Vec<Value> = l.ep[..3].iter().map(|e| json!([e, false])).collect();
+    app.post("/api/data/collections/bulk_add")
+        .key(&l.user)
+        .json(&json!({ "user_id": l.user.id, "collection_id": c, "episodes": episodes }))
+        .send()
+        .await
+        .assert_ok();
+    let mut want = l.ep[..3].to_vec();
+    want.sort();
+    assert_eq!(collection_episode_ids(&app, &l.user, c).await, want);
+    assert!(saved_ids(&app, &l.user).await.is_empty());
+
+    let transcribe = |user: &TestUser, ids: Vec<i32>| {
+        app.post("/api/data/bulk_transcribe_episodes")
+            .key(user)
+            .json(&json!({ "user_id": user.id, "episode_ids": ids }))
+    };
+    assert_eq!(transcribe(&l.user, vec![]).send().await.status.as_u16(), 400);
+    // Someone else's episodes read as missing, and nothing is queued.
+    let other = app.user("bystander").await;
+    assert_eq!(transcribe(&other, l.ep.clone()).send().await.status.as_u16(), 404);
+    // Without the AI sidecar the batch is refused rather than queued to fail.
+    assert_eq!(transcribe(&l.user, l.ep.clone()).send().await.status.as_u16(), 503);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn duplicate_collection_names_are_a_clean_client_error() {
     let app = TestApp::new().await;
     let l = setup(&app).await;

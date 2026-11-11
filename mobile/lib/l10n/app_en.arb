@@ -2274,5 +2274,97 @@
       }
     }
   },
-  "co_host": "Co-host"
+  "co_host": "Co-host",
+  "saved_and_collections": "Saved & Collections",
+  "add_to_collection": "Add to collection",
+  "add_to_collection_menu": "Add to Collection…",
+  "remove_from_collection": "Remove from Collection",
+  "add_episodes_to_collection_title": "{count, plural, =1{Add 1 episode to…} other{Add {count} episodes to…}}",
+  "@add_episodes_to_collection_title": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "added_episodes_to_collection": "{count, plural, =1{Added 1 episode to {name}} other{Added {count} episodes to {name}}}",
+  "@added_episodes_to_collection": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "no_collections_yet": "No collections yet.",
+  "collection_episode_count": "{count, plural, =1{1 episode} other{{count} episodes}}",
+  "@collection_episode_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "new_collection": "New collection",
+  "edit_collection": "Edit collection",
+  "collection_name_required": "Give the collection a name",
+  "delete_collection_confirm_title": "Delete collection?",
+  "delete_collection_confirm_body": "\"{name}\" will be removed. Its episodes stay in your library.",
+  "@delete_collection_confirm_body": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "delete_collection": "Delete collection",
+  "collection_name": "Collection name",
+  "auto_add_by_category": "Auto-add by category",
+  "auto_add_by_category_body": "New episodes from podcasts in these categories are added automatically.",
+  "no_podcast_categories": "Your podcasts have no categories.",
+  "add_existing_matching_episodes": "Add existing matching episodes now",
+  "saving_ellipsis": "Saving…",
+  "selected_count": "{count} selected",
+  "@selected_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "select_all": "Select all",
+  "select_none": "Select none",
+  "done": "Done",
+  "collection_action": "Collection",
+  "complete_action": "Complete",
+  "select_episodes": "Select episodes",
+  "done_selecting": "Done selecting",
+  "removed_from_collection": "Removed from {name}",
+  "@removed_from_collection": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "failed_to_remove_error": "Failed to remove: {error}",
+  "@failed_to_remove_error": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "collection_empty_title": "Nothing in {name} yet",
+  "@collection_empty_title": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "collection_empty_body": "Long-press an episode and choose Add to Collection, or select several on a podcast's page.",
+  "new_collection_chip": "New"
 }

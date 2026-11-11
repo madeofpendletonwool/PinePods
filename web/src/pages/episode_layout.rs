@@ -1,7 +1,7 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, EpisodeNavigationState, EpisodeStatusState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
+use crate::components::context::{AppState, CollectionModalState, EpisodeNavigationState, EpisodeStatusState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
 use crate::requests::episode::Episode;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::{
@@ -20,7 +20,7 @@ use crate::requests::pod_req::{
     call_get_auto_ad_detect, call_adjust_auto_ad_detect, AutoAdDetectRequest,
     call_get_auto_delete_on_complete, call_set_podcast_auto_delete_on_complete,
     call_get_ad_skip_auto_activate, call_adjust_ad_skip_auto_activate,
-    call_bulk_download_episodes,
+    call_bulk_download_episodes, call_bulk_transcribe_episodes,
     call_bulk_mark_episodes_completed, call_bulk_queue_episodes, call_bulk_save_episodes,
     call_check_podcast, call_clear_playback_speed, call_download_all_podcast,
     call_enable_auto_download, call_enable_auto_play_next, call_enable_auto_queue,
@@ -5410,6 +5410,10 @@ pub fn episode_layout() -> Html {
                                         let unlisted: Vec<i32> = selected_episodes.iter().filter(|id| !selected_ids.contains(id)).cloned().collect();
                                         selected_ids.extend(unlisted);
                                         let user_id_value = user_id.unwrap_or(0);
+                                        let is_youtube_feed = clicked_podcast_info
+                                            .as_ref()
+                                            .and_then(|i| i.is_youtube)
+                                            .unwrap_or(false);
 
                                         html! {
                                             <div class="bulk-actions-bar">
@@ -5511,6 +5515,68 @@ pub fn episode_layout() -> Html {
                                                             <i class="ph ph-star"></i>
                                                             {&i18n.t("episodes_layout.save")}
                                                         </button>
+
+                                                        // Add to Collection: the shared picker, in multi-select mode
+                                                        <button
+                                                            onclick={
+                                                                let selected_ids = selected_ids.clone();
+                                                                Callback::from(move |_| {
+                                                                    let episodes: Vec<(i32, bool)> = selected_ids
+                                                                        .iter()
+                                                                        .map(|id| (*id, is_youtube_feed))
+                                                                        .collect();
+                                                                    Dispatch::<CollectionModalState>::global().reduce_mut(move |s| {
+                                                                        s.open = true;
+                                                                        s.episode = None;
+                                                                        s.bulk_episodes = episodes;
+                                                                    });
+                                                                })
+                                                            }
+                                                            class="btn btn-secondary"
+                                                        >
+                                                            <i class="ph ph-folder-plus"></i>
+                                                            {&i18n.t("collections.add_to_collection")}
+                                                        </button>
+
+                                                        // Transcribe: queued server-side, one episode at a time
+                                                        if *ai_available && !is_youtube_feed {
+                                                            <button
+                                                                onclick={
+                                                                    let selected_ids = selected_ids.clone();
+                                                                    let api_key = api_key.clone();
+                                                                    let server_name = server_name.clone();
+                                                                    Callback::from(move |_| {
+                                                                        let selected_ids = selected_ids.clone();
+                                                                        let api_key = api_key.clone();
+                                                                        let server_name = server_name.clone();
+                                                                        spawn_local(async move {
+                                                                            match call_bulk_transcribe_episodes(
+                                                                                &server_name.unwrap_or_default(),
+                                                                                &api_key.flatten(),
+                                                                                selected_ids,
+                                                                                user_id_value,
+                                                                            ).await {
+                                                                                // Selection is kept so the same episodes can go into a collection too.
+                                                                                Ok(message) => {
+                                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                                                                        state.info_message = Some(message);
+                                                                                    });
+                                                                                }
+                                                                                Err(e) => {
+                                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                                                                        state.error_message = Some(format!("Error: {}", e));
+                                                                                    });
+                                                                                }
+                                                                            }
+                                                                        });
+                                                                    })
+                                                                }
+                                                                class="btn btn-secondary"
+                                                            >
+                                                                <i class="ph ph-text-aa"></i>
+                                                                {&i18n.t("episodes_layout.transcribe")}
+                                                            </button>
+                                                        }
 
                                                         // Queue button
                                                         <button

@@ -76,7 +76,12 @@
     "no_chapters_available": "Ingen kapitler er tilgængelige",
     "now_playing": "Afspilles nu",
     "shownotes": "Shownoter",
-    "shownotes_unavailable": "Shownoter (utilgængelig)"
+    "shownotes_unavailable": "Shownoter (utilgængelig)",
+    "mute": "",
+    "unmute": "",
+    "speed": "",
+    "playback_speed": "",
+    "volume": ""
   },
   "auth": {
     "account_created_success": "Bruger blev oprettet succesfuldt! Du kan nu logge ind.",
@@ -427,6 +432,7 @@
     "completed": ""
   },
   "episodes_layout": {
+    "transcribe": "",
     "add": "",
     "add_remove_podcast": "",
     "auto_play_next_episode": "",
@@ -1725,6 +1731,8 @@
     "youtube_channels": ""
   },
   "collections": {
+    "add_episodes_count": "",
+    "bulk_added": "",
     "collections": "",
     "add_to_collection": "",
     "new_collection": "",

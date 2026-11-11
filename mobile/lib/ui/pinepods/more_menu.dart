@@ -47,14 +47,14 @@ class PinepodsMoreMenu extends StatelessWidget {
               ),
               _buildMenuItem(
                 context,
-                L.of(context)!.saved_episodes,
+                L.of(context)!.saved_and_collections,
                 PhosphorIconsRegular.bookmarkSimple,
                     () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
                     fullscreenDialog: false,
                     builder: (context) => Scaffold(
-                      appBar: AppBar(title: Text(L.of(context)!.saved_episodes)),
+                      appBar: AppBar(title: Text(L.of(context)!.saved_and_collections)),
                       body: const CustomScrollView(
                         slivers: [PinepodsSaved()],
                       ),

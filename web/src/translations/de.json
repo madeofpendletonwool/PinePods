@@ -76,7 +76,12 @@
     "no_chapters_available": "Keine Kapitel verfügbar",
     "now_playing": "",
     "shownotes": "Shownotes",
-    "shownotes_unavailable": "Shownotes (nicht verfügbar)"
+    "shownotes_unavailable": "Shownotes (nicht verfügbar)",
+    "mute": "",
+    "unmute": "",
+    "speed": "",
+    "playback_speed": "",
+    "volume": ""
   },
   "auth": {
     "account_created_success": "Konto erfolgreich erstellt! Du kannst dich jetzt anmelden.",
@@ -427,6 +432,7 @@
     "completed": ""
   },
   "episodes_layout": {
+    "transcribe": "",
     "add": "Hinzufügen",
     "add_remove_podcast": "Klicken, um Podcast zum Feed hinzuzufügen oder zu entfernen",
     "auto_play_next_episode": "",
@@ -1725,6 +1731,8 @@
     "youtube_channels": "Youtube Kanäle"
   },
   "collections": {
+    "add_episodes_count": "",
+    "bulk_added": "",
     "collections": "",
     "add_to_collection": "",
     "new_collection": "",

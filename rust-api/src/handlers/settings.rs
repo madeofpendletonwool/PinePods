@@ -1736,7 +1736,9 @@ pub struct BackupServerRequest {
     security(("api_key" = [])),
     responses(
         (status = 200, description = "Backup file download", content_type = "application/octet-stream"),
+        (status = 400, description = "Incorrect database password"),
         (status = 401, description = "Invalid or missing API key"),
+        (status = 500, description = "Database dump failed"),
     ),
 )]
 pub async fn backup_server(
@@ -1757,19 +1759,18 @@ pub async fn backup_server(
 
     // For large databases, we'll implement streaming export instead of subprocess
     // This avoids loading the entire database into memory at once
-    match backup_server_streaming(&state, &request.database_pass).await {
-        Ok(response) => Ok(response),
-        Err(e) => Err(AppError::internal(&format!("Backup failed: {}", e))),
-    }
+    backup_server_streaming(&state, &request.database_pass).await
 }
 
 // Use actual pg_dump/mysqldump for reliable backups
 async fn backup_server_streaming(
     state: &AppState,
     database_pass: &str,
-) -> Result<axum::response::Response, String> {
+) -> Result<axum::response::Response, AppError> {
     use axum::response::Response;
     use axum::body::Body;
+    use futures::StreamExt;
+    use tokio::io::AsyncReadExt;
     use tokio::process::Command;
     use tokio_util::io::ReaderStream;
 
@@ -1788,8 +1789,8 @@ async fn backup_server_streaming(
             .status(200)
             .header("content-type", "text/plain; charset=utf-8")
             .header("content-disposition", "attachment; filename=\"pinepods_backup.sql\"")
-            .body(Body::from_stream(ReaderStream::new(file?)))
-            .map_err(|e| format!("Failed to build response: {}", e));
+            .body(Body::from_stream(ReaderStream::new(file.map_err(|e| AppError::internal(format!("Backup failed: {}", e)))?)))
+            .map_err(|e| AppError::internal(format!("Failed to build response: {}", e)));
     }
 
     // Get database connection info from config
@@ -1852,53 +1853,80 @@ async fn backup_server_streaming(
     let mut child = cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to start backup process: {}", e))?;
+        .map_err(|e| AppError::internal(format!("Failed to start backup process: {}", e)))?;
 
-    let stdout = child.stdout.take()
-        .ok_or("Failed to get stdout from backup process")?;
-    
-    let stderr = child.stderr.take()
-        .ok_or("Failed to get stderr from backup process")?;
+    let mut stdout = child.stdout.take()
+        .ok_or_else(|| AppError::internal("Failed to get stdout from backup process"))?;
+    let mut stderr = child.stderr.take()
+        .ok_or_else(|| AppError::internal("Failed to get stderr from backup process"))?;
 
-    let stream = ReaderStream::new(stdout);
-    let body = Body::from_stream(stream);
+    // Drain stderr concurrently so a chatty dump (pg_dump --verbose) can't block on a full pipe.
+    let stderr_task = tokio::spawn(async move {
+        let mut buf = String::new();
+        let _ = stderr.read_to_string(&mut buf).await;
+        buf
+    });
 
-    // Spawn a task to wait for the process and handle errors
+    // Hold the response until the dump produces output: a bad password or unreachable
+    // database exits before writing anything, and must surface as an error, not an empty file.
+    let mut first = vec![0u8; 64 * 1024];
+    let n = stdout.read(&mut first).await
+        .map_err(|e| AppError::internal(format!("Failed to read backup output: {}", e)))?;
+
+    if n == 0 {
+        let status = child.wait().await
+            .map_err(|e| AppError::internal(format!("Failed to wait for backup process: {}", e)))?;
+        let stderr_output = stderr_task.await.unwrap_or_default();
+        return Err(backup_failure_error(status.success(), &stderr_output));
+    }
+    first.truncate(n);
+
+    let first_chunk = futures::stream::once(async move { Ok::<_, std::io::Error>(axum::body::Bytes::from(first)) });
+    let body = Body::from_stream(first_chunk.chain(ReaderStream::new(stdout)));
+
     tokio::spawn(async move {
-        // Read stderr to capture error messages
-        let stderr_reader = tokio::io::BufReader::new(stderr);
-        let mut stderr_output = String::new();
-        use tokio::io::AsyncBufReadExt;
-        
-        // Read stderr line by line
-        let mut lines = stderr_reader.lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            stderr_output.push_str(&line);
-            stderr_output.push('\n');
-        }
-        
-        match child.wait().await {
-            Ok(status) if status.success() => {
-                info!("Backup process completed successfully");
-            }
-            Ok(status) => {
-                warn!("Backup process failed with status: {}", status);
-                if !stderr_output.is_empty() {
-                    info!("Mysqldump stderr output: {}", stderr_output);
-                }
-            }
-            Err(e) => {
-                warn!("Failed to wait for backup process: {}", e);
-            }
+        let status = child.wait().await;
+        let stderr_output = stderr_task.await.unwrap_or_default();
+        match status {
+            Ok(status) if status.success() => info!("Backup process completed successfully"),
+            Ok(status) => warn!("Backup process failed with status {}: {}", status, last_error_line(&stderr_output)),
+            Err(e) => warn!("Failed to wait for backup process: {}", e),
         }
     });
 
-    Ok(Response::builder()
+    Response::builder()
         .status(200)
         .header("content-type", "text/plain; charset=utf-8")
         .header("content-disposition", "attachment; filename=\"pinepods_backup.sql\"")
         .body(body)
-        .map_err(|e| format!("Failed to build response: {}", e))?)
+        .map_err(|e| AppError::internal(format!("Failed to build response: {}", e)))
+}
+
+/// Last meaningful stderr line from pg_dump/mysqldump (verbose progress lines are noise).
+fn last_error_line(stderr: &str) -> &str {
+    let lines: Vec<&str> = stderr.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    lines.iter().rev()
+        .find(|l| l.to_lowercase().contains("error"))
+        .or(lines.last())
+        .copied()
+        .unwrap_or("")
+}
+
+/// Map a dump that produced no output to a user-facing error.
+fn backup_failure_error(exited_ok: bool, stderr: &str) -> AppError {
+    let lower = stderr.to_lowercase();
+    if lower.contains("password authentication failed")
+        || lower.contains("access denied")
+        || lower.contains("no password supplied")
+    {
+        return AppError::bad_request("Incorrect database password");
+    }
+    let detail = last_error_line(stderr);
+    if exited_ok || detail.is_empty() {
+        AppError::internal("Backup failed: the database dump produced no output")
+    } else {
+        AppError::internal(format!("Backup failed: {}", detail))
+    }
 }
 
 /// RAII guard for the global "restore in progress" flag. Resets the flag on drop so a
@@ -3943,6 +3971,68 @@ pub async fn transcribe_episode(
     Ok(Json(serde_json::json!({ "task_id": task_id, "detail": "Transcription started." })))
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct BulkTranscribeEpisodesRequest {
+    pub episode_ids: Vec<i32>,
+    pub user_id: i32,
+    /// Re-transcribe episodes that already have a transcript.
+    #[serde(default)]
+    pub force: bool,
+}
+
+/// Queue transcriptions for several episodes. They run one at a time; episodes that already
+/// have a transcript are skipped unless `force` is set.
+#[utoipa::path(
+    post,
+    path = "/bulk_transcribe_episodes",
+    tag = "settings",
+    summary = "Queue transcriptions for several episodes (AI sidecar)",
+    request_body = BulkTranscribeEpisodesRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Queued; one task id per episode", body = serde_json::Value),
+        (status = 400, description = "No episodes given"),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 404, description = "An episode isn't one of the user's"),
+        (status = 503, description = "AI service unavailable"),
+    ),
+)]
+pub async fn bulk_transcribe_episodes(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<BulkTranscribeEpisodesRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only process your own episodes."));
+    }
+    let mut episode_ids = request.episode_ids;
+    let mut seen = std::collections::HashSet::new();
+    episode_ids.retain(|id| seen.insert(*id));
+    if episode_ids.is_empty() {
+        return Err(AppError::bad_request("No episodes given."));
+    }
+    crate::handlers::require_episodes_owner(&state, request.user_id, &episode_ids, false).await?;
+    if !state.ai_available.is_available() {
+        return Err(AppError::service_unavailable("AI service is not available."));
+    }
+
+    let count = episode_ids.len();
+    let task_ids = state
+        .task_spawner
+        .spawn_bulk_transcribe(episode_ids, request.user_id, request.force)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "task_ids": task_ids,
+        "detail": format!("Queued {} episode{} for transcription.", count, if count == 1 { "" } else { "s" }),
+    })))
+}
+
 // Read the stored generated transcript for an episode
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct EpisodeTranscriptQuery {
@@ -5186,6 +5276,8 @@ pub async fn list_backup_files(
             });
             files
         }
+        // No backup volume mounted yet: nothing to list, but the page still needs database_type.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(_) => {
             return Err(AppError::internal("Failed to read backup directory"));
         }
@@ -6272,3 +6364,26 @@ pub async fn delete_custom_theme(
     Ok(Json(serde_json::json!({ "message": "Custom theme deleted successfully" })))
 }
 
+
+#[cfg(test)]
+mod backup_error_tests {
+    use super::*;
+
+    #[test]
+    fn wrong_password_is_a_bad_request() {
+        let pg = "pg_dump: last built-in OID is 16383\npg_dump: error: connection to server at \"db\" (172.18.0.2), port 5432 failed: FATAL:  password authentication failed for user \"postgres\"\n";
+        let my = "mysqldump: Got error: 1045: \"Access denied for user 'root'@'172.18.0.3' (using password: YES)\" when trying to connect\n";
+        for stderr in [pg, my] {
+            let err = backup_failure_error(false, stderr);
+            assert!(matches!(err, AppError::BadRequest(ref m) if m == "Incorrect database password"), "{err:?}");
+        }
+    }
+
+    #[test]
+    fn other_failures_report_the_error_line() {
+        let stderr = "pg_dump: reading extensions\npg_dump: error: connection to server at \"db\", port 5432 failed: Connection refused\npg_dump: detail: Is the server running?\n";
+        let err = backup_failure_error(false, stderr);
+        assert!(matches!(err, AppError::Internal(ref m) if m.contains("Connection refused")), "{err:?}");
+        assert!(matches!(backup_failure_error(true, ""), AppError::Internal(ref m) if m.contains("no output")));
+    }
+}

@@ -11,6 +11,8 @@ use yewdux::prelude::*;
 
 /// Global overlay (mounted once at the app root) that adds/removes the active episode
 /// to/from collections. Checking a box commits the change immediately — no Save step.
+/// In multi-select mode (`bulk_episodes` set) picking a collection adds every selected
+/// episode to it and closes.
 #[function_component(CollectionPickerModal)]
 pub fn collection_picker_modal() -> Html {
     let (modal_state, modal_dispatch) = use_store::<CollectionModalState>();
@@ -39,6 +41,8 @@ pub fn collection_picker_modal() -> Html {
     let is_open = modal_state.open;
     let episode: Option<Episode> = modal_state.episode.clone();
     let episode_key = episode.as_ref().map(|e| (e.episodeid, e.is_youtube));
+    let bulk = modal_state.bulk_episodes.clone();
+    let is_bulk = !bulk.is_empty();
 
     // (Re)load collections + membership whenever the modal opens for a (new) episode
     {
@@ -50,9 +54,10 @@ pub fn collection_picker_modal() -> Html {
         let new_name = new_name.clone();
         let server = server.clone();
         let api_key = api_key.clone();
-        use_effect_with((is_open, episode_key), move |(is_open, episode_key)| {
-            if *is_open {
-                if let Some((ep_id, is_yt)) = *episode_key {
+        use_effect_with((is_open, episode_key, bulk.clone()), move |(is_open, episode_key, bulk)| {
+            if *is_open && (episode_key.is_some() || !bulk.is_empty()) {
+                let episode_key = if bulk.is_empty() { *episode_key } else { None };
+                {
                     // fresh state each open
                     search.set(String::new());
                     show_new_input.set(false);
@@ -67,11 +72,14 @@ pub fn collection_picker_modal() -> Html {
                         let cols = pod_req::call_get_collections(&server, &api_key, user_id)
                             .await
                             .unwrap_or_default();
-                        let mem = pod_req::call_get_episode_collections(
-                            &server, &api_key, user_id, ep_id, is_yt,
-                        )
-                        .await
-                        .unwrap_or_default();
+                        let mem = match episode_key {
+                            Some((ep_id, is_yt)) => pod_req::call_get_episode_collections(
+                                &server, &api_key, user_id, ep_id, is_yt,
+                            )
+                            .await
+                            .unwrap_or_default(),
+                            None => Vec::new(),
+                        };
                         collections.set(cols);
                         members.set(mem.into_iter().collect());
                         loading.set(false);
@@ -85,9 +93,10 @@ pub fn collection_picker_modal() -> Html {
     if !is_open {
         return html! {};
     }
-    let Some(episode) = episode else { return html! {} };
-    let ep_id = episode.episodeid;
-    let is_yt = episode.is_youtube;
+    if episode.is_none() && !is_bulk {
+        return html! {};
+    }
+    let (ep_id, is_yt) = episode_key.unwrap_or((0, false));
 
     let close = {
         let modal_dispatch = modal_dispatch.clone();
@@ -95,18 +104,59 @@ pub fn collection_picker_modal() -> Html {
             modal_dispatch.reduce_mut(|s| {
                 s.open = false;
                 s.episode = None;
+                s.bulk_episodes.clear();
             });
         })
     };
 
+    // Multi-select: add every selected episode to `col_id`, report, and close.
+    let bulk_added_tpl = i18n.t("collections.bulk_added").to_string();
+    let add_bulk = {
+        let server = server.clone();
+        let api_key = api_key.clone();
+        let bulk = bulk.clone();
+        move |col_id: i32, name: String| {
+            let server = server.clone();
+            let api_key = api_key.clone();
+            let bulk = bulk.clone();
+            let msg = bulk_added_tpl
+                .replace("{count}", &bulk.len().to_string())
+                .replace("{name}", &name);
+            spawn_local(async move {
+                match pod_req::call_bulk_add_to_collection(&server, &api_key, user_id, col_id, &bulk).await {
+                    Ok(()) => {
+                        Dispatch::<NotificationState>::global().reduce_mut(|s| s.info_message = Some(msg));
+                        Dispatch::<CollectionModalState>::global().reduce_mut(|s| {
+                            s.open = false;
+                            s.bulk_episodes.clear();
+                        });
+                    }
+                    Err(e) => {
+                        Dispatch::<NotificationState>::global().reduce_mut(|s| {
+                            s.error_message = Some(format!("{}", e));
+                        });
+                    }
+                }
+            });
+        }
+    };
+
     // Immediate add/remove on toggle
     let make_toggle = {
+        let add_bulk = add_bulk.clone();
         let members = members.clone();
         let collections = collections.clone();
         let server = server.clone();
         let api_key = api_key.clone();
         let episode = episode.clone();
-        move |col_id: i32, is_member: bool| -> Callback<MouseEvent> {
+        move |col_id: i32, is_member: bool, name: String| -> Callback<MouseEvent> {
+            if is_bulk {
+                let add_bulk = add_bulk.clone();
+                return Callback::from(move |e: MouseEvent| {
+                    e.stop_propagation();
+                    add_bulk(col_id, name.clone());
+                });
+            }
             let members = members.clone();
             let is_default = collections
                 .iter()
@@ -145,8 +195,7 @@ pub fn collection_picker_modal() -> Html {
                         });
                     } else if is_default {
                         // Keep the saved badge in sync
-                        if now_member {
-                            let ep = episode.clone();
+                        if let (true, Some(ep)) = (now_member, episode.clone()) {
                             Dispatch::<EpisodeStatusState>::global().reduce_mut(move |s| {
                                 if !s.saved_episode_ids().any(|id| id == ep_id) {
                                     s.saved_episodes.push(ep);
@@ -176,7 +225,7 @@ pub fn collection_picker_modal() -> Html {
         let members = members.clone();
         let new_name = new_name.clone();
         let show_new_input = show_new_input.clone();
-        let episode = episode.clone();
+        let add_bulk = add_bulk.clone();
         Callback::from(move |_| {
             let name = (*new_name).trim().to_string();
             if name.is_empty() {
@@ -188,17 +237,18 @@ pub fn collection_picker_modal() -> Html {
             let members = members.clone();
             let new_name = new_name.clone();
             let show_new_input = show_new_input.clone();
-            let episode = episode.clone();
+            let add_bulk = add_bulk.clone();
             spawn_local(async move {
                 let req = CreateCollectionRequest {
                     user_id,
-                    name,
+                    name: name.clone(),
                     description: None,
                     icon: Some("ph-bookmark-simple".to_string()),
                     auto_add_categories: None,
                     backfill: None,
                 };
                 match pod_req::call_create_collection(&server, &api_key, req).await {
+                    Ok(resp) if is_bulk => add_bulk(resp.collection_id, name),
                     Ok(resp) => {
                         // Add the episode to the freshly created collection right away
                         let add_req = CollectionEpisodeRequest { user_id, episode_id: ep_id, is_youtube: is_yt };
@@ -211,7 +261,6 @@ pub fn collection_picker_modal() -> Html {
                         members.set(set);
                         new_name.set(String::new());
                         show_new_input.set(false);
-                        let _ = &episode;
                     }
                     Err(e) => {
                         Dispatch::<NotificationState>::global().reduce_mut(|s| {
@@ -228,6 +277,9 @@ pub fn collection_picker_modal() -> Html {
     let search_term = (*search).to_lowercase();
     let filtered: Vec<Collection> = collections
         .iter()
+        // Multi-select has its own Save action, and the default collection here would leave
+        // saved badges stale.
+        .filter(|c| !(is_bulk && c.is_default))
         .filter(|c| search_term.is_empty() || c.name.to_lowercase().contains(&search_term))
         .cloned()
         .collect();
@@ -237,7 +289,13 @@ pub fn collection_picker_modal() -> Html {
             <div class="flex min-h-full items-center justify-center p-4">
                 <div class="modal-container relative w-full max-w-md rounded-lg shadow" onclick={stop}>
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                        <h3 class="text-xl font-semibold">{ i18n.t("collections.add_to_collection") }</h3>
+                        <h3 class="text-xl font-semibold">{
+                            if is_bulk {
+                                i18n.t("collections.add_episodes_count").replace("{count}", &bulk.len().to_string())
+                            } else {
+                                i18n.t("collections.add_to_collection").to_string()
+                            }
+                        }</h3>
                         <button onclick={close.clone()} class="text-gray-400 bg-transparent rounded-lg text-sm w-8 h-8 inline-flex justify-center items-center">
                             <i class="ph ph-x text-xl"></i>
                         </button>
@@ -265,10 +323,12 @@ pub fn collection_picker_modal() -> Html {
                                             {
                                                 filtered.iter().map(|c| {
                                                     let is_member = members.contains(&c.collection_id);
-                                                    let onclick = make_toggle(c.collection_id, is_member);
+                                                    let onclick = make_toggle(c.collection_id, is_member, c.name.clone());
                                                     html! {
                                                         <li class="dropdown-option flex items-center gap-2" {onclick}>
-                                                            <i class={classes!("ph", if is_member { "ph-check-square" } else { "ph-square" }, "text-xl")}></i>
+                                                            if !is_bulk {
+                                                                <i class={classes!("ph", if is_member { "ph-check-square" } else { "ph-square" }, "text-xl")}></i>
+                                                            }
                                                             <i class={classes!("ph", c.icon.clone())}></i>
                                                             <span>{ c.name.clone() }</span>
                                                             {

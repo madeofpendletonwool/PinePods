@@ -3723,6 +3723,35 @@ pub async fn call_transcribe_episode(
     }
 }
 
+/// Queue transcriptions for several episodes; the server runs them one at a time.
+/// Returns the server's summary message.
+pub async fn call_bulk_transcribe_episodes(
+    server_name: &str,
+    api_key: &Option<String>,
+    episode_ids: Vec<i32>,
+    user_id: i32,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/bulk_transcribe_episodes", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let body = serde_json::json!({ "episode_ids": episode_ids, "user_id": user_id, "force": false });
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(body.to_string())?
+        .send()
+        .await?;
+    let text = response.text().await.unwrap_or_default();
+    let json: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+    if response.ok() {
+        Ok(json["detail"].as_str().unwrap_or("Transcriptions queued").to_string())
+    } else {
+        let msg = json["message"].as_str().map(str::to_string).unwrap_or(text);
+        Err(Error::msg(format!("Failed to queue transcriptions: {}", msg)))
+    }
+}
+
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct StoredTranscript {
     pub source: String,
@@ -6120,6 +6149,29 @@ pub async fn call_add_episode_to_collection(
     let response = Request::post(&endpoint)
         .header("Api-Key", api_key)
         .json(req)?
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Server returned error: {}", response.status()))
+    }
+}
+
+/// Add several episodes, each `(episode_id, is_youtube)`, to one collection.
+pub async fn call_bulk_add_to_collection(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+    collection_id: i32,
+    episodes: &[(i32, bool)],
+) -> Result<(), Error> {
+    let endpoint = format!("{}/api/data/collections/bulk_add", server);
+    let body = serde_json::json!({ "user_id": user_id, "collection_id": collection_id, "episodes": episodes });
+    let response = Request::post(&endpoint)
+        .header("Api-Key", api_key)
+        .json(&body)?
         .send()
         .await
         .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;

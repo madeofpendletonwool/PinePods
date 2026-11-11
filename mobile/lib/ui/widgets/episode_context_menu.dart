@@ -6,6 +6,7 @@ import 'package:pinepods_mobile/services/nowplaying/nowplaying_service.dart';
 import 'package:pinepods_mobile/ui/podcast/remote_devices_button.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
+import 'package:pinepods_mobile/ui/pinepods/collection_sheets.dart';
 
 class EpisodeContextMenu extends StatefulWidget {
   final PinepodsEpisode episode;
@@ -20,6 +21,8 @@ class EpisodeContextMenu extends StatefulWidget {
   final VoidCallback? onMarkComplete;
   final VoidCallback? onDismiss;
   final VoidCallback? onPodcastTap;
+  /// Shown on a collection's page: removes the episode from that collection.
+  final VoidCallback? onRemoveFromCollection;
   final bool isDownloadedLocally;
 
   const EpisodeContextMenu({
@@ -35,6 +38,7 @@ class EpisodeContextMenu extends StatefulWidget {
     this.onMarkComplete,
     this.onDismiss,
     this.onPodcastTap,
+    this.onRemoveFromCollection,
     this.isDownloadedLocally = false,
   }) : super(key: key);
 
@@ -138,6 +142,29 @@ class _EpisodeContextMenuState extends State<EpisodeContextMenu> {
                       text: episode.saved ? L.of(context)!.remove_from_saved : L.of(context)!.save_episode,
                       onTap: episode.saved ? onRemoveSaved : onSave,
                     ),
+
+                    if (episode.episodeId > 0)
+                      _buildMenuOption(
+                        context,
+                        icon: PhosphorIconsRegular.folderPlus,
+                        text: L.of(context)!.add_to_collection_menu,
+                        onTap: () {
+                          // Dismiss first and open the picker from the root navigator, as
+                          // some callers dismiss with Navigator.pop.
+                          final rootContext = Navigator.of(context, rootNavigator: true).context;
+                          widget.onDismiss?.call();
+                          showAddToCollectionSheet(rootContext,
+                              episodes: [(episode.episodeId, episode.isYoutube)]);
+                        },
+                      ),
+
+                    if (widget.onRemoveFromCollection != null)
+                      _buildMenuOption(
+                        context,
+                        icon: PhosphorIconsRegular.folderMinus,
+                        text: L.of(context)!.remove_from_collection,
+                        onTap: widget.onRemoveFromCollection,
+                      ),
                     
                     _buildMenuOption(
                       context,

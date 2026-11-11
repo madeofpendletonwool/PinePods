@@ -1024,10 +1024,17 @@ pub async fn call_backup_server(
     if response.ok() {
         response.text().await.map_err(anyhow::Error::msg)
     } else {
-        Err(anyhow::Error::msg(format!(
-            "Error backing up server data: {}",
-            response.status_text()
-        )))
+        // Body is the server's JSON error; format_error_message pulls out its message.
+        let status_text = response.status_text();
+        let body = response.text().await.unwrap_or_default();
+        if body.is_empty() {
+            Err(anyhow::Error::msg(format!(
+                "Error backing up server data: {}",
+                status_text
+            )))
+        } else {
+            Err(anyhow::Error::msg(body))
+        }
     }
 }
 

@@ -76,7 +76,12 @@
     "no_chapters_available": "Pas de chapitres disponibles",
     "now_playing": "Lecture en cours",
     "shownotes": "Notes de l'émission",
-    "shownotes_unavailable": "Notes de l'émission (indisponibles)"
+    "shownotes_unavailable": "Notes de l'émission (indisponibles)",
+    "mute": "",
+    "unmute": "",
+    "speed": "",
+    "playback_speed": "",
+    "volume": ""
   },
   "auth": {
     "account_created_success": "Compte créé avec succès ! Vous pouvez désormais vous connecter.",
@@ -427,6 +432,7 @@
     "completed": "Lu"
   },
   "episodes_layout": {
+    "transcribe": "",
     "add": "Ajouter",
     "add_remove_podcast": "Cliquez pour ajouter ou supprimer le podcast du flux",
     "auto_play_next_episode": "Jouer automatiquement le prochain épisode",
@@ -1725,6 +1731,8 @@
     "youtube_channels": "Chaînes YouTube"
   },
   "collections": {
+    "add_episodes_count": "",
+    "bulk_added": "",
     "collections": "",
     "add_to_collection": "",
     "new_collection": "",

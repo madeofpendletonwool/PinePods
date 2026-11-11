@@ -403,6 +403,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::settings::adjust_skip_times))
         .routes(routes!(handlers::settings::ai_status))
         .routes(routes!(handlers::settings::transcribe_episode))
+        .routes(routes!(handlers::settings::bulk_transcribe_episodes))
         .routes(routes!(handlers::settings::get_episode_transcript))
         .routes(routes!(handlers::settings::export_episode_transcript))
         .routes(routes!(handlers::settings::adjust_auto_transcribe))
