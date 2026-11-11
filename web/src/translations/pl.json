@@ -76,7 +76,12 @@
     "no_chapters_available": "",
     "now_playing": "",
     "shownotes": "",
-    "shownotes_unavailable": ""
+    "shownotes_unavailable": "",
+    "mute": "",
+    "unmute": "",
+    "speed": "",
+    "playback_speed": "",
+    "volume": ""
   },
   "auth": {
     "account_created_success": "Konto utworzone! Możesz się zalogować.",

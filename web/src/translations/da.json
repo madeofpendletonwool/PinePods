@@ -76,7 +76,12 @@
     "no_chapters_available": "Ingen kapitler er tilgængelige",
     "now_playing": "Afspilles nu",
     "shownotes": "Shownoter",
-    "shownotes_unavailable": "Shownoter (utilgængelig)"
+    "shownotes_unavailable": "Shownoter (utilgængelig)",
+    "mute": "",
+    "unmute": "",
+    "speed": "",
+    "playback_speed": "",
+    "volume": ""
   },
   "auth": {
     "account_created_success": "Bruger blev oprettet succesfuldt! Du kan nu logge ind.",

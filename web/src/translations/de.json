@@ -76,7 +76,12 @@
     "no_chapters_available": "Keine Kapitel verfügbar",
     "now_playing": "",
     "shownotes": "Shownotes",
-    "shownotes_unavailable": "Shownotes (nicht verfügbar)"
+    "shownotes_unavailable": "Shownotes (nicht verfügbar)",
+    "mute": "",
+    "unmute": "",
+    "speed": "",
+    "playback_speed": "",
+    "volume": ""
   },
   "auth": {
     "account_created_success": "Konto erfolgreich erstellt! Du kannst dich jetzt anmelden.",

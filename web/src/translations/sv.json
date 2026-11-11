@@ -76,7 +76,12 @@
     "no_chapters_available": "Inga kapitel tillgängliga",
     "now_playing": "",
     "shownotes": "Avsnittsdetaljer",
-    "shownotes_unavailable": "Avsnittsdetaljer (inte tillgängligt)"
+    "shownotes_unavailable": "Avsnittsdetaljer (inte tillgängligt)",
+    "mute": "",
+    "unmute": "",
+    "speed": "",
+    "playback_speed": "",
+    "volume": ""
   },
   "auth": {
     "account_created_success": "Ditt konto har skapats! Du kan nu logga in.",

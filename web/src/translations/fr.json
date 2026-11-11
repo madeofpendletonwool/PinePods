@@ -76,7 +76,12 @@
     "no_chapters_available": "Pas de chapitres disponibles",
     "now_playing": "Lecture en cours",
     "shownotes": "Notes de l'émission",
-    "shownotes_unavailable": "Notes de l'émission (indisponibles)"
+    "shownotes_unavailable": "Notes de l'émission (indisponibles)",
+    "mute": "",
+    "unmute": "",
+    "speed": "",
+    "playback_speed": "",
+    "volume": ""
   },
   "auth": {
     "account_created_success": "Compte créé avec succès ! Vous pouvez désormais vous connecter.",
