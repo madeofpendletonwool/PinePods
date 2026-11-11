@@ -189,6 +189,30 @@ If Valkey/Redis is unavailable at startup, the API cannot start. Nginx can retur
 `502` for API requests, including `/api/health`, while the web page still loads. Check
 the Valkey/Redis service and its connection settings if you encounter this.
 
+### Trusted Internal Feeds
+
+PinePods blocks private/reserved destinations when fetching feeds and related
+media. To use a trusted internal feed server, add either or both of these
+environment variables to the `pinepods` service:
+
+```yaml
+PINEPODS_FEED_ALLOWED_HOSTS: "feeds.example.internal,minuspod"
+PINEPODS_FEED_ALLOWED_CIDRS: "192.168.10.0/24,fd12:3456::/48"
+```
+
+Both settings default to empty. Values are comma-separated; surrounding spaces
+and empty entries are ignored. Hosts are exact, case-insensitive names (or IP
+literals), without schemes, ports, paths, or wildcards. A trailing DNS dot is
+ignored. A trusted host may resolve to any address; CIDRs instead permit only
+addresses within the configured IPv4 or IPv6 networks. Invalid entries are
+ignored with a warning. Restart PinePods after changing these settings.
+
+These exceptions apply to the shared feed/media URL guard, including each
+redirect hop, but not the image proxy. HTTP and HTTPS are still required, and
+unlisted private/reserved destinations remain blocked. Only allow servers and
+networks you trust: every PinePods user can cause requests to these destinations.
+Prefer an exact host or narrow CIDR over an entire private network.
+
 Then start it:
 
 ```bash
