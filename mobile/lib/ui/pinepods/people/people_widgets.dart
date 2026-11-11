@@ -15,6 +15,7 @@ import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// A [PinepodsService] with the signed-in user's credentials, or null when
 /// there is no server connection.
@@ -155,13 +156,13 @@ class PeopleStrip extends StatelessWidget {
               TextButton.icon(
                 onPressed: onAdd,
                 icon: const Icon(PhosphorIconsRegular.userPlus, size: 18),
-                label: const Text('Add'),
+                label: Text(L.of(context)!.add),
               ),
           ],
         ),
         const SizedBox(height: 8),
         if (people.isEmpty)
-          _EmptyInvite(prompt: emptyPrompt ?? 'Nobody listed yet.', onAdd: onAdd!)
+          _EmptyInvite(prompt: emptyPrompt ?? L.of(context)!.nobody_listed_yet, onAdd: onAdd!)
         else
           SizedBox(
             height: 112,
@@ -172,7 +173,7 @@ class PeopleStrip extends StatelessWidget {
               itemBuilder: (context, index) => _PersonTile(
                 person: people[index],
                 detail: showEpisodeCount && people[index].episodeCount > 1
-                    ? '${people[index].episodeCount} episodes'
+                    ? L.of(context)!.episodes_count(people[index].episodeCount)
                     : roleLabel(people[index].role),
               ),
             ),
@@ -213,7 +214,7 @@ class _PersonTile extends StatelessWidget {
                       right: 0,
                       bottom: 0,
                       child: Tooltip(
-                        message: 'Unverified: added by the community, not yet reviewed',
+                        message: L.of(context)!.unverified_person,
                         child: Container(
                           width: 14,
                           height: 14,
@@ -270,7 +271,7 @@ class _EmptyInvite extends StatelessWidget {
           FilledButton.tonalIcon(
             onPressed: onAdd,
             icon: const Icon(PhosphorIconsRegular.userPlus, size: 18),
-            label: const Text('Add'),
+            label: Text(L.of(context)!.add),
           ),
         ],
       ),
@@ -322,7 +323,7 @@ class _PersonFollowButtonState extends State<PersonFollowButton> {
       widget.onChanged?.call(next);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(next ? 'Could not follow' : 'Could not unfollow')),
+        SnackBar(content: Text(next ? L.of(context)!.could_not_follow : L.of(context)!.could_not_unfollow)),
       );
     }
   }
@@ -333,12 +334,12 @@ class _PersonFollowButtonState extends State<PersonFollowButton> {
         ? OutlinedButton.icon(
             onPressed: _toggle,
             icon: const Icon(PhosphorIconsRegular.check, size: 18),
-            label: const Text('Following'),
+            label: Text(L.of(context)!.following),
           )
         : FilledButton.icon(
             onPressed: _toggle,
             icon: const Icon(PhosphorIconsRegular.plus, size: 18),
-            label: const Text('Follow'),
+            label: Text(L.of(context)!.subscribe_label),
           );
   }
 }

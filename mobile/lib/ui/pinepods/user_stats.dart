@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class PinepodsUserStats extends StatefulWidget {
   const PinepodsUserStats({super.key});
@@ -71,7 +72,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
 
     if (userId == null) {
       setState(() {
-        _errorMessage = 'Not logged in';
+        _errorMessage = L.of(context)!.not_logged_in;
         _isLoading = false;
       });
       return;
@@ -90,7 +91,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Failed to load stats: $e';
+        _errorMessage = L.of(context)!.failed_to_load_stats(e.toString());
         _isLoading = false;
       });
     }
@@ -125,7 +126,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not open link: $url'),
+            content: Text(L.of(context)!.could_not_open_link(url)),
             backgroundColor: Colors.red,
           ),
         );
@@ -184,7 +185,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
     final isNotSyncing = !stats.isSyncing;
 
     return _buildStatCard(
-      'Sync Status',
+      L.of(context)!.sync_status,
       stats.syncStatusDescription,
       icon: isNotSyncing ? PhosphorIconsRegular.prohibit : PhosphorIconsRegular.arrowsClockwise,
       iconColor: isNotSyncing ? Colors.grey : null,
@@ -209,13 +210,13 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
         Image.asset('assets/images/pinepods-logo.png', width: 72, height: 72),
         const SizedBox(height: 12),
         Text(
-          'App v${Environment.projectVersion}  ·  Server ${_pinepodsVersion ?? "unknown"}',
+          L.of(context)!.app_server_versions(Environment.projectVersion, _pinepodsVersion ?? L.of(context)!.unknown),
           style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 10),
         Text(
-          'Thanks for using PinePods! This app was born from a love for podcasts, of homelabs, and a desire to have a secure and central location to manage personal data.',
+          L.of(context)!.about_thanks,
           style: theme.textTheme.bodyMedium?.copyWith(color: muted, height: 1.4),
           textAlign: TextAlign.center,
         ),
@@ -226,30 +227,30 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
           clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
-              link(PhosphorIconsRegular.fileText, 'PinePods documentation', () => _launchUrl('https://pinepods.online')),
-              link(PhosphorIconsRegular.code, 'PinePods on GitHub',
+              link(PhosphorIconsRegular.fileText, L.of(context)!.pinepods_documentation, () => _launchUrl('https://pinepods.online')),
+              link(PhosphorIconsRegular.code, L.of(context)!.pinepods_on_github,
                   () => _launchUrl('https://github.com/madeofpendletonwool/pinepods')),
-              link(PhosphorIconsRegular.coffee, 'Buy me a coffee',
+              link(PhosphorIconsRegular.coffee, L.of(context)!.buy_me_a_coffee,
                   () => _launchUrl('https://www.buymeacoffee.com/collinscoffee')),
-              link(PhosphorIconsRegular.article, 'Open source licenses', () => showLicensePage(context: context)),
+              link(PhosphorIconsRegular.article, L.of(context)!.open_source_licenses, () => showLicensePage(context: context)),
             ],
           ),
         ),
         const SizedBox(height: 16),
         Text(
-          'Copyright © 2025 Gooseberry Development',
+          'Copyright © 2025 Gooseberry Development', // i18n-ignore
           style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w500),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 6),
         Text(
-          'The PinePods Mobile App is an open-source podcast player adapted from the Anytime Podcast Player (© 2020 Ben Hills). Portions of this application retain the original BSD 3-Clause license.',
+          'The PinePods Mobile App is an open-source podcast player adapted from the Anytime Podcast Player (© 2020 Ben Hills). Portions of this application retain the original BSD 3-Clause license.', // i18n-ignore
           style: TextStyle(fontSize: 12, color: muted, height: 1.3),
           textAlign: TextAlign.center,
         ),
         TextButton(
           onPressed: () => _launchUrl('https://github.com/amugofjava/anytime_podcast_player'),
-          child: const Text('View original project on GitHub', style: TextStyle(fontSize: 12)),
+          child: Text(L.of(context)!.view_original_project, style: const TextStyle(fontSize: 12)),
         ),
       ],
     );
@@ -259,7 +260,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('User Statistics'),
+        title: Text(L.of(context)!.user_statistics),
         centerTitle: true,
       ),
       body: _isLoading
@@ -268,7 +269,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
               ? Center(
                   child: SoftEmptyState(
                     icon: PhosphorIconsRegular.warningCircle,
-                    title: 'Couldn\'t load stats',
+                    title: L.of(context)!.couldnt_load_stats,
                     body: _errorMessage!,
                     action: FilledButton.tonal(
                       onPressed: () {
@@ -278,7 +279,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
                         });
                         _loadUserStats();
                       },
-                      child: const Text('Retry'),
+                      child: Text(L.of(context)!.retry),
                     ),
                   ),
                 )
@@ -296,32 +297,32 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
                         mainAxisSpacing: 12,
                         children: [
                           _buildStatCard(
-                            'User Created',
+                            L.of(context)!.stat_user_created,
                             _userStats?.formattedUserCreated ?? '',
                             icon: PhosphorIconsRegular.calendarBlank,
                           ),
                           _buildStatCard(
-                            'Podcasts Played',
+                            L.of(context)!.stat_podcasts_played,
                             _userStats?.podcastsPlayed.toString() ?? '',
                             icon: PhosphorIconsFill.playCircle,
                           ),
                           _buildStatCard(
-                            'Time Listened',
+                            L.of(context)!.stat_time_listened,
                             _userStats?.formattedTimeListened ?? '',
                             icon: PhosphorIconsRegular.clock,
                           ),
                           _buildStatCard(
-                            'Podcasts Added',
+                            L.of(context)!.stat_podcasts_added,
                             _userStats?.podcastsAdded.toString() ?? '',
                             icon: PhosphorIconsRegular.plusSquare,
                           ),
                           _buildStatCard(
-                            'Episodes Saved',
+                            L.of(context)!.stat_episodes_saved,
                             _userStats?.episodesSaved.toString() ?? '',
                             icon: PhosphorIconsFill.bookmarkSimple,
                           ),
                           _buildStatCard(
-                            'Episodes Downloaded',
+                            L.of(context)!.stat_episodes_downloaded,
                             _userStats?.episodesDownloaded.toString() ?? '',
                             icon: PhosphorIconsRegular.downloadSimple,
                           ),

@@ -32,7 +32,7 @@ class _BottomBarOrderWidgetState extends State<BottomBarOrderWidget> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Reorganize Bottom Bar'),
+        title: Text(L.of(context)!.reorganize_bottom_bar),
         actions: [
           TextButton(
             onPressed: () async {
@@ -41,9 +41,9 @@ class _BottomBarOrderWidgetState extends State<BottomBarOrderWidget> {
               
               // Show a brief confirmation
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Bottom bar order saved!'),
-                  duration: Duration(seconds: 1),
+                SnackBar(
+                  content: Text(L.of(context)!.bottom_bar_order_saved),
+                  duration: const Duration(seconds: 1),
                 ),
               );
               
@@ -55,7 +55,7 @@ class _BottomBarOrderWidgetState extends State<BottomBarOrderWidget> {
               }
             },
             child: Text(
-              'Save',
+              L.of(context)!.save,
               style: TextStyle(color: Theme.of(context).colorScheme.primary),
             ),
           ),
@@ -66,7 +66,7 @@ class _BottomBarOrderWidgetState extends State<BottomBarOrderWidget> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
-              'Drag to reorder. The first $bottomBarPinnedCount appear in the bottom bar; the rest are under More (everything shows when the screen is wide enough).',
+              L.of(context)!.bottom_bar_order_description(bottomBarPinnedCount),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).textTheme.bodySmall?.color,
               ),
@@ -88,9 +88,9 @@ class _BottomBarOrderWidgetState extends State<BottomBarOrderWidget> {
                   ListTile(
                     key: Key(_currentOrder[i]),
                     leading: Icon(bottomNavIcon(_currentOrder[i])),
-                    title: Text(_currentOrder[i]),
+                    title: Text(bottomNavLabel(context, _currentOrder[i])),
                     subtitle: Text(
-                      i < bottomBarPinnedCount ? 'In bottom bar' : 'Under More',
+                      i < bottomBarPinnedCount ? L.of(context)!.in_bottom_bar : L.of(context)!.under_more,
                     ),
                     trailing: const Icon(PhosphorIconsRegular.dotsSix),
                   ),
@@ -108,7 +108,7 @@ class _BottomBarOrderWidgetState extends State<BottomBarOrderWidget> {
                         _currentOrder = List.from(defaultBottomBarOrder);
                       });
                     },
-                    child: const Text('Reset to Default'),
+                    child: Text(L.of(context)!.reset_to_default),
                   ),
                 ),
               ],

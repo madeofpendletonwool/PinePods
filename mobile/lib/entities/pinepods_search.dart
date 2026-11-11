@@ -1,5 +1,7 @@
 // lib/entities/pinepods_search.dart
 
+import 'package:pinepods_mobile/l10n/L.dart';
+
 class PinepodsSearchResult {
   final String? status;
   final int? resultCount;
@@ -321,7 +323,7 @@ class UnifiedPinepodsPodcast {
       originalUrl: podcast.feedUrl,
       author: podcast.artistName,
       ownerName: podcast.artistName,
-      description: 'Descriptions not provided by iTunes',
+      description: L.current.itunes_no_descriptions,
       image: podcast.artworkUrl100,
       link: podcast.collectionViewUrl,
       artwork: podcast.artworkUrl100,
@@ -343,7 +345,7 @@ extension SearchProviderExtension on SearchProvider {
   String get name {
     switch (this) {
       case SearchProvider.podcastIndex:
-        return 'Podcast Index';
+        return 'Podcast Index'; // i18n-ignore
       case SearchProvider.itunes:
         return 'iTunes';
       case SearchProvider.youtube:

@@ -1024,10 +1024,17 @@ pub async fn call_backup_server(
     if response.ok() {
         response.text().await.map_err(anyhow::Error::msg)
     } else {
-        Err(anyhow::Error::msg(format!(
-            "Error backing up server data: {}",
-            response.status_text()
-        )))
+        // Body is the server's JSON error; format_error_message pulls out its message.
+        let status_text = response.status_text();
+        let body = response.text().await.unwrap_or_default();
+        if body.is_empty() {
+            Err(anyhow::Error::msg(format!(
+                "Error backing up server data: {}",
+                status_text
+            )))
+        } else {
+            Err(anyhow::Error::msg(body))
+        }
     }
 }
 
@@ -1467,6 +1474,7 @@ struct AddLocalPodcastRequest {
     description: Option<String>,
     author: Option<String>,
     explicit: Option<bool>,
+    auto_refresh: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1482,6 +1490,7 @@ pub async fn call_add_local_podcast(
     description: Option<String>,
     author: Option<String>,
     explicit: Option<bool>,
+    auto_refresh: bool,
     api_key: &str,
 ) -> Result<crate::requests::pod_req::Podcast, Error> {
     let url = format!("{}/api/data/add_local_podcast", server_name);
@@ -1492,6 +1501,7 @@ pub async fn call_add_local_podcast(
         description,
         author,
         explicit,
+        auto_refresh: Some(auto_refresh),
     };
 
     let response = Request::post(&url)
@@ -1538,35 +1548,6 @@ pub async fn call_add_local_podcast_artwork(
     } else {
         let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
         Err(Error::msg(format!("Error uploading artwork: {}", error_text)))
-    }
-}
-
-pub async fn call_refresh_local_podcast(
-    server_name: &str,
-    user_id: i32,
-    podcast_id: i32,
-    api_key: &str,
-) -> Result<serde_json::Value, Error> {
-    let url = format!("{}/api/data/refresh_local_podcast", server_name);
-    let request_body = serde_json::json!({
-        "user_id": user_id,
-        "podcast_id": podcast_id,
-    });
-
-    let response = Request::post(&url)
-        .header("Content-Type", "application/json")
-        .header("Api-Key", api_key)
-        .body(serde_json::to_string(&request_body)?)?
-        .send()
-        .await
-        .map_err(Error::msg)?;
-
-    if response.ok() {
-        let response_text = response.text().await.map_err(Error::msg)?;
-        Ok(serde_json::from_str(&response_text).map_err(Error::msg)?)
-    } else {
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        Err(Error::msg(format!("Error refreshing local podcast: {}", error_text)))
     }
 }
 
@@ -2336,6 +2317,52 @@ pub async fn call_update_auto_complete_seconds(
             response.status_text()
         )))
     }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct QueueAddPositionSetting {
+    pub user_id: i32,
+    pub position: String,
+}
+
+/// Where Add to queue puts an episode when no side is picked: "top" or "bottom".
+pub async fn call_get_queue_add_position(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/get_queue_add_position/{}", server_name, user_id);
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+    if !response.ok() {
+        return Err(Error::msg(format!("Error getting queue position: {}", response.status_text())));
+    }
+    let setting: QueueAddPositionSetting = response.json().await?;
+    Ok(setting.position)
+}
+
+pub async fn call_update_queue_add_position(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    position: String,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/update_queue_add_position", server_name);
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&QueueAddPositionSetting { user_id, position })
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+    if !response.ok() {
+        return Err(Error::msg(format!("Error updating queue position: {}", response.status_text())));
+    }
+    Ok(())
 }
 
 pub async fn call_get_default_volume(

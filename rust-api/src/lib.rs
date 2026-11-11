@@ -23,6 +23,7 @@ pub mod database;
 pub mod error;
 pub mod gpodder;
 pub mod handlers;
+pub mod memory_store;
 pub mod models;
 pub mod openapi;
 pub mod paths;
@@ -195,6 +196,8 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::auth::update_time_format))
         .routes(routes!(handlers::auth::get_auto_complete_seconds))
         .routes(routes!(handlers::auth::update_auto_complete_seconds))
+        .routes(routes!(handlers::auth::get_queue_add_position))
+        .routes(routes!(handlers::auth::update_queue_add_position))
         .routes(routes!(handlers::auth::user_admin_check))
         .routes(routes!(handlers::auth::import_opml))
         .routes(routes!(handlers::auth::import_progress))
@@ -207,6 +210,8 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::podcasts::add_podcast))
         .routes(routes!(handlers::podcasts::update_podcast_info))
         .routes(routes!(handlers::podcasts::refresh_podcast_details))
+        .routes(routes!(handlers::podcast_refresh::refresh_podcast))
+        .routes(routes!(handlers::podcast_refresh::get_auto_refresh, handlers::podcast_refresh::set_auto_refresh))
         .routes(routes!(handlers::podcasts::merge_podcasts))
         .routes(routes!(handlers::podcasts::unmerge_podcast))
         .routes(routes!(handlers::podcasts::get_merged_podcasts))
@@ -298,6 +303,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::people::podcast_people))
         .routes(routes!(handlers::people::episode_people))
         .routes(routes!(handlers::people::search_people))
+        .routes(routes!(handlers::transcript_search::search_transcripts))
         .routes(routes!(handlers::people::lookup_person))
         .routes(routes!(handlers::people::followed_people))
         .routes(routes!(handlers::people::contribute_people))
@@ -398,7 +404,9 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::settings::adjust_skip_times))
         .routes(routes!(handlers::settings::ai_status))
         .routes(routes!(handlers::settings::transcribe_episode))
+        .routes(routes!(handlers::settings::bulk_transcribe_episodes))
         .routes(routes!(handlers::settings::get_episode_transcript))
+        .routes(routes!(handlers::settings::export_episode_transcript))
         .routes(routes!(handlers::settings::adjust_auto_transcribe))
         .routes(routes!(handlers::settings::get_auto_transcribe))
         .routes(routes!(handlers::settings::adjust_silence_trim))

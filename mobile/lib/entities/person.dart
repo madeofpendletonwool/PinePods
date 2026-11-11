@@ -67,6 +67,6 @@ class Person {
 
   @override
   String toString() {
-    return 'Person{name: $name, role: $role, group: $group, image: $image, link: $link}';
+    return 'Person{name: $name, role: $role, group: $group, image: $image, link: $link}'; // i18n-ignore
   }
 }

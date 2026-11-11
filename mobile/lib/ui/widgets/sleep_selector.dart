@@ -63,7 +63,7 @@ class _SleepSelectorWidgetState extends State<SleepSelectorWidget> {
                           case SleepType.episodes:
                             sl = '${L.of(context)!.semantic_current_value_label} ${s.episodeCount} episodes';
                           case SleepType.chapter:
-                            sl = '${L.of(context)!.semantic_current_value_label} end of chapter';
+                            sl = '${L.of(context)!.semantic_current_value_label} ${L.of(context)!.sleep_chapter_label}';
                         }
                       }
 
@@ -172,8 +172,8 @@ class _SleepSliderState extends State<SleepSlider> {
                   ),
                 if (s != null && s.type == SleepType.chapter)
                   Text(
-                    '(End of chapter)',
-                    semanticsLabel: '${L.of(context)!.semantic_current_value_label} end of chapter',
+                    '(${L.of(context)!.sleep_chapter_label})',
+                    semanticsLabel: '${L.of(context)!.semantic_current_value_label} ${L.of(context)!.sleep_chapter_label}',
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                 if (s != null && s.type == SleepType.episodes)
@@ -345,12 +345,12 @@ class SleepSelectorEntry extends StatelessWidget {
               ),
             if (sleep.type == SleepType.episodes)
               Text(
-                '${sleep.episodeCount} episodes',
+                L.of(context)!.episodes_count(sleep.episodeCount),
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
             if (sleep.type == SleepType.chapter)
               Text(
-                'End of chapter',
+                L.of(context)!.sleep_chapter_label,
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
             if (sleep == current)

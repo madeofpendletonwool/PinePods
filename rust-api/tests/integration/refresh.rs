@@ -250,6 +250,9 @@ async fn a_players_duration_fills_in_a_missing_one() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_dedupe_migration_merges_duplicate_episodes_and_their_state() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("listener").await;
     let feed = Feed::with_episodes("Dupes", 2);
     let url = app.feed("dupes.xml", &feed);
@@ -263,6 +266,7 @@ async fn the_dedupe_migration_merges_duplicate_episodes_and_their_state() {
     match app.env.backend {
         Backend::Postgres => exec(&app, "DROP INDEX IF EXISTS idx_episodes_podcastid_guid_unique").await,
         Backend::MariaDb => exec(&app, "DROP INDEX IF EXISTS idx_episodes_podcastid_guidhash_unique ON Episodes").await,
+        Backend::Sqlite => unreachable!("upgrade tests skip SQLite"),
     }
     let dup = |guid: &str, completed: bool| {
         format!(
@@ -356,6 +360,7 @@ async fn the_dedupe_migration_merges_duplicate_episodes_and_their_state() {
     let insert = dup("guid-1", false);
     let rejected = match app.db() {
         DatabasePool::Postgres(pool) => sqlx::raw_sql(sqlx::AssertSqlSafe(insert)).execute(pool).await.is_err(),
+        DatabasePool::Sqlite(pool) => sqlx::raw_sql(sqlx::AssertSqlSafe(insert)).execute(pool).await.is_err(),
         DatabasePool::MySQL(pool) => sqlx::raw_sql(sqlx::AssertSqlSafe(insert.replace('"', ""))).execute(pool).await.is_err(),
     };
     assert!(rejected, "a duplicate GUID insert must fail after 065");
@@ -458,6 +463,9 @@ async fn a_new_episode_posts_an_http_notification() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_nested_media_player_never_becomes_the_episode_url() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("listener").await;
     let audio = "https://example.invalid/audio.mp3";
     let player = format!(
@@ -505,6 +513,9 @@ async fn guidless_episodes(app: &TestApp, user: &TestUser, pod: i32) -> Vec<Stri
 #[tokio::test(flavor = "multi_thread")]
 async fn repairing_a_url_does_not_duplicate_a_guidless_episode() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("listener").await;
     let audio = "https://example.invalid/audio.mp3";
     let player_url = "https://example.invalid/embed?media=Audio";

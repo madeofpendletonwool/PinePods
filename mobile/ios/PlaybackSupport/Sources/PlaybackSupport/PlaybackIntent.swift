@@ -15,13 +15,19 @@ struct PlaybackIntent {
         loadedGeneration = generation
     }
 
+    // An explicit play or episode load clears any interruption: iOS often never
+    // sends an interruption-ended notification, which would leave play dead.
     mutating func beginEpisode() -> UInt64 {
         generation &+= 1
         requested = true
+        interrupted = false
         return generation
     }
 
-    mutating func play() { requested = true }
+    mutating func play() {
+        requested = true
+        interrupted = false
+    }
     mutating func pause() { requested = false }
 
     mutating func stop() {

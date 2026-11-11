@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// Outcome of checking whether a URL is a reachable PinePods server.
 ///
@@ -21,7 +22,7 @@ class ServerCheckResult {
 }
 
 class PinepodsLoginService {
-  static const String userAgent = 'PinePods Mobile/1.0';
+  static const String userAgent = 'PinePods Mobile/1.0'; // i18n-ignore
   static const Duration _requestTimeout = Duration(seconds: 20);
 
   /// Verify if the server is a valid PinePods instance.
@@ -60,10 +61,10 @@ class PinepodsLoginService {
           // fall through to the not-PinePods message below
         }
         return ServerCheckResult.error(
-            'Reachable, but this does not look like a PinePods server.');
+            L.current.not_a_pinepods_server);
       }
       return ServerCheckResult.error(
-          'Server responded with HTTP ${response.statusCode}. This does not look like a PinePods server.');
+          L.current.server_http_not_pinepods(response.statusCode));
     } on HandshakeException catch (e) {
       return ServerCheckResult.error(_tlsMessage(e));
     } on TlsException catch (e) {
@@ -71,26 +72,24 @@ class PinepodsLoginService {
     } on SocketException catch (e) {
       final detail = e.osError?.message ?? e.message;
       return ServerCheckResult.error(
-          "Couldn't reach the server (connection/DNS failure): $detail");
+          L.current.couldnt_reach_server(detail));
     } on TimeoutException {
       return ServerCheckResult.error(
-          'The server took too long to respond. Check the address and your connection.');
+          L.current.server_too_slow);
     } on http.ClientException catch (e) {
-      return ServerCheckResult.error('Connection failed: ${e.message}');
+      return ServerCheckResult.error(L.current.connection_failed(e.message));
     } on FormatException {
       return ServerCheckResult.error(
-          "That doesn't look like a valid server address.");
+          L.current.invalid_server_address);
     } catch (e) {
-      return ServerCheckResult.error('Could not connect: $e');
+      return ServerCheckResult.error(L.current.could_not_connect(e.toString()));
     } finally {
       if (client == null) httpClient.close();
     }
   }
 
   static String _tlsMessage(Exception e) {
-    return "The server's TLS certificate isn't trusted. If it uses a private or "
-        'self-signed certificate, import its CA under Advanced → Certificates. '
-        'If the server requires a client certificate (mTLS), import that too.';
+    return L.current.tls_not_trusted;
   }
 
   /// Initial login - returns either API key or MFA session info
@@ -98,7 +97,7 @@ class PinepodsLoginService {
     try {
       final normalizedUrl = serverUrl.trim().replaceAll(RegExp(r'/$'), '');
       final credentials = base64Encode(utf8.encode('$username:$password'));
-      final authHeader = 'Basic $credentials';
+      final authHeader = 'Basic $credentials'; // i18n-ignore
       final url = Uri.parse('$normalizedUrl/api/data/get_key');
 
       final response = await http.get(
@@ -129,9 +128,9 @@ class PinepodsLoginService {
         }
       }
       
-      return InitialLoginResponse.failure('Authentication failed');
+      return InitialLoginResponse.failure(L.current.authentication_failed_plain);
     } catch (e) {
-      return InitialLoginResponse.failure('Error: ${e.toString()}');
+      return InitialLoginResponse.failure(L.current.error_with_detail(e.toString()));
     }
   }
 
@@ -335,14 +334,14 @@ class PinepodsLoginService {
       final serverCheck = await checkServer(serverUrl);
       if (!serverCheck.isPinepods) {
         return LoginResult.failure(
-            serverCheck.errorMessage ?? 'Not a valid PinePods server');
+            serverCheck.errorMessage ?? L.current.not_a_valid_pinepods_server);
       }
 
       // Step 2: Initial login - get API key or MFA session
       final initialResult = await initialLogin(serverUrl, username, password);
       
       if (!initialResult.isSuccess) {
-        return LoginResult.failure(initialResult.errorMessage ?? 'Login failed');
+        return LoginResult.failure(initialResult.errorMessage ?? L.current.login_failed);
       }
       
       if (initialResult.requiresMfa) {
@@ -362,7 +361,7 @@ class PinepodsLoginService {
         initialResult.apiKey!,
       );
     } catch (e) {
-      return LoginResult.failure('Error: ${e.toString()}');
+      return LoginResult.failure(L.current.error_with_detail(e.toString()));
     }
   }
 
@@ -377,13 +376,13 @@ class PinepodsLoginService {
       // Verify MFA and get API key
       final apiKey = await verifyMfaAndGetKey(serverUrl, mfaSessionToken, mfaCode);
       if (apiKey == null) {
-        return LoginResult.failure('Invalid MFA code');
+        return LoginResult.failure(L.current.invalid_mfa_code);
       }
 
       // Complete login with verified API key
       return await _completeLoginWithApiKey(serverUrl, username, apiKey);
     } catch (e) {
-      return LoginResult.failure('Error: ${e.toString()}');
+      return LoginResult.failure(L.current.error_with_detail(e.toString()));
     }
   }
 
@@ -392,25 +391,25 @@ class PinepodsLoginService {
     // Step 1: Verify API key
     final isValidKey = await verifyApiKey(serverUrl, apiKey);
     if (!isValidKey) {
-      return LoginResult.failure('API key verification failed');
+      return LoginResult.failure(L.current.api_key_verification_failed);
     }
 
     // Step 2: Get user ID
     final userId = await getUserId(serverUrl, apiKey);
     if (userId == null) {
-      return LoginResult.failure('Failed to get user ID');
+      return LoginResult.failure(L.current.failed_to_get_user_id);
     }
 
     // Step 3: Get user details
     final userDetails = await getUserDetails(serverUrl, apiKey, userId);
     if (userDetails == null) {
-      return LoginResult.failure('Failed to get user details');
+      return LoginResult.failure(L.current.failed_to_get_user_details);
     }
 
     // Step 4: Get API configuration
     final apiConfig = await getApiConfig(serverUrl, apiKey);
     if (apiConfig == null) {
-      return LoginResult.failure('Failed to get server configuration');
+      return LoginResult.failure(L.current.failed_to_get_server_config);
     }
 
     return LoginResult.success(

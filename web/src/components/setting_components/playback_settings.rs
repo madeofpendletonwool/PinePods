@@ -2,7 +2,7 @@
 
 use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
-use crate::requests::setting_reqs::{call_get_auto_complete_seconds, call_update_auto_complete_seconds, call_get_default_volume, call_update_default_volume};
+use crate::requests::setting_reqs::{call_get_auto_complete_seconds, call_update_auto_complete_seconds, call_get_default_volume, call_update_default_volume, call_get_queue_add_position, call_update_queue_add_position};
 use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -164,6 +164,58 @@ pub fn playback_settings() -> Html {
     // State for default volume (0-100)
     let default_volume = use_state(|| 100);
     let volume_loading = use_state(|| true);
+
+    // Where Add to queue puts an episode by default
+    let queue_position = use_state(|| "bottom".to_string());
+    let queue_position_loading = use_state(|| true);
+    {
+        let queue_position = queue_position.clone();
+        let queue_position_loading = queue_position_loading.clone();
+        use_effect_with(
+            (api_key.clone(), server_name.clone()),
+            move |(api_key, server_name)| {
+                if let (Some(Some(api_key)), Some(server_name), Some(user_id)) =
+                    (api_key.clone(), server_name.clone(), user_id)
+                {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(position) = call_get_queue_add_position(server_name, api_key, user_id).await {
+                            queue_position.set(position);
+                        }
+                        queue_position_loading.set(false);
+                    });
+                } else {
+                    queue_position_loading.set(false);
+                }
+                || ()
+            },
+        );
+    }
+    let on_queue_position_change = {
+        let queue_position = queue_position.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let i18n_failed = i18n.t("playback_settings.failed_to_update_queue_position").to_string();
+        Callback::from(move |e: Event| {
+            let value = e.target_unchecked_into::<web_sys::HtmlSelectElement>().value();
+            let previous = (*queue_position).clone();
+            queue_position.set(value.clone());
+            if let (Some(Some(api_key)), Some(server_name), Some(user_id)) =
+                (api_key.clone(), server_name.clone(), user_id)
+            {
+                let queue_position = queue_position.clone();
+                let i18n_failed = i18n_failed.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(e) = call_update_queue_add_position(server_name, api_key, user_id, value).await {
+                        queue_position.set(previous);
+                        let formatted_error = format_error_message(&e.to_string());
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                            state.error_message = Some(format!("{}{}", i18n_failed, formatted_error));
+                        });
+                    }
+                });
+            }
+        })
+    };
 
     // Fetch initial playback speed
     {
@@ -579,6 +631,23 @@ pub fn playback_settings() -> Html {
                     <i class="ph ph-floppy-disk"></i>
                     <span>{&i18n_save}</span>
                 </button>
+            </div>
+        </div>
+        <div class="settings-row">
+            <div>
+                <div class="settings-row-label">{i18n.t("playback_settings.queue_add_position")}</div>
+                <div class="settings-row-desc">{i18n.t("playback_settings.queue_add_position_description")}</div>
+            </div>
+            <div class="settings-row-control">
+                <select
+                    class="select"
+                    style="width:200px;"
+                    onchange={on_queue_position_change}
+                    disabled={*queue_position_loading}
+                >
+                    <option value="bottom" selected={*queue_position == "bottom"}>{i18n.t("playback_settings.queue_add_bottom")}</option>
+                    <option value="top" selected={*queue_position == "top"}>{i18n.t("playback_settings.queue_add_top")}</option>
+                </select>
             </div>
         </div>
         if *show_success {

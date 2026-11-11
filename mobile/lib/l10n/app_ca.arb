@@ -1,0 +1,18 @@
+{
+  "@@locale": "ca",
+  "cancel_button_label": "Cancel·la",
+  "cancel_option_label": "Cancel·la",
+  "podcast_details_refreshed": "Dades del podcast actualitzades des del canal",
+  "title_contains": "El títol conté",
+  "save": "Desa",
+  "unsubscribe": "Cancel·la la subscripció",
+  "copy": "Copia",
+  "remove": "Elimina",
+  "refresh": "Actualitza",
+  "search_failed": "La cerca ha fallat",
+  "try_again": "Torna-ho a provar",
+  "server_url": "URL del servidor",
+  "username": "Nom d'usuari",
+  "password": "Contrasenya",
+  "sync_now": "Sincronitza ara"
+}

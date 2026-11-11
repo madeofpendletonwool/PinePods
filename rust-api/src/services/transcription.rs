@@ -10,6 +10,7 @@ use crate::services::{ai_client, audio_processing};
 use serde::Serialize;
 use sqlx::Row;
 use tracing::{debug, warn};
+use crate::database::dialect::dialect_match;
 
 pub const SOURCE_GENERATED: &str = "generated";
 
@@ -29,8 +30,8 @@ pub struct StoredTranscript {
 /// redundant work (and to avoid two triggers racing to transcribe the same episode). A job still
 /// `running` after 12 hours was cut off by a restart and no longer counts.
 async fn has_complete_transcript(db_pool: &DatabasePool, episode_id: i32) -> bool {
-    match db_pool {
-        DatabasePool::Postgres(pool) => sqlx::query(
+    dialect_match!(db_pool, {
+        pg(pool) => q::query(
             r#"SELECT 1 FROM "EpisodeTranscripts" WHERE episodeid = $1 AND source = $2
                AND (status = 'complete' OR (status IN ('running','pending') AND createdat > NOW() - INTERVAL '12 hours')) LIMIT 1"#,
         )
@@ -40,7 +41,7 @@ async fn has_complete_transcript(db_pool: &DatabasePool, episode_id: i32) -> boo
         .await
         .map(|r| r.is_some())
         .unwrap_or(false),
-        DatabasePool::MySQL(pool) => sqlx::query(
+        mysql(pool) => sqlx::query(
             "SELECT 1 FROM EpisodeTranscripts WHERE EpisodeID = ? AND Source = ?
              AND (Status = 'complete' OR (Status IN ('running','pending') AND CreatedAt > NOW() - INTERVAL 12 HOUR)) LIMIT 1",
         )
@@ -50,37 +51,37 @@ async fn has_complete_transcript(db_pool: &DatabasePool, episode_id: i32) -> boo
         .await
         .map(|r| r.is_some())
         .unwrap_or(false),
-    }
+    })
 }
 
 /// Delete any prior generated transcript rows for an episode (so re-runs don't accumulate).
 async fn clear_generated(db_pool: &DatabasePool, episode_id: i32) -> Result<(), String> {
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"DELETE FROM "EpisodeTranscripts" WHERE episodeid = $1 AND source = $2"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"DELETE FROM "EpisodeTranscripts" WHERE episodeid = $1 AND source = $2"#)
                 .bind(episode_id)
                 .bind(SOURCE_GENERATED)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("DELETE FROM EpisodeTranscripts WHERE EpisodeID = ? AND Source = ?")
                 .bind(episode_id)
                 .bind(SOURCE_GENERATED)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(())
 }
 
 /// Insert a `running` placeholder row and return its id, so a queue view can show in-progress work.
 async fn insert_running(db_pool: &DatabasePool, episode_id: i32) -> Result<i64, String> {
-    let id = match db_pool {
-        DatabasePool::Postgres(pool) => {
-            let row = sqlx::query(r#"
+    let id = dialect_match!(db_pool, {
+        pg(pool) => {
+            let row = q::query(r#"
                 INSERT INTO "EpisodeTranscripts" (episodeid, source, status)
                 VALUES ($1, $2, 'running') RETURNING transcriptid
             "#)
@@ -90,8 +91,8 @@ async fn insert_running(db_pool: &DatabasePool, episode_id: i32) -> Result<i64, 
             .await
             .map_err(|e| e.to_string())?;
             row.try_get::<i32, _>("transcriptid").map_err(|e| e.to_string())? as i64
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             let res = sqlx::query("INSERT INTO EpisodeTranscripts (EpisodeID, Source, Status) VALUES (?, ?, 'running')")
                 .bind(episode_id)
                 .bind(SOURCE_GENERATED)
@@ -99,8 +100,8 @@ async fn insert_running(db_pool: &DatabasePool, episode_id: i32) -> Result<i64, 
                 .await
                 .map_err(|e| e.to_string())?;
             res.last_insert_id() as i64
-        }
-    };
+        },
+    });
     Ok(id)
 }
 
@@ -114,9 +115,9 @@ async fn complete_row(
     segments_json: &str,
     audio: &AudioCopy,
 ) -> Result<(), String> {
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"
                 UPDATE "EpisodeTranscripts"
                 SET language = $1, model = $2, transcripttext = $3, segments = $4::jsonb, status = 'complete',
                     audiofingerprint = $5, audioduration = $6, audiosource = $7
@@ -133,8 +134,8 @@ async fn complete_row(
             .execute(pool)
             .await
             .map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query(r#"
                 UPDATE EpisodeTranscripts
                 SET Language = ?, Model = ?, TranscriptText = ?, Segments = ?, Status = 'complete',
@@ -152,26 +153,26 @@ async fn complete_row(
             .execute(pool)
             .await
             .map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(())
 }
 
 async fn fail_row(db_pool: &DatabasePool, transcript_id: i64) {
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            let _ = sqlx::query(r#"UPDATE "EpisodeTranscripts" SET status = 'failed' WHERE transcriptid = $1"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            let _ = q::query(r#"UPDATE "EpisodeTranscripts" SET status = 'failed' WHERE transcriptid = $1"#)
                 .bind(transcript_id as i32)
                 .execute(pool)
                 .await;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             let _ = sqlx::query("UPDATE EpisodeTranscripts SET Status = 'failed' WHERE TranscriptID = ?")
                 .bind(transcript_id)
                 .execute(pool)
                 .await;
-        }
-    }
+        },
+    })
 }
 
 /// Temp directory (under the shared downloads mount so the AI sidecar can read it) for audio we
@@ -181,9 +182,9 @@ async fn fail_row(db_pool: &DatabasePool, transcript_id: i64) {
 /// works even when the user hasn't downloaded the episode. Returns the temp path; caller deletes it.
 async fn fetch_episode_audio_temp(db_pool: &DatabasePool, episode_id: i32) -> Result<String, String> {
     // Episode URL + optional feed auth.
-    let (url, username, password) = match db_pool {
-        DatabasePool::Postgres(pool) => {
-            let row = sqlx::query(r#"
+    let (url, username, password) = dialect_match!(db_pool, {
+        pg(pool) => {
+            let row = q::query(r#"
                 SELECT e.episodeurl, p.username, p.password
                 FROM "Episodes" e JOIN "Podcasts" p ON e.feedid = p.feedid
                 WHERE e.episodeid = $1 LIMIT 1
@@ -197,8 +198,8 @@ async fn fetch_episode_audio_temp(db_pool: &DatabasePool, episode_id: i32) -> Re
                 row.try_get::<Option<String>, _>("username").ok().flatten(),
                 row.try_get::<Option<String>, _>("password").ok().flatten(),
             )
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             let row = sqlx::query("
                 SELECT e.EpisodeURL, p.Username, p.Password
                 FROM Episodes e JOIN Podcasts p ON e.FeedID = p.FeedID
@@ -213,8 +214,8 @@ async fn fetch_episode_audio_temp(db_pool: &DatabasePool, episode_id: i32) -> Re
                 row.try_get::<Option<String>, _>("Username").ok().flatten(),
                 row.try_get::<Option<String>, _>("Password").ok().flatten(),
             )
-        }
-    };
+        },
+    });
 
     // SSRF guard: enclosure URLs come from attacker-controlled feeds.
     crate::services::url_guard::ensure_safe_public_url_async(&url)
@@ -270,8 +271,8 @@ pub const AUDIO_SOURCE_STREAM: &str = "stream";
 
 /// The audio copy behind the episode's completed generated transcript, if there is one.
 pub async fn analyzed_audio(db_pool: &DatabasePool, episode_id: i32) -> Option<AudioCopy> {
-    match db_pool {
-        DatabasePool::Postgres(pool) => sqlx::query(r#"
+    dialect_match!(db_pool, {
+        pg(pool) => q::query(r#"
             SELECT audiofingerprint, audioduration, audiosource FROM "EpisodeTranscripts"
             WHERE episodeid = $1 AND source = $2 AND status = 'complete'
             ORDER BY createdat DESC LIMIT 1
@@ -287,7 +288,7 @@ pub async fn analyzed_audio(db_pool: &DatabasePool, episode_id: i32) -> Option<A
             duration: r.try_get("audioduration").ok().flatten(),
             source: r.try_get("audiosource").ok().flatten(),
         }),
-        DatabasePool::MySQL(pool) => sqlx::query(r#"
+        mysql(pool) => sqlx::query(r#"
             SELECT AudioFingerprint, AudioDuration, AudioSource FROM EpisodeTranscripts
             WHERE EpisodeID = ? AND Source = ? AND Status = 'complete'
             ORDER BY CreatedAt DESC LIMIT 1
@@ -303,7 +304,7 @@ pub async fn analyzed_audio(db_pool: &DatabasePool, episode_id: i32) -> Option<A
             duration: r.try_get("AudioDuration").ok().flatten(),
             source: r.try_get("AudioSource").ok().flatten(),
         }),
-    }
+    })
 }
 
 /// Transcribe one episode via the AI sidecar and persist the result.
@@ -397,8 +398,8 @@ pub async fn get_episode_transcript(
     db_pool: &DatabasePool,
     episode_id: i32,
 ) -> Result<Option<StoredTranscript>, String> {
-    let transcript = match db_pool {
-        DatabasePool::Postgres(pool) => sqlx::query(r#"
+    let transcript = dialect_match!(db_pool, {
+        pg(pool) => q::query(r#"
             SELECT source, language, model, transcripttext, segments::text AS segments_text,
                    CASE WHEN status IN ('running','pending') AND createdat < NOW() - INTERVAL '12 hours'
                         THEN 'failed' ELSE status END AS status
@@ -419,7 +420,7 @@ pub async fn get_episode_transcript(
             full_text: r.try_get("transcripttext").ok(),
             segments: r.try_get("segments_text").ok(),
         }),
-        DatabasePool::MySQL(pool) => sqlx::query(r#"
+        mysql(pool) => sqlx::query(r#"
             SELECT Source, Language, Model, TranscriptText, Segments,
                    CASE WHEN Status IN ('running','pending') AND CreatedAt < NOW() - INTERVAL 12 HOUR
                         THEN 'failed' ELSE Status END AS Status
@@ -440,51 +441,104 @@ pub async fn get_episode_transcript(
             full_text: r.try_get("TranscriptText").ok(),
             segments: r.try_get("Segments").ok(),
         }),
-    };
+    });
     Ok(transcript)
 }
 
-/// Format a seconds value as an SRT timestamp `HH:MM:SS,mmm`.
-fn srt_timestamp(seconds: f64) -> String {
-    let ms_total = (seconds * 1000.0).round() as i64;
+/// A seconds value as a cue timestamp `HH:MM:SS<sep>mmm` (`,` for SRT, `.` for WebVTT).
+fn cue_timestamp(seconds: f64, sep: char) -> String {
+    let ms_total = (seconds.max(0.0) * 1000.0).round() as i64;
     let ms = ms_total % 1000;
     let s = (ms_total / 1000) % 60;
     let m = (ms_total / 60_000) % 60;
     let h = ms_total / 3_600_000;
-    format!("{:02}:{:02}:{:02},{:03}", h, m, s, ms)
+    format!("{:02}:{:02}:{:02}{}{:03}", h, m, s, sep, ms)
 }
 
-/// Render the stored generated transcript for an episode as SRT, so it can flow through the same
-/// transcript UI as feed transcripts. Returns None if there's no completed transcript.
-pub async fn get_episode_transcript_srt(
+/// File formats a generated transcript can be downloaded as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum TranscriptFormat {
+    Srt,
+    Vtt,
+    Txt,
+}
+
+impl TranscriptFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Srt => "srt",
+            Self::Vtt => "vtt",
+            Self::Txt => "txt",
+        }
+    }
+
+    pub fn content_type(self) -> &'static str {
+        match self {
+            Self::Srt => "application/x-subrip; charset=utf-8",
+            Self::Vtt => "text/vtt; charset=utf-8",
+            Self::Txt => "text/plain; charset=utf-8",
+        }
+    }
+}
+
+/// The finished generated transcript for an episode as a file in `format`.
+/// None while there is no finished transcript.
+pub async fn export_episode_transcript(
     db_pool: &DatabasePool,
     episode_id: i32,
+    format: TranscriptFormat,
 ) -> Result<Option<String>, String> {
     let stored = match get_episode_transcript(db_pool, episode_id).await? {
         Some(t) if t.status == "complete" => t,
         _ => return Ok(None),
     };
-    let segments_json = match stored.segments {
-        Some(s) => s,
-        None => return Ok(None),
+    let segments: Vec<serde_json::Value> = match stored.segments.as_deref() {
+        Some(json) => serde_json::from_str(json).map_err(|e| e.to_string())?,
+        None => Vec::new(),
     };
-    let segments: Vec<serde_json::Value> =
-        serde_json::from_str(&segments_json).map_err(|e| e.to_string())?;
-
-    let mut srt = String::new();
-    for (i, seg) in segments.iter().enumerate() {
+    let cues = segments.iter().map(|seg| {
         let start = seg.get("start").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let end = seg.get("end").and_then(|v| v.as_f64()).unwrap_or(start);
         let text = seg.get("text").and_then(|v| v.as_str()).unwrap_or("").trim();
-        srt.push_str(&format!(
-            "{}\n{} --> {}\n{}\n\n",
-            i + 1,
-            srt_timestamp(start),
-            srt_timestamp(end),
-            text,
-        ));
-    }
-    Ok(Some(srt))
+        (start, end, text)
+    });
+
+    Ok(Some(match format {
+        TranscriptFormat::Srt => {
+            if segments.is_empty() {
+                return Ok(None);
+            }
+            cues.enumerate()
+                .map(|(i, (start, end, text))| {
+                    format!("{}\n{} --> {}\n{}\n\n", i + 1, cue_timestamp(start, ','), cue_timestamp(end, ','), text)
+                })
+                .collect()
+        }
+        TranscriptFormat::Vtt => {
+            if segments.is_empty() {
+                return Ok(None);
+            }
+            let mut vtt = String::from("WEBVTT\n\n");
+            for (start, end, text) in cues {
+                vtt.push_str(&format!("{} --> {}\n{}\n\n", cue_timestamp(start, '.'), cue_timestamp(end, '.'), text));
+            }
+            vtt
+        }
+        TranscriptFormat::Txt => match stored.full_text.filter(|t| !t.trim().is_empty()) {
+            Some(text) => format!("{}\n", text.trim()),
+            None if !segments.is_empty() => cues.map(|(_, _, text)| text).collect::<Vec<_>>().join("\n") + "\n",
+            None => return Ok(None),
+        },
+    }))
+}
+
+/// The finished generated transcript for an episode as SRT, for the in-app transcript view.
+pub async fn get_episode_transcript_srt(
+    db_pool: &DatabasePool,
+    episode_id: i32,
+) -> Result<Option<String>, String> {
+    export_episode_transcript(db_pool, episode_id, TranscriptFormat::Srt).await
 }
 
 /// Update a podcast's auto-transcribe opt-in (owner-scoped, like the silence-trim setter).
@@ -494,17 +548,17 @@ pub async fn set_auto_transcribe(
     user_id: i32,
     enabled: bool,
 ) -> Result<(), String> {
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"UPDATE "Podcasts" SET autotranscribe = $1 WHERE podcastid = $2 AND userid = $3"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"UPDATE "Podcasts" SET autotranscribe = $1 WHERE podcastid = $2 AND userid = $3"#)
                 .bind(enabled)
                 .bind(podcast_id)
                 .bind(user_id)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("UPDATE Podcasts SET AutoTranscribe = ? WHERE PodcastID = ? AND UserID = ?")
                 .bind(enabled)
                 .bind(podcast_id)
@@ -512,15 +566,15 @@ pub async fn set_auto_transcribe(
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(())
 }
 
 /// Read a podcast's auto-transcribe setting.
 pub async fn get_auto_transcribe(db_pool: &DatabasePool, podcast_id: i32) -> Result<bool, String> {
-    let enabled = match db_pool {
-        DatabasePool::Postgres(pool) => sqlx::query(
+    let enabled = dialect_match!(db_pool, {
+        pg(pool) => q::query(
             r#"SELECT COALESCE(autotranscribe, FALSE) AS a FROM "Podcasts" WHERE podcastid = $1"#,
         )
         .bind(podcast_id)
@@ -529,7 +583,7 @@ pub async fn get_auto_transcribe(db_pool: &DatabasePool, podcast_id: i32) -> Res
         .map_err(|e| e.to_string())?
         .and_then(|r| r.try_get::<bool, _>("a").ok())
         .unwrap_or(false),
-        DatabasePool::MySQL(pool) => sqlx::query(
+        mysql(pool) => sqlx::query(
             "SELECT COALESCE(AutoTranscribe, 0) AS a FROM Podcasts WHERE PodcastID = ?",
         )
         .bind(podcast_id)
@@ -539,15 +593,15 @@ pub async fn get_auto_transcribe(db_pool: &DatabasePool, podcast_id: i32) -> Res
         .and_then(|r| r.try_get::<i8, _>("a").ok())
         .map(|a| a != 0)
         .unwrap_or(false),
-    };
+    });
     Ok(enabled)
 }
 
 /// Whether any subscription to the episode's feed opted into auto-transcription, and whether one
 /// of those also auto-downloads to the server.
 async fn auto_transcribe_opt_in(db_pool: &DatabasePool, episode_id: i32) -> (bool, bool) {
-    let row = match db_pool {
-        DatabasePool::Postgres(pool) => sqlx::query(r#"
+    let row = dialect_match!(db_pool, {
+        pg(pool) => q::query(r#"
             SELECT COALESCE(BOOL_OR(COALESCE(p.autotranscribe, FALSE)), FALSE) AS t,
                    COALESCE(BOOL_OR(COALESCE(p.autotranscribe, FALSE) AND COALESCE(p.autodownload, FALSE)), FALSE) AS d
             FROM "Episodes" e JOIN "Podcasts" p ON e.feedid = p.feedid
@@ -559,7 +613,7 @@ async fn auto_transcribe_opt_in(db_pool: &DatabasePool, episode_id: i32) -> (boo
         .ok()
         .flatten()
         .map(|r| (r.try_get::<bool, _>("t").unwrap_or(false), r.try_get::<bool, _>("d").unwrap_or(false))),
-        DatabasePool::MySQL(pool) => sqlx::query("
+        mysql(pool) => sqlx::query("
             SELECT CAST(COALESCE(MAX(COALESCE(p.AutoTranscribe, 0)), 0) AS SIGNED) AS t,
                    CAST(COALESCE(MAX(COALESCE(p.AutoTranscribe, 0) AND COALESCE(p.AutoDownload, 0)), 0) AS SIGNED) AS d
             FROM Episodes e JOIN Podcasts p ON e.FeedID = p.FeedID
@@ -574,7 +628,7 @@ async fn auto_transcribe_opt_in(db_pool: &DatabasePool, episode_id: i32) -> (boo
             r.try_get::<i64, _>("t").map(|v| v != 0).unwrap_or(false),
             r.try_get::<i64, _>("d").map(|v| v != 0).unwrap_or(false),
         )),
-    };
+    });
     row.unwrap_or((false, false))
 }
 

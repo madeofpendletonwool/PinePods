@@ -1,0 +1,18 @@
+{
+  "@@locale": "fi",
+  "cancel_button_label": "Peruuta",
+  "cancel_option_label": "Peruuta",
+  "podcast_details_refreshed": "Podcastin tiedot päivitetty syötteestä",
+  "title_contains": "Otsikko sisältää",
+  "save": "Tallenna",
+  "unsubscribe": "Peru tilaus",
+  "copy": "Kopioi",
+  "remove": "Poista",
+  "refresh": "Päivitä",
+  "search_failed": "Haku epäonnistui",
+  "try_again": "Yritä uudelleen",
+  "server_url": "Palvelimen URL",
+  "username": "Käyttäjätunnus",
+  "password": "Salasana",
+  "sync_now": "Synkronoi nyt"
+}

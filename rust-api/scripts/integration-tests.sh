@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Run the rust-api integration suite (tests/integration) against real databases.
 #
-#   scripts/integration-tests.sh                 # Postgres + MariaDB, all tests
-#   scripts/integration-tests.sh --db postgres   # one backend only (postgres | mariadb)
+#   scripts/integration-tests.sh                 # Postgres, MariaDB and SQLite, all tests
+#   scripts/integration-tests.sh --db postgres   # one backend only (postgres | mariadb | sqlite)
 #   scripts/integration-tests.sh -- queue        # extra args go to `cargo test` (name filter, etc.)
 #   scripts/integration-tests.sh --gpodder mock -- gpodder
 #                                                # gpodder protocol tests against rust | mock
@@ -21,7 +21,7 @@ if [[ "${1:-}" == "down" ]]; then
   exit 0
 fi
 
-DBS=(postgresql mariadb)
+DBS=(postgresql mariadb sqlite)
 CARGO_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -29,8 +29,9 @@ while [[ $# -gt 0 ]]; do
       case "${2:-}" in
         postgres|postgresql) DBS=(postgresql) ;;
         mariadb|mysql) DBS=(mariadb) ;;
-        all) DBS=(postgresql mariadb) ;;
-        *) echo "unknown --db '${2:-}' (postgres | mariadb | all)" >&2; exit 2 ;;
+        sqlite) DBS=(sqlite) ;;
+        all) DBS=(postgresql mariadb sqlite) ;;
+        *) echo "unknown --db '${2:-}' (postgres | mariadb | sqlite | all)" >&2; exit 2 ;;
       esac
       shift 2 ;;
     --gpodder)

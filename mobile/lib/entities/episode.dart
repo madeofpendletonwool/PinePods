@@ -387,7 +387,7 @@ class Episode {
 
   @override
   String toString() {
-    return 'Episode{id: $id, guid: $guid, pguid: $pguid, filepath: $filepath, title: $title, contentUrl: $contentUrl, episode: $episode, duration: $duration, position: $position, downloadPercentage: $downloadPercentage, played: $played, queued: $queued}';
+    return 'Episode{id: $id, guid: $guid, pguid: $pguid, filepath: $filepath, title: $title, contentUrl: $contentUrl, episode: $episode, duration: $duration, position: $position, downloadPercentage: $downloadPercentage, played: $played, queued: $queued}'; // i18n-ignore
   }
 
   bool get downloaded => downloadPercentage == 100;

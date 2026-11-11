@@ -214,6 +214,9 @@ pub struct NotificationState {
 pub struct CollectionModalState {
     pub open: bool,
     pub episode: Option<Episode>,
+    /// Multi-select mode: `(episode_id, is_youtube)` for every selected episode. When non-empty
+    /// the picker adds them all to the chosen collection instead of toggling `episode`.
+    pub bulk_episodes: Vec<(i32, bool)>,
     /// Broadcast when an episode is removed from a collection via this global picker modal, so a
     /// collection page currently showing that collection can drop the card live without a refetch.
     /// `(episode_id, collection_id, nonce)`; the nonce distinguishes repeated removals so a

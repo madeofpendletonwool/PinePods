@@ -18,6 +18,7 @@ import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 const int _pageSize = 50;
 
@@ -66,7 +67,7 @@ class _PersonPageState extends State<PersonPage> {
   Future<void> _load() async {
     final service = signedInService(context);
     if (service == null) {
-      setState(() => _error = 'Not connected to a PinePods server');
+      setState(() => _error = L.of(context)!.not_connected_to_a_pinepods_server);
       return;
     }
     try {
@@ -120,7 +121,7 @@ class _PersonPageState extends State<PersonPage> {
       await playPinepodsEpisodeWithOptionalFullScreen(context, audio, episode, resume: episode.isStarted);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to play episode: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L.of(context)!.failed_to_play_episode(e.toString()))));
     }
   }
 
@@ -157,7 +158,7 @@ class _PersonPageState extends State<PersonPage> {
                                 children: [
                                   Text(_error!, textAlign: TextAlign.center),
                                   const SizedBox(height: 12),
-                                  OutlinedButton(onPressed: _load, child: const Text('Retry')),
+                                  OutlinedButton(onPressed: _load, child: Text(L.of(context)!.retry)),
                                 ],
                               ),
                             ),
@@ -240,7 +241,7 @@ class _PersonPageState extends State<PersonPage> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text('Shows', style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.bold)),
+            child: Text(L.of(context)!.shows, style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.bold)),
           ),
           const SizedBox(height: 8),
           SizedBox(
@@ -253,7 +254,7 @@ class _PersonPageState extends State<PersonPage> {
               itemBuilder: (context, index) {
                 final show = profile.podcasts[index];
                 final roles = show.roles.map(roleLabel).join(', ');
-                final count = '${show.episodeCount} episode${show.episodeCount == 1 ? '' : 's'}';
+                final count = L.of(context)!.episodes_count(show.episodeCount);
                 final detail = show.podcastLevel || show.episodeCount == 0
                     ? roles
                     : (roles.isEmpty ? count : '$roles · $count');
@@ -297,9 +298,9 @@ class _PersonPageState extends State<PersonPage> {
                                     color: Colors.black.withValues(alpha: 0.65),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
-                                  child: const Text(
-                                    'Not in library',
-                                    style: TextStyle(color: Colors.white, fontSize: 10),
+                                  child: Text(
+                                    L.of(context)!.not_in_library,
+                                    style: const TextStyle(color: Colors.white, fontSize: 10),
                                   ),
                                 ),
                               ),
@@ -335,8 +336,8 @@ class _PersonPageState extends State<PersonPage> {
         children: [
           SegmentedButton<_Tab>(
             segments: [
-              ButtonSegment(value: _Tab.library, label: Text('In your library ($libraryCount)')),
-              ButtonSegment(value: _Tab.elsewhere, label: Text('Elsewhere (${profile.externalEpisodes.length})')),
+              ButtonSegment(value: _Tab.library, label: Text(L.of(context)!.in_your_library_count(libraryCount))),
+              ButtonSegment(value: _Tab.elsewhere, label: Text(L.of(context)!.elsewhere_count(profile.externalEpisodes.length))),
             ],
             selected: {_tab},
             showSelectedIcon: false,
@@ -359,10 +360,10 @@ class _PersonPageState extends State<PersonPage> {
     final episodes = _tab == _Tab.library ? _episodes : profile.externalEpisodes;
     if (episodes.isEmpty) {
       final message = _tab == _Tab.library
-          ? 'No episodes with ${profile.person.name} in your library.'
+          ? L.of(context)!.no_episodes_with_person(profile.person.name)
           : profile.refreshing
-              ? 'Looking for episodes on other shows…'
-              : 'No episodes found on shows outside your library.';
+              ? L.of(context)!.looking_for_episodes_elsewhere
+              : L.of(context)!.no_episodes_outside_library;
       return [
         SliverToBoxAdapter(
           child: Padding(
@@ -391,7 +392,7 @@ class _PersonPageState extends State<PersonPage> {
             child: Center(
               child: _loadingMore
                   ? const PlatformProgressIndicator()
-                  : OutlinedButton(onPressed: _loadMore, child: const Text('Load more')),
+                  : OutlinedButton(onPressed: _loadMore, child: Text(L.of(context)!.load_more)),
             ),
           ),
         ),

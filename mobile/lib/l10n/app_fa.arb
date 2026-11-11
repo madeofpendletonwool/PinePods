@@ -1,0 +1,18 @@
+{
+  "@@locale": "fa",
+  "cancel_button_label": "لغو",
+  "cancel_option_label": "لغو",
+  "podcast_details_refreshed": "اطلاعات پادکست از فید به‌روزرسانی شد",
+  "title_contains": "عنوان شامل",
+  "save": "ذخیره",
+  "unsubscribe": "لغو اشتراک",
+  "copy": "کپی",
+  "remove": "حذف",
+  "refresh": "تازه‌سازی",
+  "search_failed": "جست‌وجو ناموفق بود",
+  "try_again": "تلاش دوباره",
+  "server_url": "نشانی سرور",
+  "username": "نام کاربری",
+  "password": "گذرواژه",
+  "sync_now": "اکنون همگام‌سازی کن"
+}

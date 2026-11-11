@@ -1,0 +1,18 @@
+{
+  "@@locale": "nl",
+  "cancel_button_label": "Annuleren",
+  "cancel_option_label": "Annuleren",
+  "podcast_details_refreshed": "Podcastgegevens vernieuwd vanuit de feed",
+  "title_contains": "Titel bevat",
+  "save": "Opslaan",
+  "unsubscribe": "Afmelden",
+  "copy": "Kopiëren",
+  "remove": "Verwijderen",
+  "refresh": "Vernieuwen",
+  "search_failed": "Zoeken mislukt",
+  "try_again": "Opnieuw proberen",
+  "server_url": "Server-URL",
+  "username": "Gebruikersnaam",
+  "password": "Wachtwoord",
+  "sync_now": "Nu synchroniseren"
+}

@@ -1,3 +1,5 @@
+import 'package:pinepods_mobile/l10n/L.dart';
+
 class UserStats {
   final String userCreated;
   final int podcastsPlayed;
@@ -64,17 +66,17 @@ class UserStats {
 
   // Format time listened from minutes to human readable
   String get formattedTimeListened {
-    if (timeListened <= 0) return '0 minutes';
+    if (timeListened <= 0) return L.current.minutes_count(0);
     
     final hours = timeListened ~/ 60;
     final minutes = timeListened % 60;
     
     if (hours == 0) {
-      return '$minutes minute${minutes != 1 ? 's' : ''}';
+      return L.current.minutes_count(minutes);
     } else if (minutes == 0) {
-      return '$hours hour${hours != 1 ? 's' : ''}';
+      return L.current.hours_count(hours);
     } else {
-      return '$hours hour${hours != 1 ? 's' : ''} $minutes minute${minutes != 1 ? 's' : ''}';
+      return L.current.hours_minutes(L.current.hours_count(hours), L.current.minutes_count(minutes));
     }
   }
 
@@ -112,25 +114,25 @@ class UserStats {
   String get syncStatusDescription {
     if (syncServerEnabled != null) {
       final parts = [
-        if (syncServerEnabled!) 'Internal gpodder',
-        if (syncTargetKind == 'nextcloud') 'Nextcloud',
-        if (syncTargetKind == 'gpodder') 'External gpodder',
+        if (syncServerEnabled!) L.current.sync_internal_gpodder,
+        if (syncTargetKind == 'nextcloud') 'Nextcloud', // i18n-ignore
+        if (syncTargetKind == 'gpodder') L.current.sync_external_gpodder,
       ];
-      return parts.isEmpty ? 'Not Syncing' : parts.join(' + ');
+      return parts.isEmpty ? L.current.not_syncing : parts.join(' + ');
     }
     switch (podSyncType.toLowerCase()) {
       case 'none':
-        return 'Not Syncing';
+        return L.current.not_syncing;
       case 'gpodder':
         if (gpodderUrl == 'http://localhost:8042') {
-          return 'Internal gpodder';
+          return L.current.sync_internal_gpodder;
         } else {
-          return 'External gpodder';
+          return L.current.sync_external_gpodder;
         }
       case 'nextcloud':
-        return 'Nextcloud';
+        return 'Nextcloud'; // i18n-ignore
       default:
-        return 'Unknown sync type';
+        return L.current.unknown_sync_type;
     }
   }
 }

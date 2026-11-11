@@ -1,0 +1,18 @@
+{
+  "@@locale": "ar",
+  "cancel_button_label": "إلغاء",
+  "cancel_option_label": "إلغاء",
+  "podcast_details_refreshed": "تم تحديث تفاصيل البودكاست من الخلاصة",
+  "title_contains": "العنوان يحتوي على",
+  "save": "حفظ",
+  "unsubscribe": "إلغاء الاشتراك",
+  "copy": "نسخ",
+  "remove": "إزالة",
+  "refresh": "تحديث",
+  "search_failed": "فشل البحث",
+  "try_again": "أعد المحاولة",
+  "server_url": "عنوان الخادم",
+  "username": "اسم المستخدم",
+  "password": "كلمة المرور",
+  "sync_now": "زامن الآن"
+}

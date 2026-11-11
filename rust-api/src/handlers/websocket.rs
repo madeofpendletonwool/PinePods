@@ -203,6 +203,10 @@ async fn handle_task_progress_socket(socket: WebSocket, user_id: i32, state: App
 /// Start the Valkey subscriber that relays task/notification events from other
 /// API replicas onto this instance's local streams. Best-effort: logs and retries.
 pub fn spawn_task_bridge(state: AppState) {
+    // Only replicas sharing a Valkey server have anything to bridge.
+    if !state.redis_client.is_shared() {
+        return;
+    }
     tokio::spawn(async move {
         loop {
             if let Err(e) = run_task_bridge(&state).await {

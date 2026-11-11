@@ -271,7 +271,7 @@ class _Header extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'NOW PLAYING',
+                      L.of(context)!.now_playing_caps,
                       style: theme.textTheme.labelSmall!.copyWith(color: theme.hintColor, letterSpacing: 1.2),
                     ),
                     const SizedBox(height: 2),
@@ -289,7 +289,7 @@ class _Header extends StatelessWidget {
           ),
           const RemoteDevicesButton(),
           PopupMenuButton<String>(
-            tooltip: 'More',
+            tooltip: L.of(context)!.more_label,
             icon: Icon(PhosphorIconsRegular.dotsThree, color: neutral, size: 26),
             onSelected: (value) {
               switch (value) {
@@ -301,7 +301,7 @@ class _Header extends StatelessWidget {
             },
             itemBuilder: (context) => [
               PopupMenuItem(value: 'notes', child: Text(L.of(context)!.notes_label)),
-              const PopupMenuItem(value: 'podcast', child: Text('Go to podcast')),
+              PopupMenuItem(value: 'podcast', child: Text(L.of(context)!.go_to_podcast)),
             ],
           ),
         ],
@@ -655,7 +655,7 @@ class _Transport extends StatelessWidget {
       children: [
         if (chapters.length > 1)
           IconButton(
-            tooltip: 'Previous chapter',
+            tooltip: L.of(context)!.previous_chapter,
             iconSize: 28,
             color: neutral,
             icon: const Icon(PhosphorIconsFill.skipBack),
@@ -676,7 +676,7 @@ class _Transport extends StatelessWidget {
         ),
         if (chapters.length > 1)
           IconButton(
-            tooltip: 'Next chapter',
+            tooltip: L.of(context)!.next_chapter,
             iconSize: 28,
             color: neutral,
             icon: const Icon(PhosphorIconsFill.skipForward),
@@ -1240,7 +1240,7 @@ class _TranscriptListState extends State<_TranscriptList> {
     if (cues == null && !_failed) return const Center(child: CircularProgressIndicator());
     if (cues == null || cues.isEmpty) {
       return Center(
-        child: Text('No transcript available', style: theme.textTheme.bodyMedium!.copyWith(color: theme.hintColor)),
+        child: Text(L.of(context)!.no_transcript_available, style: theme.textTheme.bodyMedium!.copyWith(color: theme.hintColor)),
       );
     }
 
@@ -1310,7 +1310,7 @@ class _TranscriptListState extends State<_TranscriptList> {
             right: 0,
             child: Center(
               child: FilterPill(
-                label: 'Follow along',
+                label: L.of(context)!.follow_along,
                 icon: PhosphorIconsRegular.arrowDown,
                 selected: true,
                 onTap: () {

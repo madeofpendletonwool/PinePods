@@ -3,7 +3,7 @@ use crate::components::gen_components::ImagePicker;
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_add_local_podcast, call_add_local_podcast_artwork, call_detect_local_cover,
-    call_list_local_directories, call_refresh_local_podcast, LocalDirEntry,
+    call_list_local_directories, LocalDirEntry,
 };
 use web_sys::{FormData, HtmlInputElement, HtmlTextAreaElement};
 use yew::prelude::*;
@@ -13,7 +13,7 @@ use i18nrs::yew::use_translation;
 #[function_component(LocalPodcast)]
 pub fn local_podcast() -> Html {
     let (i18n, _) = use_translation();
-    let (state, dispatch) = use_store::<AppState>();
+    let (state, _dispatch) = use_store::<AppState>();
 
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -24,10 +24,9 @@ pub fn local_podcast() -> Html {
     let description = use_state(|| "".to_string());
     let author = use_state(|| "".to_string());
     let explicit = use_state(|| false);
+    let auto_refresh = use_state(|| true);
     let artwork_file: UseStateHandle<Option<web_sys::File>> = use_state(|| None);
     let is_loading = use_state(|| false);
-    let added_podcast_id: UseStateHandle<Option<i32>> = use_state(|| None);
-    let is_refreshing = use_state(|| false);
     // Bumped after a successful add to force-remount the ImagePicker (clears its preview).
     let form_version = use_state(|| 0u32);
 
@@ -80,6 +79,13 @@ pub fn local_podcast() -> Html {
         let explicit = explicit.clone();
         Callback::from(move |_: MouseEvent| {
             explicit.set(!*explicit);
+        })
+    };
+
+    let toggle_auto_refresh = {
+        let auto_refresh = auto_refresh.clone();
+        Callback::from(move |_: MouseEvent| {
+            auto_refresh.set(!*auto_refresh);
         })
     };
 
@@ -208,9 +214,9 @@ pub fn local_podcast() -> Html {
         let description = description.clone();
         let author = author.clone();
         let explicit = explicit.clone();
+        let auto_refresh = auto_refresh.clone();
         let artwork_file = artwork_file.clone();
         let is_loading = is_loading.clone();
-        let added_podcast_id = added_podcast_id.clone();
         let form_version = form_version.clone();
         let detected_cover_url = detected_cover_url.clone();
         let success_msg = i18n.t("local_podcast.podcast_added").to_string();
@@ -225,9 +231,9 @@ pub fn local_podcast() -> Html {
             let description_opt = if description.is_empty() { None } else { Some((*description).clone()) };
             let author_opt = if author.is_empty() { None } else { Some((*author).clone()) };
             let explicit_val = *explicit;
+            let auto_refresh_val = *auto_refresh;
             let artwork_file = artwork_file.clone();
             let is_loading = is_loading.clone();
-            let added_podcast_id = added_podcast_id.clone();
             let success_msg = success_msg.clone();
             let error_prefix = error_prefix.clone();
             // Handles for resetting the form after a successful add
@@ -236,6 +242,7 @@ pub fn local_podcast() -> Html {
             let description = description.clone();
             let author = author.clone();
             let explicit_state = explicit.clone();
+            let auto_refresh_state = auto_refresh.clone();
             let form_version = form_version.clone();
             let detected_cover_url = detected_cover_url.clone();
 
@@ -257,13 +264,13 @@ pub fn local_podcast() -> Html {
                     description_opt,
                     author_opt,
                     Some(explicit_val),
+                    auto_refresh_val,
                     &api_key_str,
                 )
                 .await
                 {
                     Ok(podcast) => {
                         let podcast_id = podcast.podcastid;
-                        added_podcast_id.set(Some(podcast_id));
 
                         // Upload artwork if a file was selected
                         if let Some(file) = (*artwork_file).clone() {
@@ -290,6 +297,7 @@ pub fn local_podcast() -> Html {
                         description.set(String::new());
                         author.set(String::new());
                         explicit_state.set(false);
+                        auto_refresh_state.set(true);
                         artwork_file.set(None);
                         detected_cover_url.set(None);
                         form_version.set(*form_version + 1);
@@ -302,53 +310,6 @@ pub fn local_podcast() -> Html {
                     }
                 }
                 is_loading.set(false);
-            });
-        })
-    };
-
-    let refresh_podcast_cb = {
-        let api_key = api_key.clone().unwrap_or_default();
-        let server_name = server_name.clone().unwrap_or_default();
-        let user_id = user_id.clone();
-        let added_podcast_id = added_podcast_id.clone();
-        let dispatch = dispatch.clone();
-        let is_refreshing = is_refreshing.clone();
-
-        Callback::from(move |_| {
-            let podcast_id = match *added_podcast_id {
-                Some(id) => id,
-                None => return,
-            };
-            let api_key = api_key.clone();
-            let server_name = server_name.clone();
-            let user_id_val = user_id.clone().unwrap_or_default();
-            let _dispatch = dispatch.clone();
-            let is_refreshing = is_refreshing.clone();
-
-            is_refreshing.set(true);
-            wasm_bindgen_futures::spawn_local(async move {
-                match call_refresh_local_podcast(
-                    &server_name,
-                    user_id_val,
-                    podcast_id,
-                    &api_key.unwrap_or_default(),
-                )
-                .await
-                {
-                    Ok(result) => {
-                        let count = result["new_episodes"].as_i64().unwrap_or(0);
-                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                            state.info_message = Some(format!("Refresh complete: {} new episode(s) added", count));
-                        });
-                    }
-                    Err(e) => {
-                        let formatted = format_error_message(&e.to_string());
-                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                            state.error_message = Some(format!("Failed to refresh: {}", formatted));
-                        });
-                    }
-                }
-                is_refreshing.set(false);
             });
         })
     };
@@ -432,6 +393,23 @@ pub fn local_podcast() -> Html {
                 </div>
             </div>
             <div class="settings-row">
+                <div>
+                    <div class="settings-row-label">{i18n.t("local_podcast.auto_refresh_label")}</div>
+                    <div class="settings-row-desc">{i18n.t("local_podcast.auto_refresh_help")}</div>
+                </div>
+                <div class="settings-row-control">
+                    <label class="toggle">
+                        <input
+                            id="local_podcast_auto_refresh"
+                            type="checkbox"
+                            onclick={toggle_auto_refresh}
+                            checked={*auto_refresh}
+                        />
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    </label>
+                </div>
+            </div>
+            <div class="settings-row">
                 <div><div class="settings-row-label">{i18n.t("local_podcast.artwork_label")}</div></div>
                 <div class="settings-row-control">
                     <ImagePicker
@@ -459,29 +437,6 @@ pub fn local_podcast() -> Html {
                     </button>
                 </div>
             </div>
-
-            if added_podcast_id.is_some() {
-                <>
-                    <div class="settings-subsection-title">{i18n.t("local_podcast.refresh")}</div>
-                    <div class="settings-row">
-                        <div>
-                            <div class="settings-row-label">{i18n.t("local_podcast.refresh_button")}</div>
-                            <div class="settings-row-desc">{i18n.t("local_podcast.refresh_description")}</div>
-                        </div>
-                        <div class="settings-row-control">
-                            <button
-                                onclick={refresh_podcast_cb}
-                                class="btn btn-secondary"
-                                style="padding:6px 12px;"
-                                disabled={*is_refreshing}
-                            >
-                                <i class="ph ph-arrow-clockwise"></i>
-                                {i18n.t("local_podcast.refresh_button")}
-                            </button>
-                        </div>
-                    </div>
-                </>
-            }
 
             if *show_dir_browser {
                 <div

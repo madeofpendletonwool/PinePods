@@ -8,6 +8,7 @@ use serde_json::Value;
 use std::sync::Arc;
 use sqlx::Row;
 use tracing::{debug, warn};
+use crate::database::dialect::dialect_match;
 
 // New function that actually downloads an episode and waits for completion
 async fn download_episode_and_wait(
@@ -18,9 +19,9 @@ async fn download_episode_and_wait(
     tracing::info!("Starting actual download for episode {} for user {}", episode_id, user_id);
     
     // Get episode metadata from database
-    let episode_info = match db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            let row = sqlx::query(r#"
+    let episode_info = dialect_match!(db_pool, {
+        pg(pool) => {
+            let row = q::query(r#"
                 SELECT e.episodeurl, e.episodetitle, p.podcastname, 
                        e.episodepubdate
                 FROM "Episodes" e
@@ -38,8 +39,8 @@ async fn download_episode_and_wait(
                 row.try_get::<String, _>("podcastname")?,
                 row.try_get::<Option<chrono::NaiveDateTime>, _>("episodepubdate")?,
             )
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             let row = sqlx::query("
                 SELECT e.EpisodeURL, e.EpisodeTitle, p.PodcastName, e.EpisodePubDate
                 FROM Episodes e
@@ -57,8 +58,8 @@ async fn download_episode_and_wait(
                 row.try_get::<String, _>("PodcastName")?,
                 row.try_get::<Option<chrono::NaiveDateTime>, _>("EpisodePubDate")?,
             )
-        }
-    };
+        },
+    });
     
     let (episode_url, episode_title, podcast_name, pub_date) = episode_info;
     
@@ -144,17 +145,17 @@ async fn download_episode_and_wait(
         .map(|m| m.len() as i64)
         .unwrap_or(0);
         
-    match db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"INSERT INTO "DownloadedEpisodes" (userid, episodeid, downloadedsize, downloadedlocation) VALUES ($1, $2, $3, $4)"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"INSERT INTO "DownloadedEpisodes" (userid, episodeid, downloadedsize, downloadedlocation) VALUES ($1, $2, $3, $4)"#)
                 .bind(user_id)
                 .bind(episode_id)
                 .bind(file_size)
                 .bind(file_path.to_string_lossy().to_string())
                 .execute(pool)
                 .await?;
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("INSERT INTO DownloadedEpisodes (UserID, EpisodeID, DownloadedSize, DownloadedLocation) VALUES (?, ?, ?, ?)")
                 .bind(user_id)
                 .bind(episode_id)
@@ -162,8 +163,8 @@ async fn download_episode_and_wait(
                 .bind(file_path.to_string_lossy().to_string())
                 .execute(pool)
                 .await?;
-        }
-    }
+        },
+    });
     
     let fingerprint = match reused {
         Some((_, fp)) => fp,
@@ -179,6 +180,65 @@ async fn download_episode_and_wait(
 
     tracing::info!("Successfully downloaded episode {} - {}", episode_id, episode_title);
     Ok(episode_title)
+}
+
+/// Run one transcription under an existing task, publishing live progress from the AI sidecar.
+async fn run_transcribe_task(
+    db_pool: &DatabasePool,
+    task_manager: Arc<TaskManager>,
+    task_id: String,
+    episode_id: i32,
+    user_id: i32,
+    force: bool,
+) {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::time::Duration;
+
+    // Nudge to "Running" immediately so the UI reflects work in progress.
+    let _ = task_manager
+        .update_task_progress_with_item_id(&task_id, 1.0, Some("Transcribing…".to_string()), Some(episode_id), Some("transcribe_episode".to_string()))
+        .await;
+
+    // Latest progress (0–100) shared with a ticker that publishes it to the task system,
+    // decoupling the sync progress callback from async task updates.
+    let progress = Arc::new(AtomicU32::new(1));
+    let ticker = {
+        let tm = task_manager.clone();
+        let tid = task_id.clone();
+        let prog = progress.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                let p = prog.load(Ordering::Relaxed).max(1) as f64;
+                let _ = tm
+                    .update_task_progress_with_item_id(&tid, p, Some("Transcribing…".to_string()), Some(episode_id), Some("transcribe_episode".to_string()))
+                    .await;
+            }
+        })
+    };
+
+    let cb_progress = progress.clone();
+    let on_progress = move |p: f64| {
+        cb_progress.store((p * 100.0).round() as u32, Ordering::Relaxed);
+    };
+
+    let result = crate::services::transcription::transcribe_episode(db_pool, episode_id, force, Some(user_id), on_progress).await;
+    ticker.abort();
+
+    match result {
+        Ok(_) => {
+            if let Err(e) = task_manager
+                .complete_task(&task_id, Some(serde_json::json!({ "episode_id": episode_id })), None)
+                .await
+            {
+                tracing::error!("Failed to mark transcribe task {} completed: {}", task_id, e);
+            }
+        }
+        Err(e) => {
+            tracing::error!("Transcribe task {} failed: {}", task_id, e);
+            let _ = task_manager.fail_task(&task_id, e).await;
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -321,9 +381,9 @@ impl TaskSpawner {
                 task_manager.update_task_progress_with_details(&task_id_clone, 0.0, Some("Starting download...".to_string()), Some(episode_id), Some("podcast_download".to_string()), None).await?;
                 
                 // Get complete episode metadata from database
-                let episode_info = match &db_pool {
-                    crate::database::DatabasePool::Postgres(pool) => {
-                        let row = sqlx::query(r#"
+                let episode_info = dialect_match!(&db_pool, {
+                    pg(pool) => {
+                        let row = q::query(r#"
                             SELECT e."episodeurl", e."episodetitle", p."podcastname",
                                    e."episodepubdate", p."author", e."episodeartwork", p."artworkurl",
                                    e."episodedescription", p."username", p."password",
@@ -352,8 +412,8 @@ impl TaskSpawner {
                             row.try_get::<Option<String>, _>("episodeguid")?,
                             row.try_get::<Option<i32>, _>("episodeduration")?
                         )
-                    }
-                    crate::database::DatabasePool::MySQL(pool) => {
+                    },
+                    mysql(pool) => {
                         let row = sqlx::query("
                             SELECT e.EpisodeURL, e.EpisodeTitle, p.PodcastName,
                                    e.EpisodePubDate, p.Author, e.EpisodeArtwork, p.ArtworkURL,
@@ -383,8 +443,8 @@ impl TaskSpawner {
                             row.try_get::<Option<String>, _>("EpisodeGUID")?,
                             row.try_get::<Option<i32>, _>("EpisodeDuration")?
                         )
-                    }
-                };
+                    },
+                });
 
                 let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, description, feed_username, feed_password, feed_url, episode_guid, episode_duration) = episode_info;
 
@@ -571,9 +631,9 @@ impl TaskSpawner {
                 task_manager.update_task_progress_with_details(&task_id_clone, 90.0, Some(status_message), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
                 
                 // Update database with download info
-                match &db_pool {
-                    crate::database::DatabasePool::Postgres(pool) => {
-                        sqlx::query(r#"
+                dialect_match!(&db_pool, {
+                    pg(pool) => {
+                        q::query(r#"
                             INSERT INTO "DownloadedEpisodes" (userid, episodeid, downloadedsize, downloadedlocation)
                             VALUES ($1, $2, $3, $4)
                         "#)
@@ -585,14 +645,14 @@ impl TaskSpawner {
                         .await?;
 
                         // Update UserStats table to increment EpisodesDownloaded count
-                        sqlx::query(r#"
+                        q::query(r#"
                             UPDATE "UserStats" SET episodesdownloaded = episodesdownloaded + 1 WHERE userid = $1
                         "#)
                         .bind(user_id)
                         .execute(pool)
                         .await?;
-                    }
-                    crate::database::DatabasePool::MySQL(pool) => {
+                    },
+                    mysql(pool) => {
                         sqlx::query("
                             INSERT INTO DownloadedEpisodes (UserID, EpisodeID, DownloadedSize, DownloadedLocation)
                             VALUES (?, ?, ?, ?)
@@ -611,8 +671,8 @@ impl TaskSpawner {
                         .bind(user_id)
                         .execute(pool)
                         .await?;
-                    }
-                }
+                    },
+                });
                 
                 let status_message = format!("Downloaded {}", episode_title);
                 task_manager.update_task_progress_with_details(&task_id_clone, 100.0, Some(status_message), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
@@ -693,65 +753,44 @@ impl TaskSpawner {
     /// progress (streamed from the AI sidecar) so the queue shows a moving percentage rather than
     /// sitting on "pending" for a long episode.
     pub async fn spawn_transcribe_episode(&self, episode_id: i32, user_id: i32, force: bool) -> AppResult<String> {
-        use std::sync::atomic::{AtomicU32, Ordering};
-        use std::time::Duration;
-
-        let db_pool = self.db_pool.clone();
-        let task_manager = self.task_manager.clone();
-        let task_id = task_manager
+        let task_id = self
+            .task_manager
             .create_task_with_item_id("transcribe_episode".to_string(), user_id, Some(episode_id))
             .await?;
-        let task_id_clone = task_id.clone();
-
+        let (db_pool, task_manager, id) = (self.db_pool.clone(), self.task_manager.clone(), task_id.clone());
         tokio::spawn(async move {
-            // Nudge to "Running" immediately so the UI reflects work in progress.
-            let _ = task_manager
-                .update_task_progress_with_item_id(&task_id_clone, 1.0, Some("Transcribing…".to_string()), Some(episode_id), Some("transcribe_episode".to_string()))
+            run_transcribe_task(&db_pool, task_manager, id, episode_id, user_id, force).await;
+        });
+        Ok(task_id)
+    }
+
+    /// Queue transcriptions for several episodes. Each gets its own task (shown as queued), and
+    /// they run one at a time so a batch doesn't load the AI sidecar with parallel Whisper jobs.
+    /// Batches wait behind each other.
+    pub async fn spawn_bulk_transcribe(&self, episode_ids: Vec<i32>, user_id: i32, force: bool) -> AppResult<Vec<String>> {
+        static BULK_TRANSCRIBE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+        let mut jobs = Vec::with_capacity(episode_ids.len());
+        for episode_id in episode_ids {
+            let task_id = self
+                .task_manager
+                .create_task_with_item_id("transcribe_episode".to_string(), user_id, Some(episode_id))
+                .await?;
+            let _ = self
+                .task_manager
+                .update_task_progress_with_item_id(&task_id, 0.0, Some("Queued".to_string()), Some(episode_id), Some("transcribe_episode".to_string()))
                 .await;
-
-            // Latest progress (0–100) shared with a ticker that publishes it to the task system,
-            // decoupling the sync progress callback from async task updates.
-            let progress = Arc::new(AtomicU32::new(1));
-            let ticker = {
-                let tm = task_manager.clone();
-                let tid = task_id_clone.clone();
-                let prog = progress.clone();
-                tokio::spawn(async move {
-                    loop {
-                        tokio::time::sleep(Duration::from_secs(2)).await;
-                        let p = prog.load(Ordering::Relaxed).max(1) as f64;
-                        let _ = tm
-                            .update_task_progress_with_item_id(&tid, p, Some("Transcribing…".to_string()), Some(episode_id), Some("transcribe_episode".to_string()))
-                            .await;
-                    }
-                })
-            };
-
-            let cb_progress = progress.clone();
-            let on_progress = move |p: f64| {
-                cb_progress.store((p * 100.0).round() as u32, Ordering::Relaxed);
-            };
-
-            let result = crate::services::transcription::transcribe_episode(&db_pool, episode_id, force, Some(user_id), on_progress).await;
-            ticker.abort();
-
-            match result {
-                Ok(_) => {
-                    if let Err(e) = task_manager
-                        .complete_task(&task_id_clone, Some(serde_json::json!({ "episode_id": episode_id })), None)
-                        .await
-                    {
-                        tracing::error!("Failed to mark transcribe task {} completed: {}", task_id_clone, e);
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("Transcribe task {} failed: {}", task_id_clone, e);
-                    let _ = task_manager.fail_task(&task_id_clone, e).await;
-                }
+            jobs.push((task_id, episode_id));
+        }
+        let task_ids = jobs.iter().map(|(id, _)| id.clone()).collect();
+        let (db_pool, task_manager) = (self.db_pool.clone(), self.task_manager.clone());
+        tokio::spawn(async move {
+            let _turn = BULK_TRANSCRIBE.lock().await;
+            for (task_id, episode_id) in jobs {
+                run_transcribe_task(&db_pool, task_manager.clone(), task_id, episode_id, user_id, force).await;
             }
         });
-
-        Ok(task_id)
+        Ok(task_ids)
     }
 
     /// Detect ads for a single episode as a tracked background task, reporting live progress
@@ -885,9 +924,9 @@ impl TaskSpawner {
                 tracing::info!("Downloading YouTube video {} for user {}", video_id, user_id);
                 
                 // Get the video from database using the video ID
-                let (youtube_video_id, video_title) = match &db_pool {
-                    crate::database::DatabasePool::Postgres(pool) => {
-                        let row = sqlx::query(r#"SELECT youtubevideoid, videotitle FROM "YouTubeVideos" WHERE videoid = $1"#)
+                let (youtube_video_id, video_title) = dialect_match!(&db_pool, {
+                    pg(pool) => {
+                        let row = q::query(r#"SELECT youtubevideoid, videotitle FROM "YouTubeVideos" WHERE videoid = $1"#)
                             .bind(video_id)
                             .fetch_one(pool)
                             .await
@@ -899,8 +938,8 @@ impl TaskSpawner {
                             .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video title: {}", e)))?;
                         
                         (youtube_video_id, video_title)
-                    }
-                    crate::database::DatabasePool::MySQL(pool) => {
+                    },
+                    mysql(pool) => {
                         let row = sqlx::query("SELECT YouTubeVideoID, VideoTitle FROM YouTubeVideos WHERE VideoID = ?")
                             .bind(video_id)
                             .fetch_one(pool)
@@ -913,8 +952,8 @@ impl TaskSpawner {
                             .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video title: {}", e)))?;
                         
                         (youtube_video_id, video_title)
-                    }
-                };
+                    },
+                });
                 
                 task_manager.set_task_metadata(&task_id, Some(video_title.clone()), Some("YouTube".to_string())).await?;
 
@@ -981,9 +1020,9 @@ impl TaskSpawner {
                 task_manager.update_task_progress_with_details(&task_id_clone, 0.0, Some("Getting episode list...".to_string()), None, Some("bulk_download".to_string()), None).await?;
                 
                 // Get episode IDs that are NOT already downloaded (replicating check_downloaded logic)
-                let episode_ids = match &db_pool {
-                    crate::database::DatabasePool::Postgres(pool) => {
-                        let rows = sqlx::query(r#"
+                let episode_ids = dialect_match!(&db_pool, {
+                    pg(pool) => {
+                        let rows = q::query(r#"
                             SELECT e.episodeid 
                             FROM "Episodes" e
                             LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid AND de.userid = $2
@@ -998,8 +1037,8 @@ impl TaskSpawner {
                         rows.into_iter()
                             .map(|row| row.try_get::<i32, _>("episodeid"))
                             .collect::<Result<Vec<i32>, _>>()?
-                    }
-                    crate::database::DatabasePool::MySQL(pool) => {
+                    },
+                    mysql(pool) => {
                         let rows = sqlx::query("
                             SELECT e.EpisodeID 
                             FROM Episodes e
@@ -1015,8 +1054,8 @@ impl TaskSpawner {
                         rows.into_iter()
                             .map(|row| row.try_get::<i32, _>("EpisodeID"))
                             .collect::<Result<Vec<i32>, _>>()?
-                    }
-                };
+                    },
+                });
                 
                 let total_episodes = episode_ids.len();
                 tracing::info!("Found {} episodes for podcast {} to download", total_episodes, podcast_id);
@@ -1118,9 +1157,9 @@ impl TaskSpawner {
                 tracing::info!("Downloading all videos for channel {} for user {}", channel_id, user_id);
                 
                 // Get all videos for the channel from database
-                let videos_data = match &db_pool {
-                    crate::database::DatabasePool::Postgres(pool) => {
-                        let rows = sqlx::query(r#"SELECT videoid, youtubevideoid, videotitle FROM "YouTubeVideos" WHERE podcastid = $1"#)
+                let videos_data = dialect_match!(&db_pool, {
+                    pg(pool) => {
+                        let rows = q::query(r#"SELECT videoid, youtubevideoid, videotitle FROM "YouTubeVideos" WHERE podcastid = $1"#)
                             .bind(channel_id)
                             .fetch_all(pool)
                             .await
@@ -1133,8 +1172,8 @@ impl TaskSpawner {
                                 .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video title: {}", e)))?;
                             Ok((youtube_video_id, video_title))
                         }).collect::<Result<Vec<(String, String)>, crate::error::AppError>>()?
-                    }
-                    crate::database::DatabasePool::MySQL(pool) => {
+                    },
+                    mysql(pool) => {
                         let rows = sqlx::query("SELECT VideoID, YouTubeVideoID, VideoTitle FROM YouTubeVideos WHERE PodcastID = ?")
                             .bind(channel_id)
                             .fetch_all(pool)
@@ -1148,8 +1187,8 @@ impl TaskSpawner {
                                 .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video title: {}", e)))?;
                             Ok((youtube_video_id, video_title))
                         }).collect::<Result<Vec<(String, String)>, crate::error::AppError>>()?
-                    }
-                };
+                    },
+                });
                 
                 let total_videos = videos_data.len();
                 let mut downloaded = 0;
@@ -1252,20 +1291,20 @@ impl TaskSpawner {
                             task_manager.update_task_progress(&task_id, 80.0, Some("Counting episodes...".to_string())).await?;
                             
                             // Count episodes for logging and notification
-                            let episode_count: i64 = match &db_pool {
-                                crate::database::DatabasePool::Postgres(pool) => {
-                                    sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $1)"#)
+                            let episode_count: i64 = dialect_match!(&db_pool, {
+                                pg(pool) => {
+                                    q::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $1)"#)
                                         .bind(podcast_id)
                                         .fetch_one(pool)
                                         .await?
-                                }
-                                crate::database::DatabasePool::MySQL(pool) => {
+                                },
+                                mysql(pool) => {
                                     sqlx::query_scalar("SELECT COUNT(*) FROM Episodes WHERE FeedID = (SELECT FeedID FROM Podcasts WHERE PodcastID = ?)")
                                         .bind(podcast_id)
                                         .fetch_one(pool)
                                         .await?
-                                }
-                            };
+                                },
+                            });
                             
                             // Final progress update
                             task_manager.update_task_progress(&task_id, 100.0, Some(format!("Added {} episodes", episode_count))).await?;

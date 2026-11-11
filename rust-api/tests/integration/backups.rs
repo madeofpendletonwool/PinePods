@@ -253,7 +253,7 @@ async fn schedule(app: &TestApp, admin: &TestUser, cron: &str, enabled: bool, ke
 /// Make the schedule overdue, as if its last run was long ago.
 async fn make_due(app: &TestApp) {
     let column = match app.backend() {
-        Backend::Postgres => "last_run",
+        Backend::Postgres | Backend::Sqlite => "last_run",
         Backend::MariaDb => "LastRun",
     };
     exec(app, &format!(r#"UPDATE "ScheduledBackups" SET {column} = '2020-01-01 00:00:00'"#)).await;
@@ -363,6 +363,7 @@ impl RestoreBlocker {
                 conn.execute("LOCK TABLES Users READ").await.unwrap();
                 RestoreBlocker::MariaDb(conn)
             }
+            DatabasePool::Sqlite(_) => unreachable!("skipped on SQLite"),
         }
     }
 
@@ -380,6 +381,10 @@ impl RestoreBlocker {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_running_restore_is_reported_until_it_finishes() {
     let app = TestApp::new().await;
+    // Holding the restore open needs a table lock, which SQLite doesn't have.
+    if app.backend() == Backend::Sqlite {
+        return;
+    }
     let _backups = BackupEnv::claim(&app).await;
     let admin = app.admin().await.clone();
     let filename = manual_backup(&app, &admin).await;

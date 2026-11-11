@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pinepods_mobile/services/logging/app_logger.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class DebugLogsPage extends StatefulWidget {
   const DebugLogsPage({Key? key}) : super(key: key);
@@ -46,10 +47,10 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Logs copied to clipboard!'),
+          SnackBar(
+            content: Text(L.of(context)!.logs_copied),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -57,7 +58,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to copy logs: $e'),
+            content: Text(L.of(context)!.failed_to_copy_logs(e.toString())),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -86,10 +87,10 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Current session logs copied to clipboard!'),
+          SnackBar(
+            content: Text(L.of(context)!.session_logs_copied),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -97,7 +98,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to copy logs: $e'),
+            content: Text(L.of(context)!.failed_to_copy_logs(e.toString())),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -109,7 +110,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
   Future<void> _copySessionFileToClipboard(File sessionFile) async {
     try {
       final content = await sessionFile.readAsString();
-      final deviceInfo = _logger.deviceInfo?.formattedInfo ?? 'Device info not available';
+      final deviceInfo = _logger.deviceInfo?.formattedInfo ?? L.current.device_info_not_available;
       final formattedContent = '$deviceInfo\n\n${'=' * 50}\nSession File: ${sessionFile.path.split('/').last}\n${'=' * 50}\n\n$content';
       
       await Clipboard.setData(ClipboardData(text: formattedContent));
@@ -117,7 +118,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Session ${sessionFile.path.split('/').last} copied to clipboard!'),
+            content: Text(L.of(context)!.session_file_copied(sessionFile.path.split('/').last)),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
@@ -127,7 +128,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to copy session file: $e'),
+            content: Text(L.of(context)!.failed_to_copy_session_file(e.toString())),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -150,10 +151,10 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Crash log copied to clipboard!'),
+          SnackBar(
+            content: Text(L.of(context)!.crash_log_copied),
             backgroundColor: Colors.orange,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -161,7 +162,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to copy crash log: $e'),
+            content: Text(L.of(context)!.failed_to_copy_crash_log(e.toString())),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -179,7 +180,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not open bug tracker: $e'),
+            content: Text(L.of(context)!.could_not_open_bug_tracker(e.toString())),
             backgroundColor: Colors.red,
           ),
         );
@@ -191,12 +192,12 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear Logs'),
-        content: const Text('Are you sure you want to clear all logs? This action cannot be undone.'),
+        title: Text(L.of(context)!.clear_logs),
+        content: Text(L.of(context)!.clear_logs_confirm),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text(L.of(context)!.cancel_button_label),
           ),
           TextButton(
             onPressed: () {
@@ -204,13 +205,13 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
               _loadLogs();
               Navigator.of(context).pop();
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Logs cleared'),
+                SnackBar(
+                  content: Text(L.of(context)!.logs_cleared),
                   backgroundColor: Colors.orange,
                 ),
               );
             },
-            child: const Text('Clear'),
+            child: Text(L.of(context)!.clear),
           ),
         ],
       ),
@@ -246,7 +247,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Debug Logs'),
+        title: Text(L.of(context)!.debug_logs),
         elevation: 0,
         actions: [
           PopupMenuButton<String>(
@@ -267,43 +268,43 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'filter',
                 child: Row(
                   children: [
-                    Icon(PhosphorIconsRegular.funnelSimple),
-                    SizedBox(width: 8),
-                    Text('Filter'),
+                    const Icon(PhosphorIconsRegular.funnelSimple),
+                    const SizedBox(width: 8),
+                    Text(L.of(context)!.filter),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'refresh',
                 child: Row(
                   children: [
-                    Icon(PhosphorIconsRegular.arrowClockwise),
-                    SizedBox(width: 8),
-                    Text('Refresh'),
+                    const Icon(PhosphorIconsRegular.arrowClockwise),
+                    const SizedBox(width: 8),
+                    Text(L.of(context)!.refresh),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'scroll_bottom',
                 child: Row(
                   children: [
-                    Icon(PhosphorIconsRegular.arrowLineDown),
-                    SizedBox(width: 8),
-                    Text('Scroll to Bottom'),
+                    const Icon(PhosphorIconsRegular.arrowLineDown),
+                    const SizedBox(width: 8),
+                    Text(L.of(context)!.scroll_to_bottom_title),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'clear',
                 child: Row(
                   children: [
-                    Icon(PhosphorIconsRegular.broom),
-                    SizedBox(width: 8),
-                    Text('Clear Logs'),
+                    const Icon(PhosphorIconsRegular.broom),
+                    const SizedBox(width: 8),
+                    Text(L.of(context)!.clear_logs),
                   ],
                 ),
               ),
@@ -323,7 +324,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Total Entries: ${_logs.length}',
+                        L.of(context)!.total_entries(_logs.length),
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
@@ -348,7 +349,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                       child: ElevatedButton.icon(
                         onPressed: _copyCurrentSessionToClipboard,
                         icon: const Icon(PhosphorIconsRegular.copy),
-                        label: const Text('Copy Current'),
+                        label: Text(L.of(context)!.copy_current),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
@@ -360,7 +361,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                       child: ElevatedButton.icon(
                         onPressed: _openBugTracker,
                         icon: const Icon(PhosphorIconsRegular.bug),
-                        label: const Text('Report Bug'),
+                        label: Text(L.of(context)!.report_bug),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.orange,
                           foregroundColor: Colors.white,
@@ -377,15 +378,15 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
           // Session Files Section
           if (_sessionFiles.isNotEmpty || _hasPreviousCrash)
             ExpansionTile(
-              title: const Text('Session Files & Crash Logs'),
+              title: Text(L.of(context)!.session_files_crash_logs),
               leading: const Icon(PhosphorIconsRegular.folder),
               initiallyExpanded: false,
               children: [
                 if (_hasPreviousCrash)
                   ListTile(
                     leading: const Icon(PhosphorIconsRegular.warning, color: Colors.red),
-                    title: const Text('Previous Crash Log'),
-                    subtitle: const Text('Tap to copy crash log to clipboard'),
+                    title: Text(L.of(context)!.previous_crash_log),
+                    subtitle: Text(L.of(context)!.previous_crash_log_description),
                     trailing: IconButton(
                       icon: const Icon(PhosphorIconsRegular.copy),
                       onPressed: _copyCrashLogToClipboard,
@@ -403,7 +404,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                     ),
                     title: Text(fileName),
                     subtitle: Text(
-                      'Modified: ${file.lastModifiedSync().toString().substring(0, 16)}${isCurrentSession ? ' (Current)' : ''}',
+                      isCurrentSession ? L.of(context)!.modified_at_current(file.lastModifiedSync().toString().substring(0, 16)) : L.of(context)!.modified_at(file.lastModifiedSync().toString().substring(0, 16)),
                       style: TextStyle(
                         fontSize: 12,
                         color: isCurrentSession ? Colors.green : Colors.grey[600],
@@ -417,11 +418,11 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                   );
                 }).toList(),
                 if (_sessionFiles.isEmpty && !_hasPreviousCrash)
-                  const Padding(
-                    padding: EdgeInsets.all(16.0),
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
                     child: Text(
-                      'No session files available yet',
-                      style: TextStyle(color: Colors.grey),
+                      L.of(context)!.no_session_files,
+                      style: const TextStyle(color: Colors.grey),
                     ),
                   ),
               ],
@@ -430,7 +431,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
           // Device info section (collapsible)
           if (_showDeviceInfo && _logger.deviceInfo != null)
             ExpansionTile(
-              title: const Text('Device Information'),
+              title: Text(L.of(context)!.device_information),
               leading: const Icon(PhosphorIconsRegular.deviceMobile),
               initiallyExpanded: false,
               children: [
@@ -456,20 +457,20 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
           // Logs list
           Expanded(
             child: _logs.isEmpty
-                ? const Center(
+                ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(PhosphorIconsRegular.tray, size: 64, color: Colors.grey),
-                        SizedBox(height: 16),
+                        const Icon(PhosphorIconsRegular.tray, size: 64, color: Colors.grey),
+                        const SizedBox(height: 16),
                         Text(
-                          'No logs found',
-                          style: TextStyle(fontSize: 18, color: Colors.grey),
+                          L.of(context)!.no_logs_found,
+                          style: const TextStyle(fontSize: 18, color: Colors.grey),
                         ),
-                        SizedBox(height: 8),
+                        const SizedBox(height: 8),
                         Text(
-                          'Use the app to generate logs',
-                          style: TextStyle(color: Colors.grey),
+                          L.of(context)!.no_logs_found_body,
+                          style: const TextStyle(color: Colors.grey),
                         ),
                       ],
                     ),
@@ -488,7 +489,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
       floatingActionButton: _logs.isNotEmpty
           ? FloatingActionButton(
               onPressed: _scrollToBottom,
-              tooltip: 'Scroll to bottom',
+              tooltip: L.of(context)!.scroll_to_bottom,
               child: const Icon(PhosphorIconsRegular.arrowLineDown),
             )
           : null,
@@ -548,9 +549,9 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                       const SizedBox(height: 8),
                       const Divider(),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Stack Trace:',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                      Text(
+                        L.of(context)!.stack_trace,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 4),
                       SelectableText(
@@ -569,11 +570,11 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                           onPressed: () {
                             Clipboard.setData(ClipboardData(text: log.formattedMessage));
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Log entry copied to clipboard')),
+                              SnackBar(content: Text(L.of(context)!.log_entry_copied)),
                             );
                           },
                           icon: const Icon(PhosphorIconsRegular.copy, size: 16),
-                          label: const Text('Copy'),
+                          label: Text(L.of(context)!.copy),
                         ),
                       ],
                     ),
@@ -591,11 +592,11 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Filter Logs'),
+        title: Text(L.of(context)!.filter_logs),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Show only logs of level:'),
+            Text(L.of(context)!.show_only_level),
             const SizedBox(height: 16),
             ...LogLevel.values.map((level) => RadioListTile<LogLevel?>(
               title: Row(
@@ -621,7 +622,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
               },
             )),
             RadioListTile<LogLevel?>(
-              title: const Text('All Levels'),
+              title: Text(L.of(context)!.all_levels),
               value: null,
               groupValue: _selectedLevel,
               onChanged: (value) {
@@ -635,14 +636,14 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text(L.of(context)!.cancel_button_label),
           ),
           ElevatedButton(
             onPressed: () {
               _loadLogs();
               Navigator.of(context).pop();
             },
-            child: const Text('Apply'),
+            child: Text(L.of(context)!.apply),
           ),
         ],
       ),

@@ -1,0 +1,18 @@
+{
+  "@@locale": "cs",
+  "cancel_button_label": "Zrušit",
+  "cancel_option_label": "Zrušit",
+  "podcast_details_refreshed": "Údaje podcastu obnoveny z kanálu",
+  "title_contains": "Název obsahuje",
+  "save": "Uložit",
+  "unsubscribe": "Zrušit odběr",
+  "copy": "Kopírovat",
+  "remove": "Odebrat",
+  "refresh": "Obnovit",
+  "search_failed": "Vyhledávání selhalo",
+  "try_again": "Zkusit znovu",
+  "server_url": "URL serveru",
+  "username": "Uživatelské jméno",
+  "password": "Heslo",
+  "sync_now": "Synchronizovat nyní"
+}

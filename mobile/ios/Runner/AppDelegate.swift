@@ -27,7 +27,7 @@ import MediaPlayer
     private func setupAudioForCarPlay() {
         do {
             let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playback, mode: .spokenAudio, options: [.allowBluetooth, .allowAirPlay])
+            try audioSession.setCategory(.playback, mode: .spokenAudio, options: [.allowAirPlay, .allowBluetoothA2DP])
             try audioSession.setActive(true)
             NSLog("[AppDelegate] Audio session configured for CarPlay")
         } catch {

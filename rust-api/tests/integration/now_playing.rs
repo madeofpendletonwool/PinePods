@@ -282,7 +282,7 @@ async fn adding_to_the_queue_lands_under_what_another_device_is_playing() {
 
     app.post("/api/data/queue_pod")
         .key(&user)
-        .json(&json!({ "episode_id": third, "user_id": user.id, "is_youtube": false }))
+        .json(&json!({ "episode_id": third, "user_id": user.id, "is_youtube": false, "position": "top" }))
         .send()
         .await
         .assert_ok();

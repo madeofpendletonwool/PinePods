@@ -1,0 +1,18 @@
+{
+  "@@locale": "ro",
+  "cancel_button_label": "Anulează",
+  "cancel_option_label": "Anulează",
+  "podcast_details_refreshed": "Datele podcastului au fost reîmprospătate din flux",
+  "title_contains": "Titlul conține",
+  "save": "Salvează",
+  "unsubscribe": "Dezabonare",
+  "copy": "Copiază",
+  "remove": "Elimină",
+  "refresh": "Reîmprospătează",
+  "search_failed": "Căutarea a eșuat",
+  "try_again": "Încearcă din nou",
+  "server_url": "URL-ul serverului",
+  "username": "Nume de utilizator",
+  "password": "Parolă",
+  "sync_now": "Sincronizează acum"
+}

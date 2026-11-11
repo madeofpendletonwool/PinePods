@@ -15,6 +15,8 @@ use yewdux::prelude::*;
 pub fn backup_server() -> Html {
     let (i18n, _) = use_translation();
     let database_password = use_state(|| "".to_string());
+    // SQLite servers have no database password to ask for.
+    let is_sqlite = use_state(|| false);
     let is_loading = use_state(|| false);
     let (state, _dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -93,6 +95,7 @@ pub fn backup_server() -> Html {
     {
         let backup_files = backup_files.clone();
         let files_loading = files_loading.clone();
+        let is_sqlite = is_sqlite.clone();
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let error_prefix = i18n.t("backup_server.failed_to_load_backups").to_string();
@@ -105,6 +108,7 @@ pub fn backup_server() -> Html {
                 wasm_bindgen_futures::spawn_local(async move {
                     match call_list_backup_files(&server_name, &api_key.unwrap(), user_id).await {
                         Ok(response) => {
+                            is_sqlite.set(response.get("database_type").and_then(|t| t.as_str()) == Some("sqlite"));
                             if let Some(files) =
                                 response.get("backup_files").and_then(|f| f.as_array())
                             {
@@ -130,6 +134,7 @@ pub fn backup_server() -> Html {
 
     let on_download_click = {
         let database_password = database_password.clone();
+        let is_sqlite = is_sqlite.clone();
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let blob_property_bag = blob_property_bag.clone();
@@ -144,7 +149,7 @@ pub fn backup_server() -> Html {
             let backup_error_prefix = backup_error_prefix.clone();
             let _dispatch_call = dispatch_call.clone();
             let db_pass = (*database_password).trim().to_string();
-            if db_pass.is_empty() {
+            if db_pass.is_empty() && !*is_sqlite {
                 Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                     audio_state.error_message = Option::from(empty_password_msg.clone())
                 });
@@ -610,18 +615,20 @@ pub fn backup_server() -> Html {
                     <div class="settings-row-desc">{i18n.t("backup_server.download_backup_description")}</div>
                 </div>
                 <div class="settings-row-control" style="flex: 1 1 200px; min-width: 0;">
-                    <input
-                        type="password"
-                        id="db-pw"
-                        disabled={*is_loading}
-                        oninput={Callback::from(move |e: InputEvent| {
-                            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-                            database_password.set(input.value());
-                        })}
-                        class="input"
-                        placeholder="mYDBp@ss!"
-                        style="flex: 1; min-width: 0;"
-                    />
+                    if !*is_sqlite {
+                        <input
+                            type="password"
+                            id="db-pw"
+                            disabled={*is_loading}
+                            oninput={Callback::from(move |e: InputEvent| {
+                                let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+                                database_password.set(input.value());
+                            })}
+                            class="input"
+                            placeholder="mYDBp@ss!"
+                            style="flex: 1; min-width: 0;"
+                        />
+                    }
                     <button
                         onclick={on_download_click}
                         disabled={*is_loading}
@@ -633,7 +640,11 @@ pub fn backup_server() -> Html {
                             <span>{i18n.t("backup_server.exporting")}</span>
                         } else {
                             <i class="ph ph-download-simple"></i>
-                            <span>{i18n.t("backup_server.authenticate")}</span>
+                            if *is_sqlite {
+                                <span>{i18n.t("backup_server.download")}</span>
+                            } else {
+                                <span>{i18n.t("backup_server.authenticate")}</span>
+                            }
                         }
                     </button>
                 </div>

@@ -21,7 +21,7 @@ utoipa-axum = "0.3.0"
 utoipa-scalar = { version = "0.4.0", features = ["axum"] }
 
 # Database
-sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql", "uuid", "chrono", "json", "bigdecimal"] }
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql", "sqlite", "uuid", "chrono", "json", "bigdecimal"] }
 bigdecimal = "0.4.11"
 
 # Redis/Valkey

@@ -20,6 +20,7 @@ use crate::{
     services::sync::engine_db::TargetKind,
     AppState,
 };
+use crate::database::dialect::dialect_match;
 
 #[derive(Deserialize)]
 pub struct RefreshQuery {
@@ -611,9 +612,9 @@ async fn load_refresh_items(
     use crate::services::scheduler::{BACKOFF_MAX_STEPS, BACKOFF_STEP_MINUTES};
     let mut refresh_items: Vec<PodcastRefreshItem> = Vec::new();
 
-    match &state.db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+    dialect_match!(&state.db_pool, {
+        pg(pool) => {
+            let rows = q::query(sqlx::AssertSqlSafe(format!(
                 r#"SELECT podcastid, feedid, feedurl, artworkurl, autodownload, autoqueue, username, password,
                           isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified, feedcontenthash,
                           refreshintervalminutes
@@ -652,8 +653,8 @@ async fn load_refresh_items(
                     refresh_interval: result.try_get::<Option<i32>, _>("refreshintervalminutes").ok().flatten(),
                 });
             }
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             let in_list = |column: &str, n: Option<usize>| match n {
                 Some(n) if n > 0 => format!("AND {column} IN ({})", vec!["?"; n].join(", ")),
                 Some(_) => "AND FALSE".to_string(),
@@ -702,8 +703,8 @@ async fn load_refresh_items(
                     refresh_interval: result.try_get::<Option<i32>, _>("RefreshIntervalMinutes").ok().flatten(),
                 });
             }
-        }
-    }
+        },
+    });
 
 
     Ok(refresh_items)
@@ -758,11 +759,12 @@ async fn refresh_items(state: &AppState, refresh_items: Vec<PodcastRefreshItem>)
     }
     let mut youtube_groups: HashMap<Group, Vec<PodcastRefreshItem>> = HashMap::new();
     let mut feed_groups: HashMap<Group, Vec<PodcastRefreshItem>> = HashMap::new();
+    let mut local_folders: Vec<PodcastRefreshItem> = Vec::new();
 
     let owners: HashMap<i32, i32> = refresh_items.iter().map(|i| (i.podcast_id, i.user_id)).collect();
     for item in refresh_items {
-        if item.feed_url.starts_with("local://") {
-            debug!("Skipping local podcast {} - not an RSS feed", item.podcast_id);
+        if is_local(&item.feed_url) {
+            local_folders.push(item);
             continue;
         }
         let key = match item.feed_id {
@@ -778,13 +780,14 @@ async fn refresh_items(state: &AppState, refresh_items: Vec<PodcastRefreshItem>)
     // Refresh unique RSS feeds with bounded concurrency.
     let groups: Vec<Vec<PodcastRefreshItem>> = feed_groups.into_values().collect();
     let channels: Vec<Vec<PodcastRefreshItem>> = youtube_groups.into_values().collect();
-    let feeds = groups.len() + channels.len();
+    let feeds = groups.len() + channels.len() + local_folders.len();
     let subscription_count: usize = groups.iter().map(|g| g.len()).sum();
     debug!(
-        "Running refresh: {} unique RSS feeds ({} subscriptions), {} YouTube channels (concurrency={})",
+        "Running refresh: {} unique RSS feeds ({} subscriptions), {} YouTube channels, {} local folders (concurrency={})",
         groups.len(),
         subscription_count,
         channels.len(),
+        local_folders.len(),
         REFRESH_CONCURRENCY
     );
     // Users whose podcasts got new episodes, for their playlist counts.
@@ -816,6 +819,21 @@ async fn refresh_items(state: &AppState, refresh_items: Vec<PodcastRefreshItem>)
         })
         .await;
 
+    // Local folders: a directory listing each, files already imported aren't read again.
+    stream::iter(local_folders)
+        .for_each_concurrent(Some(REFRESH_CONCURRENCY), |item| {
+            let touched = &touched;
+            async move {
+                let _lock = FeedLock::acquire(FeedLock::key(&item.feed_url, None, None)).await;
+                if let Ok(new_eps) = refresh_local_folder(state, &item).await {
+                    if !new_eps.is_empty() {
+                        touched.lock().unwrap().insert(item.user_id);
+                    }
+                }
+            }
+        })
+        .await;
+
     let touched = touched.into_inner().unwrap();
     for user_id in &touched {
         if let Err(e) = state.db_pool.update_user_playlist_counts(*user_id).await {
@@ -824,6 +842,45 @@ async fn refresh_items(state: &AppState, refresh_items: Vec<PodcastRefreshItem>)
     }
 
     feeds
+}
+
+fn is_local(feed_url: &str) -> bool {
+    feed_url.starts_with("local://")
+}
+
+/// Add the files that appeared in a local podcast's folder as episodes, queue them like a
+/// feed's new episodes, and schedule the next look. The caller holds the folder's lock.
+async fn refresh_local_folder(
+    state: &AppState,
+    item: &PodcastRefreshItem,
+) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
+    let ids = [item.podcast_id];
+    match crate::handlers::local_podcast::rescan_local_podcast(state, item.podcast_id, item.user_id, &item.feed_url).await {
+        Ok(new_eps) => {
+            // The files are already on the server: nothing to download.
+            queue_auto_new_episodes(state, item.user_id, item.auto_queue, &new_eps).await;
+            if !new_eps.is_empty() {
+                let new_ids: Vec<i32> = new_eps.iter().map(|e| e.episodeid).collect();
+                if let Err(e) = state.db_pool.auto_add_category_episodes_for(item.user_id, item.podcast_id, &new_ids).await {
+                    warn!("Category auto-add for podcast {} failed: {}", item.podcast_id, e);
+                }
+            }
+            mark_refreshed(state, &ids, local_schedule()).await;
+            Ok(new_eps)
+        }
+        Err(e) => {
+            warn!("Scanning local podcast {} failed: {}", item.podcast_id, e);
+            let kind = if matches!(e, AppError::NotFound(_)) { FeedErrorKind::Gone } else { FeedErrorKind::Other };
+            mark_failed(state, &ids, kind, &e.to_string(), None).await;
+            Err(e)
+        }
+    }
+}
+
+/// A local folder doesn't publish on a pattern: look at it as often as the busiest feed.
+fn local_schedule() -> Schedule {
+    let interval = refresh_schedule::MIN_INTERVAL.min(refresh_schedule::max_interval());
+    Schedule { interval_minutes: interval.num_minutes() as i32, next_in_secs: interval.num_seconds() }
 }
 
 // Sync one user with their external server through the sync engine. Users of the internal
@@ -992,10 +1049,17 @@ pub async fn run_refresh_process(
         None
     };
 
-    // Get total podcast count for progress tracking
-    let total_podcasts = state.db_pool.get_user_podcast_count(user_id).await?;
+    // The podcasts with automatic refreshes turned off are left alone.
+    let podcasts: Vec<PodcastForRefresh> = state
+        .db_pool
+        .get_user_podcasts_for_refresh(user_id)
+        .await?
+        .into_iter()
+        .filter(|p| p.auto_refresh)
+        .collect();
+    let total_podcasts = podcasts.len() as u32;
     debug!("Found {} podcasts to refresh for user {}", total_podcasts, user_id);
-    
+
     // Send initial progress
     let _ = tx.send(RefreshMessage::Status(RefreshStatus {
         progress: RefreshProgress {
@@ -1005,10 +1069,7 @@ pub async fn run_refresh_process(
         },
     })).await;
 
-    // Get user's podcasts for refresh
-    let podcasts = state.db_pool.get_user_podcasts_for_refresh(user_id).await?;
-    info!("Retrieved {} podcast details for refresh", podcasts.len());
-    
+
     // Refresh the user's podcasts with bounded concurrency (previously sequential with a 100ms
     // sleep between each). Progress + new episodes are streamed over the websocket as each podcast
     // finishes; the shared refresh_single_podcast path applies cutoff, conditional-GET validators,
@@ -1024,7 +1085,7 @@ pub async fn run_refresh_process(
 
     let outcomes: Vec<(bool, usize)> = futures::stream::iter(podcasts.into_iter())
         .map(|podcast| async move {
-            let result = refresh_single_podcast(state_ref, &podcast, user_id, nextcloud_refresh).await;
+            let result = refresh_single_podcast(state_ref, &podcast, user_id, Manual::All).await;
             let done = completed_ref.fetch_add(1, Ordering::SeqCst) + 1;
 
             let _ = tx_ref
@@ -1118,48 +1179,98 @@ pub struct PodcastForRefresh {
     pub recently_refreshed: bool,
     /// The host's Retry-After hold hasn't expired yet.
     pub throttled: bool,
+    /// The scheduled refresh and Refresh all include it.
+    pub auto_refresh: bool,
 }
 
-/// Refresh one of the user's podcasts now (the feed problems list's "Refresh now"). Same path
-/// and skips as the manual refresh. `Ok(false)` when the user has no such podcast.
-pub async fn refresh_podcast_now(state: &AppState, user_id: i32, podcast_id: i32) -> AppResult<bool> {
+/// Which manual refresh is running.
+#[derive(Clone, Copy, PartialEq)]
+enum Manual {
+    /// Refresh all: skips feeds read moments ago and feeds being read right now.
+    All,
+    /// One podcast the user asked for: always looks, waiting for a refresh already running.
+    One,
+}
+
+/// What refreshing one podcast now did.
+pub enum PodcastRefresh {
+    /// The user has no such podcast.
+    NotFound,
+    /// The feed's host asked us to wait (Retry-After); nothing was fetched.
+    Throttled,
+    Done(Vec<crate::handlers::podcasts::Episode>),
+    Failed(AppError),
+}
+
+/// Refresh one of the user's podcasts now, whatever it is (feed, YouTube channel, local folder)
+/// and whether or not its automatic refreshes are on. Failures are recorded with the podcast,
+/// as for any refresh.
+pub async fn refresh_podcast_now(state: &AppState, user_id: i32, podcast_id: i32) -> AppResult<PodcastRefresh> {
     let podcasts = state.db_pool.get_user_podcasts_for_refresh(user_id).await?;
-    let Some(podcast) = podcasts.iter().find(|p| p.id == podcast_id) else { return Ok(false) };
-    // A failure is recorded and shown with the feed; the caller reads the new state.
-    if let Err(e) = refresh_single_podcast(state, podcast, user_id, false).await {
-        debug!("Refreshing podcast {} now failed: {}", podcast_id, e);
+    let Some(podcast) = podcasts.iter().find(|p| p.id == podcast_id) else { return Ok(PodcastRefresh::NotFound) };
+    if podcast.throttled && !is_local(&podcast.feed_url) {
+        return Ok(PodcastRefresh::Throttled);
     }
-    Ok(true)
+    Ok(match refresh_single_podcast(state, podcast, user_id, Manual::One).await {
+        Ok(new_episodes) => PodcastRefresh::Done(new_episodes),
+        Err(e) => {
+            debug!("Refreshing podcast {} now failed: {}", podcast_id, e);
+            PodcastRefresh::Failed(e)
+        }
+    })
 }
 
 async fn refresh_single_podcast(
     state: &AppState,
     podcast: &PodcastForRefresh,
     user_id: i32,
-    _nextcloud_refresh: bool,
+    manual: Manual,
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
     info!("Refreshing podcast: {} (ID: {})", podcast.name, podcast.id);
 
-    if podcast.is_youtube {
-        refresh_youtube_channel(state, podcast, user_id).await
+    if is_local(&podcast.feed_url) {
+        refresh_local_podcast(state, podcast, user_id, manual).await
+    } else if podcast.is_youtube {
+        refresh_youtube_channel(state, podcast, user_id, manual).await
     } else {
-        refresh_rss_feed(state, podcast, user_id).await
+        refresh_rss_feed(state, podcast, user_id, manual).await
     }
+}
+
+/// The feed's refresh lock for a manual refresh: Refresh all skips a feed that's being read,
+/// a single refresh waits for it.
+async fn manual_lock(key: FeedKey, manual: Manual) -> Option<FeedLock> {
+    match manual {
+        Manual::All => FeedLock::try_acquire(key),
+        Manual::One => Some(FeedLock::acquire(key).await),
+    }
+}
+
+async fn refresh_local_podcast(
+    state: &AppState,
+    podcast: &PodcastForRefresh,
+    user_id: i32,
+    manual: Manual,
+) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
+    let item = rss_refresh_item(podcast, user_id);
+    let Some(_lock) = manual_lock(FeedLock::key(&item.feed_url, None, None), manual).await else {
+        debug!("Skipping manual refresh of local podcast {}: it's being scanned right now", podcast.id);
+        return Ok(Vec::new());
+    };
+    refresh_local_folder(state, &item).await
 }
 
 async fn refresh_rss_feed(
     state: &AppState,
     podcast: &PodcastForRefresh,
     user_id: i32,
+    manual: Manual,
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
     debug!("Refreshing RSS feed for podcast: {}", podcast.name);
 
-    if podcast.feed_url.starts_with("local://") {
-        return Ok(Vec::new());
-    }
     // Nothing can have changed since a refresh moments ago, and a throttled host asked us to
     // wait; both count as checked.
-    if podcast.recently_refreshed || podcast.throttled {
+    if (podcast.recently_refreshed && manual == Manual::All) || podcast.throttled {
         debug!(
             "Skipping manual refresh of podcast {} (recently refreshed: {}, throttled: {})",
             podcast.id, podcast.recently_refreshed, podcast.throttled
@@ -1170,7 +1281,7 @@ async fn refresh_rss_feed(
     // Same path as the scheduled refresh: conditional GET + body hash, the podcast's
     // FeedCutoffDays, auto-download/queue/transcribe, failure and Retry-After tracking.
     let item = rss_refresh_item(podcast, user_id);
-    let Some(_lock) = FeedLock::try_acquire(FeedLock::key(&item.feed_url, item.username.as_deref(), item.password.as_deref())) else {
+    let Some(_lock) = manual_lock(FeedLock::key(&item.feed_url, item.username.as_deref(), item.password.as_deref()), manual).await else {
         debug!("Skipping manual refresh of podcast {}: it's being refreshed right now", podcast.id);
         return Ok(Vec::new());
     };
@@ -1196,11 +1307,12 @@ pub async fn refresh_podcast_details(state: &AppState, user_id: i32, podcast_id:
     if reset_edits {
         state.db_pool.clear_metadata_edits(podcast_id, user_id).await?;
     }
-    if podcast.is_youtube {
-        refresh_youtube_channel(state, podcast, user_id).await?;
+    if is_local(&podcast.feed_url) {
+        refresh_local_podcast(state, podcast, user_id, Manual::One).await?;
         return Ok(true);
     }
-    if podcast.feed_url.starts_with("local://") {
+    if podcast.is_youtube {
+        refresh_youtube_channel(state, podcast, user_id, Manual::One).await?;
         return Ok(true);
     }
     if podcast.throttled {
@@ -1246,17 +1358,18 @@ async fn refresh_youtube_channel(
     state: &AppState,
     podcast: &PodcastForRefresh,
     user_id: i32,
+    manual: Manual,
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
     debug!("Refreshing YouTube channel: {}", podcast.name);
 
-    if podcast.recently_refreshed || podcast.throttled {
+    if (podcast.recently_refreshed && manual == Manual::All) || podcast.throttled {
         debug!(
             "Skipping manual refresh of channel {} (recently refreshed: {}, throttled: {})",
             podcast.id, podcast.recently_refreshed, podcast.throttled
         );
         return Ok(Vec::new());
     }
-    let Some(_lock) = FeedLock::try_acquire(FeedLock::key(&podcast.feed_url, None, None)) else {
+    let Some(_lock) = manual_lock(FeedLock::key(&podcast.feed_url, None, None), manual).await else {
         debug!("Skipping manual refresh of channel {}: it's being refreshed right now", podcast.id);
         return Ok(Vec::new());
     };

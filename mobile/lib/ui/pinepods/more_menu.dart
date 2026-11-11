@@ -5,6 +5,7 @@ import 'package:pinepods_mobile/ui/settings/settings.dart';
 import 'package:pinepods_mobile/ui/pinepods/saved.dart';
 import 'package:pinepods_mobile/ui/pinepods/history.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class PinepodsMoreMenu extends StatelessWidget {
   // Constructor with optional key parameter
@@ -19,9 +20,9 @@ class PinepodsMoreMenu extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'More Options',
-                style: TextStyle(
+              Text(
+                L.of(context)!.more_options,
+                style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
@@ -29,14 +30,14 @@ class PinepodsMoreMenu extends StatelessWidget {
               const SizedBox(height: 16),
               _buildMenuItem(
                 context,
-                'Downloads',
+                L.of(context)!.downloads,
                 PhosphorIconsRegular.downloadSimple,
                     () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
                     fullscreenDialog: false,
                     builder: (context) => Scaffold(
-                      appBar: AppBar(title: const Text('Downloads')),
+                      appBar: AppBar(title: Text(L.of(context)!.downloads)),
                       body: const CustomScrollView(
                         slivers: [Downloads()],
                       ),
@@ -46,14 +47,14 @@ class PinepodsMoreMenu extends StatelessWidget {
               ),
               _buildMenuItem(
                 context,
-                'Saved Episodes',
+                L.of(context)!.saved_and_collections,
                 PhosphorIconsRegular.bookmarkSimple,
                     () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
                     fullscreenDialog: false,
                     builder: (context) => Scaffold(
-                      appBar: AppBar(title: const Text('Saved Episodes')),
+                      appBar: AppBar(title: Text(L.of(context)!.saved_and_collections)),
                       body: const CustomScrollView(
                         slivers: [PinepodsSaved()],
                       ),
@@ -63,14 +64,14 @@ class PinepodsMoreMenu extends StatelessWidget {
               ),
               _buildMenuItem(
                 context,
-                'History',
+                L.of(context)!.history,
                 PhosphorIconsRegular.clockCounterClockwise,
                     () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
                     fullscreenDialog: false,
                     builder: (context) => Scaffold(
-                      appBar: AppBar(title: const Text('History')),
+                      appBar: AppBar(title: Text(L.of(context)!.history)),
                       body: const CustomScrollView(
                         slivers: [PinepodsHistory()],
                       ),
@@ -80,7 +81,7 @@ class PinepodsMoreMenu extends StatelessWidget {
               ),
               _buildMenuItem(
                 context,
-                'Settings',
+                L.of(context)!.settings_label,
                 PhosphorIconsRegular.gear,
                     () => Navigator.push(
                   context,

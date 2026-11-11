@@ -58,6 +58,12 @@ web-sys = { version = "0.3.107", features = [
     "IntersectionObserverInit",
     "IntersectionObserverEntry",
     "ResizeObserver",
+    "ScrollIntoViewOptions",
+    "ScrollLogicalPosition",
+    "ScrollBehavior",
+    "TimeRanges",
+    "PointerEvent",
+    "KeyboardEvent",
 ] }
 log = "0.4.34"
 wasm-bindgen = "0.2.130"

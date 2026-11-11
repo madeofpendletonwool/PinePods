@@ -4,6 +4,7 @@ use crate::components::context::NotificationState;
 use crate::components::gen_components::{EpisodeModal, FallbackImage};
 use crate::components::gen_funcs::format_time_rm_hour;
 use crate::components::people::{PeopleLayout, PeopleStrip};
+use crate::components::player_ui::{ProgressLine, SeekBar, SpeedControl, VolumeControl};
 use crate::requests::people_req::call_get_episode_people;
 #[cfg(not(feature = "server_build"))]
 use crate::pages::downloads_tauri::start_local_file_server;
@@ -33,7 +34,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{window, HtmlAudioElement, HtmlElement, HtmlInputElement, TouchEvent};
+use web_sys::{window, HtmlAudioElement, HtmlElement};
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
@@ -55,116 +56,6 @@ pub struct AudioPlayerProps {
     pub offline: bool,
     pub is_youtube: bool,
     pub is_video: bool,
-}
-
-#[derive(Properties, PartialEq)]
-pub struct PlaybackControlProps {
-    pub speed: f64,
-    pub on_speed_change: Callback<f64>,
-}
-
-#[function_component(PlaybackControl)]
-pub fn playback_control(props: &PlaybackControlProps) -> Html {
-    let is_open = use_state(|| false);
-    let toggle_open = {
-        let is_open = is_open.clone();
-        Callback::from(move |_: MouseEvent| {
-            is_open.set(!*is_open);
-        })
-    };
-    let on_speed_change = {
-        let on_speed_change = props.on_speed_change.clone();
-        Callback::from(move |e: InputEvent| {
-            let input: HtmlInputElement = e.target_unchecked_into();
-            if let Ok(speed) = input.value().parse::<f64>() {
-                on_speed_change.emit(speed);
-            }
-        })
-    };
-
-    // Format the playback speed to show just one decimal place
-    let display_speed = format!("{:.1}x", props.speed);
-
-    html! {
-        <div class="speed-control-container">
-            <button
-                onclick={toggle_open}
-                class="player-btn"
-            >
-                <i class="ph ph-speedometer"></i>
-            </button>
-            <div class={classes!("speed-slider-container", "item_container-bg", (*is_open).then(|| "visible"))}>
-                <div class="speed-control-content item_container-bg">
-                    <div class="speed-text">
-                        {display_speed}
-                    </div>
-                    <input
-                        type="range"
-                        class="speed-slider"
-                        min="0.5"
-                        max="2.0"
-                        step="0.1"
-                        value={props.speed.to_string()}
-                        oninput={on_speed_change}
-                    />
-                </div>
-            </div>
-        </div>
-    }
-}
-
-#[derive(Properties, PartialEq)]
-pub struct VolumeControlProps {
-    pub volume: f64,
-    pub on_volume_change: Callback<f64>,
-}
-
-#[function_component(VolumeControl)]
-pub fn volume_control(props: &VolumeControlProps) -> Html {
-    let is_open = use_state(|| false);
-
-    let toggle_open = {
-        let is_open = is_open.clone();
-        Callback::from(move |_: MouseEvent| {
-            is_open.set(!*is_open);
-        })
-    };
-
-    let on_volume_change = {
-        let on_volume_change = props.on_volume_change.clone();
-        Callback::from(move |e: InputEvent| {
-            let input: HtmlInputElement = e.target_unchecked_into();
-            if let Ok(volume) = input.value().parse::<f64>() {
-                on_volume_change.emit(volume);
-            }
-        })
-    };
-
-    html! {
-        <div class="volume-control-container">
-            <button
-                onclick={toggle_open}
-                class="player-btn"
-            >
-                <i class="ph ph-speaker-high"></i>
-            </button>
-
-            <div class={classes!("volume-slider-container", (*is_open).then(|| "visible"))}>
-                <div class="volume-text">
-                    {format!("{}%", (props.volume as i32))}
-                </div>
-                <input
-                    type="range"
-                    class="volume-slider"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={props.volume.to_string()}
-                    oninput={on_volume_change}
-                />
-            </div>
-        </div>
-    }
 }
 
 #[function_component(AudioPlayer)]
@@ -400,85 +291,15 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         })
     };
 
-    // Touch drag functionality for mobile
-    let touch_start_y = use_state(|| None::<i32>);
-    let is_dragging = use_state(|| false);
-    let drag_offset = use_state(|| 0i32);
-
-    let on_touch_start = {
-        let touch_start_y = touch_start_y.clone();
-        let is_dragging = is_dragging.clone();
-        let drag_offset = drag_offset.clone();
-
-        Callback::from(move |event: TouchEvent| {
-            if let Some(touch) = event.touches().get(0) {
-                touch_start_y.set(Some(touch.client_y()));
-                is_dragging.set(true);
-                drag_offset.set(0);
-                event.prevent_default(); // Prevent scrolling from the start
-            }
-        })
-    };
-
-    let on_touch_move = {
-        let touch_start_y = touch_start_y.clone();
-        let is_dragging = is_dragging.clone();
-        let drag_offset = drag_offset.clone();
-
-        Callback::from(move |event: TouchEvent| {
-            if let (Some(start_y), true) = (*touch_start_y, *is_dragging) {
-                if let Some(touch) = event.touches().get(0) {
-                    let current_y = touch.client_y();
-                    let delta_y = start_y - current_y; // Positive = drag up, Negative = drag down
-
-                    // Responsive drag - follow finger movement with no limits for better feel
-                    // Visual feedback follows finger direction (up drag = negative translateY)
-                    let visual_offset = delta_y / 2; // No min/max limits for smoother experience
-                    drag_offset.set(visual_offset);
-
-                    event.prevent_default(); // Prevent scrolling while dragging
-                }
-            }
-        })
-    };
-
-    let on_touch_end = {
-        let touch_start_y = touch_start_y.clone();
-        let is_dragging = is_dragging.clone();
-        let drag_offset = drag_offset.clone();
+    // Drag the bar up to open the player, or the open player down to close it.
+    let sheet_drag = {
         let audio_dispatch = _audio_dispatch.clone();
-        let container_ref = container_ref.clone();
-        let audio_state = audio_state.clone();
-
-        Callback::from(move |event: TouchEvent| {
-            if let (Some(start_y), true) = (*touch_start_y, *is_dragging) {
-                if let Some(touch) = event.changed_touches().get(0) {
-                    let end_y = touch.client_y();
-                    let delta_y = start_y - end_y; // Positive = swipe up, Negative = swipe down
-                    let threshold = 20; // Minimum pixels to trigger action
-
-                    let is_expanded = audio_state.is_expanded;
-
-                    if delta_y.abs() > threshold {
-                        if delta_y > 0 && !is_expanded {
-                            // Swipe up and player is collapsed -> expand
-                            audio_dispatch.reduce_mut(UIState::toggle_expanded);
-                            if let Some(container) = container_ref.cast::<HtmlElement>() {
-                                container.scroll_into_view();
-                            }
-                        } else if delta_y < 0 && is_expanded {
-                            // Swipe down and player is expanded -> collapse
-                            audio_dispatch.reduce_mut(UIState::toggle_expanded);
-                        }
-                    }
-                }
-            }
-
-            // Reset touch state
-            touch_start_y.set(None);
-            is_dragging.set(false);
-            drag_offset.set(0);
-        })
+        crate::components::player_ui::use_sheet_drag(
+            container_ref.clone(),
+            Callback::from(move |expanded: bool| {
+                audio_dispatch.reduce_mut(|s| s.is_expanded = expanded);
+            }),
+        )
     };
 
     let src_clone = props.src.clone();
@@ -662,95 +483,58 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         },
     );
 
-    // Add keyboard controls
-    {
-        let audio_dispatch_effect = _audio_dispatch.clone();
-        let audio_state_effect = audio_state.clone();
-
-        use_effect_with((), move |_| {
-            let keydown_handler = {
-                let audio_info = audio_dispatch_effect.clone();
-                let state = audio_state_effect.clone();
-
-                Closure::wrap(Box::new(move |event: KeyboardEvent| {
-                    // Check if the event target is not an input or textarea
-                    let target = event
-                        .target()
-                        .unwrap()
-                        .dyn_into::<web_sys::HtmlElement>()
-                        .unwrap();
-
-                    if !(target.tag_name().eq_ignore_ascii_case("input")
-                        || target.tag_name().eq_ignore_ascii_case("textarea"))
-                    {
-                        match event.key().as_str() {
-                            " " => {
-                                event.prevent_default();
-                                // Directly control media element for instant response
-                                let currently_playing = state.audio_playing.unwrap_or(false);
-                                if let Some(media) = &state.media_element {
-                                    if currently_playing {
-                                        let _ = media.pause();
-                                    } else {
-                                        let _ = media.play();
-                                    }
-                                } else if let Some(audio) = &state.audio_element {
-                                    if currently_playing {
-                                        let _ = audio.pause();
-                                    } else {
-                                        let _ = audio.play();
-                                    }
-                                }
-                            }
-                            "ArrowRight" => {
-                                event.prevent_default();
-                                // Support both new media_element and legacy audio_element
-                                if let Some(media_element) = state.media_element.as_ref() {
-                                    let new_time = media_element.current_time() + 15.0;
-                                    media_element.set_current_time(new_time);
-                                    audio_info
-                                        .reduce_mut(|state| state.update_current_time(new_time));
-                                } else if let Some(audio_element) = state.audio_element.as_ref() {
-                                    let new_time = audio_element.current_time() + 15.0;
-                                    audio_element.set_current_time(new_time);
-                                    audio_info
-                                        .reduce_mut(|state| state.update_current_time(new_time));
-                                }
-                            }
-                            "ArrowLeft" => {
-                                event.prevent_default();
-                                // Support both new media_element and legacy audio_element
-                                if let Some(media_element) = state.media_element.as_ref() {
-                                    let new_time = (media_element.current_time() - 15.0).max(0.0);
-                                    media_element.set_current_time(new_time);
-                                    audio_info
-                                        .reduce_mut(|state| state.update_current_time(new_time));
-                                } else if let Some(audio_element) = state.audio_element.as_ref() {
-                                    let new_time = (audio_element.current_time() - 15.0).max(0.0);
-                                    audio_element.set_current_time(new_time);
-                                    audio_info
-                                        .reduce_mut(|state| state.update_current_time(new_time));
-                                }
-                            }
-                            _ => {}
+    // Keyboard: space plays/pauses, arrows skip 15s, Escape closes the full
+    // player. Reads live state on every press and leaves typing alone.
+    use_effect_with((), move |_| {
+        let listener = window().map(|w| {
+            gloo::events::EventListener::new_with_options(
+                &w,
+                "keydown",
+                gloo::events::EventListenerOptions::enable_prevent_default(),
+                move |event| {
+                    let Some(event) = event.dyn_ref::<KeyboardEvent>() else { return };
+                    if event.ctrl_key() || event.meta_key() || event.alt_key() || event.default_prevented() {
+                        return;
+                    }
+                    if let Some(target) = event.target().and_then(|t| t.dyn_into::<HtmlElement>().ok()) {
+                        let tag = target.tag_name();
+                        if tag.eq_ignore_ascii_case("input")
+                            || tag.eq_ignore_ascii_case("textarea")
+                            || tag.eq_ignore_ascii_case("select")
+                            || target.is_content_editable()
+                        {
+                            return;
                         }
                     }
-                }) as Box<dyn FnMut(_)>)
-            };
-
-            window()
-                .unwrap()
-                .add_event_listener_with_callback(
-                    "keydown",
-                    keydown_handler.as_ref().unchecked_ref(),
-                )
-                .unwrap();
-
-            move || {
-                keydown_handler.forget();
-            }
+                    use crate::components::player_ui::{seek_by, toggle_play};
+                    match event.key().as_str() {
+                        // Handled here (and default prevented) so a focused
+                        // player button doesn't also get "clicked" by space.
+                        " " => {
+                            event.prevent_default();
+                            toggle_play();
+                        }
+                        "ArrowRight" if !event.shift_key() => {
+                            event.prevent_default();
+                            seek_by(15.0);
+                        }
+                        "ArrowLeft" if !event.shift_key() => {
+                            event.prevent_default();
+                            seek_by(-15.0);
+                        }
+                        "Escape" => {
+                            let dispatch = Dispatch::<UIState>::global();
+                            if dispatch.get().is_expanded {
+                                dispatch.reduce_mut(|s| s.is_expanded = false);
+                            }
+                        }
+                        _ => {}
+                    }
+                },
+            )
         });
-    }
+        move || drop(listener)
+    });
 
     // Report this device's now-playing state to the server every few seconds for
     // cross-device awareness + remote control. Best-effort; reads the live global
@@ -1382,41 +1166,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         })
     };
 
-    let update_time = {
-        let audio_dispatch = _audio_dispatch.clone();
-        Callback::from(move |e: InputEvent| {
-            // Get the value from the target of the InputEvent
-            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
-                if let Ok(value) = input.value().parse::<f64>() {
-                    // Update the state using dispatch
-                    audio_dispatch.reduce_mut(move |state| {
-                        // Support both media_element and legacy audio_element
-                        if let Some(media_element) = state.media_element.as_ref() {
-                            media_element.set_current_time(value);
-                            state.current_time_seconds = value;
-
-                            // Update formatted time
-                            let hours = (value / 3600.0).floor() as i32;
-                            let minutes = ((value % 3600.0) / 60.0).floor() as i32;
-                            let seconds = (value % 60.0).floor() as i32;
-                            state.current_time_formatted =
-                                format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
-                        } else if let Some(audio_element) = state.audio_element.as_ref() {
-                            audio_element.set_current_time(value);
-                            state.current_time_seconds = value;
-
-                            // Update formatted time
-                            let hours = (value / 3600.0).floor() as i32;
-                            let minutes = ((value % 3600.0) / 60.0).floor() as i32;
-                            let seconds = (value % 60.0).floor() as i32;
-                            state.current_time_formatted =
-                                format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
-                        }
-                    });
-                }
-            }
-        })
-    };
     let speed_dispatch = _audio_dispatch.clone();
 
     // Adjust the playback speed based on a slider value
@@ -1452,42 +1201,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         })
     };
 
-    // Skip forward
-    let skip_state = audio_state.clone();
-    let skip_forward = {
-        // let dispatch = _dispatch.clone();
-        let audio_dispatch = _audio_dispatch.clone();
-        Callback::from(move |_| {
-            // Support both media_element and legacy audio_element
-            if let Some(media_element) = skip_state.media_element.as_ref() {
-                let new_time = media_element.current_time() + 15.0;
-                media_element.set_current_time(new_time);
-                audio_dispatch.reduce_mut(|state| state.update_current_time(new_time));
-            } else if let Some(audio_element) = skip_state.audio_element.as_ref() {
-                let new_time = audio_element.current_time() + 15.0;
-                audio_element.set_current_time(new_time);
-                audio_dispatch.reduce_mut(|state| state.update_current_time(new_time));
-            }
-        })
-    };
-
-    let backward_state = audio_state.clone();
-    let skip_backward = {
-        // let dispatch = _dispatch.clone();
-        let audio_dispatch = _audio_dispatch.clone();
-        Callback::from(move |_| {
-            // Support both media_element and legacy audio_element
-            if let Some(media_element) = backward_state.media_element.as_ref() {
-                let new_time = media_element.current_time() - 15.0;
-                media_element.set_current_time(new_time);
-                audio_dispatch.reduce_mut(|state| state.update_current_time(new_time));
-            } else if let Some(audio_element) = backward_state.audio_element.as_ref() {
-                let new_time = audio_element.current_time() - 15.0;
-                audio_element.set_current_time(new_time);
-                audio_dispatch.reduce_mut(|state| state.update_current_time(new_time));
-            }
-        })
-    };
+    let skip_forward = Callback::from(|_: MouseEvent| crate::components::player_ui::seek_by(15.0));
+    let skip_backward = Callback::from(|_: MouseEvent| crate::components::player_ui::seek_by(-15.0));
 
     let skip_episode = {
         let audio_dispatch = _audio_dispatch.clone();
@@ -1726,13 +1441,90 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
     // web_sys::console::log_1(&format!("duration format: {}", &state.sr).into());
     if let Some(audio_props) = audio_state.currently_playing.as_ref() {
-        let duration_hours = (audio_props.duration_sec / 3600.0).floor() as i32;
-        let duration_minutes = ((audio_props.duration_sec % 3600.0) / 60.0).floor() as i32;
-        let duration_seconds = (audio_props.duration_sec % 60.0).floor() as i32;
-        let formatted_duration = format!(
-            "{:02}:{:02}:{:02}",
-            duration_hours, duration_minutes, duration_seconds
+        let playing = audio_state.audio_playing.unwrap_or(false);
+        let chapters: Rc<Vec<(f64, String)>> = Rc::new(
+            audio_state
+                .episode_chapters
+                .as_ref()
+                .map(|cs| {
+                    cs.iter()
+                        .filter_map(|c| c.startTime.map(|t| (t as f64, c.title.clone())))
+                        .collect()
+                })
+                .unwrap_or_default(),
         );
+        let podcast_name = audio_props.episode.podcastname.trim().to_string();
+        // Podcast name in the full player opens the podcast's page.
+        let can_open_podcast = audio_props.episode.podcastid != 0 || !audio_props.episode.feedurl.is_empty();
+        let open_podcast = {
+            let audio_dispatch = _audio_dispatch.clone();
+            let (server_name, api_key, user_id) = (server_name.clone(), api_key.clone(), user_id);
+            let episode = audio_props.episode.clone();
+            let history = history.clone();
+            Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                let (Some(server), Some(Some(key)), Some(uid)) = (server_name.clone(), api_key.clone(), user_id) else { return };
+                audio_dispatch.reduce_mut(|s| s.is_expanded = false);
+                let episode = episode.clone();
+                let history = history.clone();
+                let api_key = api_key.clone();
+                spawn_local(async move {
+                    let details = if episode.podcastid != 0 {
+                        crate::requests::pod_req::call_get_podcast_details(&server, &key, uid, episode.podcastid).await.ok()
+                    } else {
+                        let added = crate::requests::pod_req::call_check_podcast(&server, &key, uid, &episode.podcastname, &episode.feedurl)
+                            .await
+                            .map(|r| r.exists)
+                            .unwrap_or(false);
+                        crate::requests::search_pods::call_get_podcast_details_dynamic(
+                            &server, &key, uid, &episode.podcastname, &episode.feedurl, 0, added, Some(false),
+                        )
+                        .await
+                        .ok()
+                        .map(|r| r.details.into_podcast_details())
+                    };
+                    if let Some(d) = details {
+                        crate::components::click_events::create_on_title_click(
+                            server,
+                            api_key,
+                            &history,
+                            d.podcastid,
+                            d.podcastindexid,
+                            d.podcastname,
+                            d.feedurl,
+                            d.description,
+                            d.author,
+                            d.artworkurl,
+                            d.explicit,
+                            d.episodecount,
+                            Some(d.categories.values().cloned().collect::<Vec<_>>().join(", ")),
+                            d.websiteurl,
+                            uid,
+                            d.is_youtube,
+                        )
+                        .emit(e);
+                    }
+                });
+            })
+        };
+        let play_icon = |playing: bool| {
+            if playing {
+                html! {
+                    <svg key="pause" class="pp-play-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="6" y="4.5" width="4.2" height="15" rx="1.4" />
+                        <rect x="13.8" y="4.5" width="4.2" height="15" rx="1.4" />
+                    </svg>
+                }
+            } else {
+                html! {
+                    <svg key="play" class="pp-play-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M8 5.6v12.8c0 .9 1 1.5 1.8 1l10-6.4a1.2 1.2 0 0 0 0-2l-10-6.4C9 4.1 8 4.7 8 5.6z" />
+                    </svg>
+                }
+            }
+        };
+        let play_label = AttrValue::from(i18n.t(if playing { "episode.pause" } else { "episode.play" }).to_string());
+        let drag = sheet_drag.clone();
         let on_shownotes_click = {
             let show_modal = show_modal.clone();
 
@@ -1750,14 +1542,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             "bottom-0",
             "z-50",
             "w-full",
-            if audio_state.is_expanded {
-                "expanded"
-            } else {
-                ""
-            }
+            audio_state.is_expanded.then_some("expanded"),
+            playing.then_some("is-playing"),
         );
         let update_volume_closure = update_playback_volume.clone();
         let update_playback_closure = update_playback_speed.clone();
+        let is_video = audio_props.is_video;
         html! {
             <>
             {
@@ -1766,12 +1556,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 _ => html! {},
                 }
             }
-            <div class={audio_bar_class} ref={container_ref.clone()}
-                 style={if *is_dragging {
-                     format!("transform: translateY({}px); transition: none;", -*drag_offset)
-                 } else {
-                     String::new()
-                 }}>
+            <div class={audio_bar_class} ref={container_ref.clone()}>
                 // Blurred backdrop + overlay (only visible when expanded)
                 <div class="player-fs-backdrop"
                     style={format!("background-image: url('{}');", audio_props.artwork_url)}
@@ -1780,8 +1565,13 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                 // Fullscreen layout
                 <div class="player-fs">
-                    <div class="player-fs-topbar">
-                        <button onclick={title_click.clone()} class="player-btn" title="Collapse">
+                    <div class="player-fs-topbar pp-drag-zone"
+                        onpointerdown={drag.onpointerdown.clone()}
+                        onpointermove={drag.onpointermove.clone()}
+                        onpointerup={drag.onpointerup.clone()}
+                        onpointercancel={drag.onpointercancel.clone()}>
+                        <span class="pp-grabber" aria-hidden="true" />
+                        <button onclick={title_click.clone()} class="player-btn" title="Close player">
                             <i class="ph ph-caret-down" style="font-size:24px;"></i>
                         </button>
                         <span class="player-fs-eyebrow">{ &i18n_now_playing }</span>
@@ -1805,27 +1595,42 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     </div>
 
                     <div class="player-fs-main">
-                        // Album art — inline, not fixed-position
-                        <div class="player-fs-cover-slot">
                         {
-                            if audio_props.is_video {
+                            if is_video {
                                 html! {
-                                    <div ref={video_container_ref.clone()} id="video-player-mount"
-                                        style="width:100%;height:100%;background:#000;display:flex;align-items:center;justify-content:center;" />
+                                    <div class="player-fs-cover-slot player-fs-cover-slot--video">
+                                        <div ref={video_container_ref.clone()} id="video-player-mount"
+                                            style="width:100%;height:100%;background:#000;display:flex;align-items:center;justify-content:center;" />
+                                    </div>
                                 }
                             } else {
+                                // The artwork is a drag handle too; it eases back a touch while paused.
                                 html! {
-                                    <img
-                                        src={(*current_chapter_image).clone()}
-                                        alt="Album art"
-                                        class="player-fs-art"
-                                    />
+                                    <div class={classes!("player-fs-cover-slot", "pp-drag-zone", (!playing).then_some("is-paused"))}
+                                        onpointerdown={drag.onpointerdown.clone()}
+                                        onpointermove={drag.onpointermove.clone()}
+                                        onpointerup={drag.onpointerup.clone()}
+                                        onpointercancel={drag.onpointercancel.clone()}>
+                                        <img
+                                            src={(*current_chapter_image).clone()}
+                                            alt="Album art"
+                                            class="player-fs-art"
+                                            draggable="false"
+                                        />
+                                    </div>
                                 }
                             }
                         }
-                        </div>
 
                         <div class="player-fs-meta">
+                            if !podcast_name.is_empty() {
+                                if can_open_podcast {
+                                    <button type="button" class="player-fs-podcast pp-podcast-link" onclick={open_podcast}
+                                        title="Go to podcast">{ podcast_name.clone() }</button>
+                                } else {
+                                    <div class="player-fs-podcast">{ podcast_name.clone() }</div>
+                                }
+                            }
                             <div class="player-fs-title">{ &audio_props.title }</div>
                             { match &audio_state.episode_people {
                                 Some(people) if !people.is_empty() => {
@@ -1846,35 +1651,24 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             } }
                         </div>
 
-                        // Scrub bar
-                        <div class="player-fs-scrub-area">
-                            <span class="player-time">{(*current_time_formatted_local).clone()}</span>
-                            <input type="range"
-                                class="player-range"
-                                min="0.0"
-                                max={audio_props.duration_sec.to_string()}
-                                value={(*current_time_local).to_string()}
-                                oninput={update_time.clone()} />
-                            <span class="player-time">{formatted_duration.clone()}</span>
-                        </div>
+                        <SeekBar duration={audio_props.duration_sec} chapters={chapters.clone()}
+                            stacked={true} class={classes!("player-fs-seek")} />
 
                         // Transport controls
                         <div class="player-fs-controls">
                             <div class="player-fs-side-btns player-fs-side-btns--left">
-                                <button onclick={skip_backward.clone()} class="player-fs-ctrl" title="Back 15s">
-                                    <i class="ph ph-rewind"></i>
+                                <button onclick={skip_backward.clone()} class="player-fs-ctrl pp-skip" title="Back 15 seconds">
+                                    <i class="ph ph-arrow-counter-clockwise"></i>
+                                    <span>{ "15" }</span>
                                 </button>
                             </div>
-                            <button onclick={toggle_playback.clone()} class="player-fs-ctrl player-fs-ctrl-big" title="Play / Pause">
-                                { if audio_state.audio_playing.unwrap_or(false) {
-                                    html! { <i class="ph ph-pause-circle"></i> }
-                                } else {
-                                    html! { <i class="ph ph-play-circle"></i> }
-                                }}
+                            <button onclick={toggle_playback.clone()} class="player-fs-ctrl player-fs-ctrl-big pp-play" title={play_label.clone()} aria-label={play_label.clone()}>
+                                { play_icon(playing) }
                             </button>
                             <div class="player-fs-side-btns">
-                                <button onclick={skip_forward.clone()} class="player-fs-ctrl" title="Forward 30s">
-                                    <i class="ph ph-fast-forward"></i>
+                                <button onclick={skip_forward.clone()} class="player-fs-ctrl pp-skip" title="Forward 15 seconds">
+                                    <i class="ph ph-arrow-clockwise"></i>
+                                    <span>{ "15" }</span>
                                 </button>
                                 <button onclick={skip_episode.clone()} class="player-fs-ctrl" title="Next episode">
                                     <i class="ph ph-skip-forward"></i>
@@ -1882,15 +1676,16 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             </div>
                         </div>
 
-                        // Footer: speed, volume, shownotes
+                        // Footer: speed, volume, shownotes, chapters
                         <div class="player-fs-footer">
-                            <PlaybackControl
+                            <SpeedControl
                                 speed={audio_state.playback_speed}
-                                on_speed_change={update_playback_closure}
+                                on_change={update_playback_closure}
                             />
                             <VolumeControl
                                 volume={audio_state.audio_volume}
-                                on_volume_change={update_volume_closure}
+                                on_change={update_volume_closure.clone()}
+                                class={classes!("pp-hover-only")}
                             />
                             {
                                 if episode_in_db {
@@ -1902,16 +1697,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                             <i class="ph ph-article"></i>
                                         </button>
                                         {
-                                            if let Some(chapters) = &audio_state.episode_chapters {
-                                                if !chapters.is_empty() {
-                                                    html! {
-                                                        <button onclick={Callback::from(move |_: MouseEvent| {
-                                                            on_chapter_select.emit(());
-                                                        })} class="player-btn" title="Chapters">
-                                                            <i class="ph ph-list-numbers"></i>
-                                                        </button>
-                                                    }
-                                                } else { html! {} }
+                                            if !chapters.is_empty() {
+                                                html! {
+                                                    <button onclick={Callback::from(move |_: MouseEvent| {
+                                                        on_chapter_select.emit(());
+                                                    })} class="player-btn" title="Chapters">
+                                                        <i class="ph ph-list-numbers"></i>
+                                                    </button>
+                                                }
                                             } else { html! {} }
                                         }
                                         </>
@@ -1921,21 +1714,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         </div>
                     </div>
                 </div>
-                <div class="player-bar">
-                    <div class="mobile-progress-container">
-                        <div
-                            class="mobile-progress-bar"
-                            style={format!("width: {}%",
-                                (audio_state.current_time_seconds / audio_props.duration_sec * 100.0).clamp(0.0, 100.0)
-                            )}
-                        />
-                    </div>
-                    // Left: artwork circle + episode title
-                    <div class="player-left"
-                         onclick={title_click.clone()}
-                         ontouchstart={on_touch_start.clone()}
-                         ontouchmove={on_touch_move.clone()}
-                         ontouchend={on_touch_end.clone()}>
+                <div class="player-bar pp-drag-zone"
+                    onpointerdown={drag.onpointerdown.clone()}
+                    onpointermove={drag.onpointermove.clone()}
+                    onpointerup={drag.onpointerup.clone()}
+                    onpointercancel={drag.onpointercancel.clone()}>
+                    <ProgressLine />
+                    // Left: artwork + episode title
+                    <div class="player-left" onclick={title_click.clone()} title="Open player">
                         <div class="artwork-container">
                             <FallbackImage
                                 src={audio_props.artwork_url.clone()}
@@ -1946,43 +1732,42 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         </div>
                         <div class="player-info">
                             <div class="player-title">{ &audio_props.title }</div>
+                            if !podcast_name.is_empty() {
+                                <div class="player-subtitle">{ podcast_name.clone() }</div>
+                            }
                         </div>
                     </div>
                     // Center: transport controls + scrub bar
                     <div class="player-center">
                         <div class="player-buttons">
-                            <button onclick={skip_backward.clone()} class="player-btn" title="Skip back 15s">
-                                <i class="ph ph-rewind"></i>
+                            <button onclick={skip_backward.clone()} class="player-btn pp-skip-sm" title="Back 15 seconds">
+                                <i class="ph ph-arrow-counter-clockwise"></i>
                             </button>
-                            <button onclick={toggle_playback.clone()} class="player-btn play" title="Play / Pause">
-                                { if audio_state.audio_playing.unwrap_or(false) {
-                                    html! { <i class="ph ph-pause"></i> }
-                                } else {
-                                    html! { <i class="ph ph-play"></i> }
-                                }}
+                            <button onclick={toggle_playback.clone()} class="player-btn pp-play pp-play--sm" title={play_label.clone()} aria-label={play_label.clone()}>
+                                { play_icon(playing) }
                             </button>
-                            <button onclick={skip_forward.clone()} class="player-btn" title="Skip forward 15s">
-                                <i class="ph ph-fast-forward"></i>
+                            <button onclick={skip_forward.clone()} class="player-btn pp-skip-sm" title="Forward 15 seconds">
+                                <i class="ph ph-arrow-clockwise"></i>
                             </button>
                             <button onclick={skip_episode.clone()} class="player-btn" title="Next episode">
                                 <i class="ph ph-skip-forward"></i>
                             </button>
                         </div>
-                        <div class="player-scrub">
-                            <span class="player-time">{(*current_time_formatted_local).clone()}</span>
-                            <input type="range"
-                                class="player-range"
-                                min="0.0"
-                                max={audio_props.duration_sec.to_string()}
-                                value={(*current_time_local).to_string()}
-                                oninput={update_time.clone()} />
-                            <span class="player-time">{formatted_duration.clone()}</span>
-                        </div>
+                        <SeekBar duration={audio_props.duration_sec} chapters={chapters.clone()}
+                            class={classes!("player-bar-seek")} />
                     </div>
-                    // Right: expand button
+                    // Right: volume (pointer devices), play on phones, expand
                     <div class="player-right">
-                        <button onclick={title_click.clone()} class="player-btn" title="Expand player">
-                            <i class="ph ph-arrows-out"></i>
+                        <VolumeControl
+                            volume={audio_state.audio_volume}
+                            on_change={update_volume_closure}
+                            class={classes!("pp-hover-only", "pp-bar-volume")}
+                        />
+                        <button onclick={toggle_playback.clone()} class="player-btn pp-play pp-play--sm pp-phone-only" title={play_label.clone()} aria-label={play_label.clone()}>
+                            { play_icon(playing) }
+                        </button>
+                        <button onclick={title_click.clone()} class="player-btn pp-expand" title="Open player">
+                            <i class="ph ph-caret-up"></i>
                         </button>
                     </div>
                 </div>
@@ -2313,6 +2098,7 @@ pub fn on_play_click(
                             is_youtube: episode.is_youtube,
                             playing_episode_id: None,
                             playing_is_youtube: None,
+                            position: None,
                         };
 
                         let queue_api = Option::from(queue_api_key);

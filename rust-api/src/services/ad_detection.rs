@@ -14,6 +14,7 @@ use sqlx::Row;
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
 use tracing::{debug, warn};
+use crate::database::dialect::dialect_match;
 
 /// Episodes currently being ad-scanned, so two triggers (e.g. the post-transcription chain and a
 /// manual request) don't run the LLM twice for the same episode.
@@ -74,8 +75,8 @@ pub struct SkipSegmentView {
 
 /// Whether ad detection has already run for this episode (its own guard column).
 async fn already_detected(db_pool: &DatabasePool, episode_id: i32) -> bool {
-    match db_pool {
-        DatabasePool::Postgres(pool) => sqlx::query(
+    dialect_match!(db_pool, {
+        pg(pool) => q::query(
             r#"SELECT COALESCE(adsdetected, FALSE) AS d FROM "Episodes" WHERE episodeid = $1"#,
         )
         .bind(episode_id)
@@ -85,7 +86,7 @@ async fn already_detected(db_pool: &DatabasePool, episode_id: i32) -> bool {
         .flatten()
         .and_then(|r| r.try_get::<bool, _>("d").ok())
         .unwrap_or(false),
-        DatabasePool::MySQL(pool) => sqlx::query(
+        mysql(pool) => sqlx::query(
             "SELECT COALESCE(AdsDetected, 0) AS d FROM Episodes WHERE EpisodeID = ?",
         )
         .bind(episode_id)
@@ -96,7 +97,7 @@ async fn already_detected(db_pool: &DatabasePool, episode_id: i32) -> bool {
         .and_then(|r| r.try_get::<i8, _>("d").ok())
         .map(|d| d != 0)
         .unwrap_or(false),
-    }
+    })
 }
 
 /// Replace this episode's ad segments (scoped by Source so silence rows are untouched) and mark
@@ -106,16 +107,16 @@ async fn store_ad_segments(
     episode_id: i32,
     segments: &[(f64, f64)],
 ) -> Result<usize, String> {
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"DELETE FROM "EpisodeSkipSegments" WHERE episodeid = $1 AND source = $2"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"DELETE FROM "EpisodeSkipSegments" WHERE episodeid = $1 AND source = $2"#)
                 .bind(episode_id)
                 .bind(SOURCE_AD)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
             for (start, end) in segments {
-                sqlx::query(r#"
+                q::query(r#"
                     INSERT INTO "EpisodeSkipSegments" (episodeid, kind, starttime, endtime, source)
                     VALUES ($1, $2, $3, $4, $5)
                 "#)
@@ -128,13 +129,13 @@ async fn store_ad_segments(
                 .await
                 .map_err(|e| e.to_string())?;
             }
-            sqlx::query(r#"UPDATE "Episodes" SET adsdetected = TRUE WHERE episodeid = $1"#)
+            q::query(r#"UPDATE "Episodes" SET adsdetected = TRUE WHERE episodeid = $1"#)
                 .bind(episode_id)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("DELETE FROM EpisodeSkipSegments WHERE EpisodeID = ? AND Source = ?")
                 .bind(episode_id)
                 .bind(SOURCE_AD)
@@ -160,8 +161,8 @@ async fn store_ad_segments(
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(segments.len())
 }
 
@@ -177,21 +178,21 @@ pub async fn clear_ad_segments(db_pool: &DatabasePool, episode_id: i32) -> Resul
     if !was_detected {
         return Ok(false);
     }
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"DELETE FROM "EpisodeSkipSegments" WHERE episodeid = $1 AND source = $2"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"DELETE FROM "EpisodeSkipSegments" WHERE episodeid = $1 AND source = $2"#)
                 .bind(episode_id)
                 .bind(SOURCE_AD)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-            sqlx::query(r#"UPDATE "Episodes" SET adsdetected = FALSE WHERE episodeid = $1"#)
+            q::query(r#"UPDATE "Episodes" SET adsdetected = FALSE WHERE episodeid = $1"#)
                 .bind(episode_id)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("DELETE FROM EpisodeSkipSegments WHERE EpisodeID = ? AND Source = ?")
                 .bind(episode_id)
                 .bind(SOURCE_AD)
@@ -203,8 +204,8 @@ pub async fn clear_ad_segments(db_pool: &DatabasePool, episode_id: i32) -> Resul
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(true)
 }
 
@@ -314,8 +315,8 @@ pub fn maybe_detect_ads_after_transcript(db_pool: DatabasePool, episode_id: i32,
         return;
     }
     tokio::spawn(async move {
-        let any_opted_in = match db_pool {
-            DatabasePool::Postgres(ref pool) => sqlx::query(r#"
+        let any_opted_in = dialect_match!(db_pool, {
+            pg(ref pool) => q::query(r#"
                 SELECT EXISTS(
                     SELECT 1 FROM "Episodes" e JOIN "Podcasts" p ON e.feedid = p.feedid
                     WHERE e.episodeid = $1 AND COALESCE(p.autoaddetect, FALSE) = TRUE
@@ -328,7 +329,7 @@ pub fn maybe_detect_ads_after_transcript(db_pool: DatabasePool, episode_id: i32,
             .flatten()
             .and_then(|r| r.try_get::<bool, _>("any_on").ok())
             .unwrap_or(false),
-            DatabasePool::MySQL(ref pool) => sqlx::query("
+            mysql(ref pool) => sqlx::query("
                 SELECT EXISTS(
                     SELECT 1 FROM Episodes e JOIN Podcasts p ON e.FeedID = p.FeedID
                     WHERE e.EpisodeID = ? AND COALESCE(p.AutoAdDetect, 0) = 1
@@ -342,7 +343,7 @@ pub fn maybe_detect_ads_after_transcript(db_pool: DatabasePool, episode_id: i32,
             .and_then(|r| r.try_get::<i64, _>("any_on").ok())
             .map(|v| v != 0)
             .unwrap_or(false),
-        };
+        });
 
         if any_opted_in || redetect {
             if let Err(e) = detect_episode_ads(&db_pool, episode_id, false, None, |_| {}).await {
@@ -359,35 +360,35 @@ pub async fn set_auto_ad_detect(
     user_id: i32,
     enabled: bool,
 ) -> Result<(), String> {
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"UPDATE "Podcasts" SET autoaddetect = $1 WHERE podcastid = $2 AND userid = $3"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"UPDATE "Podcasts" SET autoaddetect = $1 WHERE podcastid = $2 AND userid = $3"#)
                 .bind(enabled).bind(podcast_id).bind(user_id)
                 .execute(pool).await.map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("UPDATE Podcasts SET AutoAdDetect = ? WHERE PodcastID = ? AND UserID = ?")
                 .bind(enabled).bind(podcast_id).bind(user_id)
                 .execute(pool).await.map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(())
 }
 
 /// Read a podcast's auto-ad-detect setting.
 pub async fn get_auto_ad_detect(db_pool: &DatabasePool, podcast_id: i32) -> Result<bool, String> {
-    let enabled = match db_pool {
-        DatabasePool::Postgres(pool) => sqlx::query(
+    let enabled = dialect_match!(db_pool, {
+        pg(pool) => q::query(
             r#"SELECT COALESCE(autoaddetect, FALSE) AS a FROM "Podcasts" WHERE podcastid = $1"#,
         )
         .bind(podcast_id).fetch_optional(pool).await.map_err(|e| e.to_string())?
         .and_then(|r| r.try_get::<bool, _>("a").ok()).unwrap_or(false),
-        DatabasePool::MySQL(pool) => sqlx::query(
+        mysql(pool) => sqlx::query(
             "SELECT COALESCE(AutoAdDetect, 0) AS a FROM Podcasts WHERE PodcastID = ?",
         )
         .bind(podcast_id).fetch_optional(pool).await.map_err(|e| e.to_string())?
         .and_then(|r| r.try_get::<i8, _>("a").ok()).map(|a| a != 0).unwrap_or(false),
-    };
+    });
     Ok(enabled)
 }
 
@@ -398,35 +399,35 @@ pub async fn set_ad_skip_auto_activate(
     user_id: i32,
     enabled: bool,
 ) -> Result<(), String> {
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"UPDATE "Podcasts" SET adskipautoactivate = $1 WHERE podcastid = $2 AND userid = $3"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"UPDATE "Podcasts" SET adskipautoactivate = $1 WHERE podcastid = $2 AND userid = $3"#)
                 .bind(enabled).bind(podcast_id).bind(user_id)
                 .execute(pool).await.map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("UPDATE Podcasts SET AdSkipAutoActivate = ? WHERE PodcastID = ? AND UserID = ?")
                 .bind(enabled).bind(podcast_id).bind(user_id)
                 .execute(pool).await.map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(())
 }
 
 /// Read a podcast's ad-skip auto-activate setting (default TRUE).
 pub async fn get_ad_skip_auto_activate(db_pool: &DatabasePool, podcast_id: i32) -> Result<bool, String> {
-    let enabled = match db_pool {
-        DatabasePool::Postgres(pool) => sqlx::query(
+    let enabled = dialect_match!(db_pool, {
+        pg(pool) => q::query(
             r#"SELECT COALESCE(adskipautoactivate, TRUE) AS a FROM "Podcasts" WHERE podcastid = $1"#,
         )
         .bind(podcast_id).fetch_optional(pool).await.map_err(|e| e.to_string())?
         .and_then(|r| r.try_get::<bool, _>("a").ok()).unwrap_or(true),
-        DatabasePool::MySQL(pool) => sqlx::query(
+        mysql(pool) => sqlx::query(
             "SELECT COALESCE(AdSkipAutoActivate, 1) AS a FROM Podcasts WHERE PodcastID = ?",
         )
         .bind(podcast_id).fetch_optional(pool).await.map_err(|e| e.to_string())?
         .and_then(|r| r.try_get::<i8, _>("a").ok()).map(|a| a != 0).unwrap_or(true),
-    };
+    });
     Ok(enabled)
 }
 
@@ -440,17 +441,17 @@ pub async fn set_ad_segment_review(
     if status != "confirmed" && status != "rejected" {
         return Err("status must be 'confirmed' or 'rejected'".to_string());
     }
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"
                 INSERT INTO "EpisodeAdSkipReview" (userid, segmentid, status)
                 VALUES ($1, $2, $3)
                 ON CONFLICT (userid, segmentid) DO UPDATE SET status = EXCLUDED.status, createdat = CURRENT_TIMESTAMP
             "#)
             .bind(user_id).bind(segment_id).bind(status)
             .execute(pool).await.map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("
                 INSERT INTO EpisodeAdSkipReview (UserID, SegmentID, Status)
                 VALUES (?, ?, ?)
@@ -458,8 +459,8 @@ pub async fn set_ad_segment_review(
             ")
             .bind(user_id).bind(segment_id).bind(status)
             .execute(pool).await.map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(())
 }
 
@@ -472,8 +473,8 @@ pub async fn get_episode_skip_segments_for_user(
     user_id: i32,
     episode_id: i32,
 ) -> Result<Vec<SkipSegmentView>, String> {
-    let rows: Vec<(i32, String, f64, f64, String, Option<String>, bool)> = match db_pool {
-        DatabasePool::Postgres(pool) => sqlx::query(r#"
+    let rows: Vec<(i32, String, f64, f64, String, Option<String>, bool)> = dialect_match!(db_pool, {
+        pg(pool) => q::query(r#"
             SELECT s.segmentid, s.kind, s.starttime, s.endtime, s.source,
                    r.status AS review_status,
                    COALESCE(p.adskipautoactivate, TRUE) AS auto_activate
@@ -497,7 +498,7 @@ pub async fn get_episode_skip_segments_for_user(
             r.try_get::<bool, _>("auto_activate").unwrap_or(true),
         ))
         .collect(),
-        DatabasePool::MySQL(pool) => sqlx::query(r#"
+        mysql(pool) => sqlx::query(r#"
             SELECT s.SegmentID AS segmentid, s.Kind AS kind, s.StartTime AS starttime,
                    s.EndTime AS endtime, s.Source AS source,
                    r.Status AS review_status,
@@ -522,7 +523,7 @@ pub async fn get_episode_skip_segments_for_user(
             r.try_get::<i8, _>("auto_activate").map(|v| v != 0).unwrap_or(true),
         ))
         .collect(),
-    };
+    });
 
     Ok(rows
         .into_iter()

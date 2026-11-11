@@ -364,6 +364,15 @@ class MobileSettingsService extends SettingsService {
   }
 
   @override
+  String get language => _sharedPreferences.getString('language') ?? '';
+
+  @override
+  set language(String value) {
+    _sharedPreferences.setString('language', value);
+    settingsNotifier.sink.add('language');
+  }
+
+  @override
   AppSettings? settings;
 
   @override

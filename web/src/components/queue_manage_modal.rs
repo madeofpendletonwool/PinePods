@@ -272,6 +272,7 @@ pub fn queue_manage_modal(props: &QueueManageModalProps) -> Html {
                         is_youtube,
                         playing_episode_id: None,
                         playing_is_youtube: None,
+                        position: None,
                     };
                     let _ = call_remove_queued_episode(&server, &api_key, &req).await;
                 }

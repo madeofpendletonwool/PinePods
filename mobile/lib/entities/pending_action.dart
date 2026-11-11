@@ -1,5 +1,7 @@
 // lib/entities/pending_action.dart
 
+import 'package:pinepods_mobile/l10n/L.dart';
+
 /// The kind of server interaction a [PendingAction] represents.
 ///
 /// These map 1:1 onto the relevant PinepodsService calls so the offline queue
@@ -88,19 +90,19 @@ class PendingAction {
     switch (type) {
       case PendingActionType.recordPosition:
         final p = position;
-        return p != null ? 'Save progress (${p.toInt()}s)' : 'Save progress';
+        return p != null ? L.current.action_save_progress_at(p.toInt()) : L.current.action_save_progress;
       case PendingActionType.markCompleted:
-        return 'Mark completed';
+        return L.current.action_mark_completed;
       case PendingActionType.markUncompleted:
-        return 'Mark not completed';
+        return L.current.action_mark_not_completed;
       case PendingActionType.saveEpisode:
-        return 'Save episode';
+        return L.current.action_save_episode;
       case PendingActionType.removeSaved:
-        return 'Remove saved episode';
+        return L.current.action_remove_saved;
       case PendingActionType.queue:
-        return 'Add to queue';
+        return L.current.action_add_to_queue;
       case PendingActionType.addHistory:
-        return 'Add to history';
+        return L.current.action_add_to_history;
     }
   }
 }

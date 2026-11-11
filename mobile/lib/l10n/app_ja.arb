@@ -1,0 +1,18 @@
+{
+  "@@locale": "ja",
+  "cancel_button_label": "キャンセル",
+  "cancel_option_label": "キャンセル",
+  "podcast_details_refreshed": "フィードからポッドキャストの情報を更新しました",
+  "title_contains": "タイトルに含む",
+  "save": "保存",
+  "unsubscribe": "登録解除",
+  "copy": "コピー",
+  "remove": "削除",
+  "refresh": "更新",
+  "search_failed": "検索に失敗しました",
+  "try_again": "再試行",
+  "server_url": "サーバー URL",
+  "username": "ユーザー名",
+  "password": "パスワード",
+  "sync_now": "今すぐ同期"
+}

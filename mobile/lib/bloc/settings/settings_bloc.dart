@@ -46,6 +46,7 @@ class SettingsBloc extends Bloc {
   final BehaviorSubject<int> _deleteDownloadsAfterDays = BehaviorSubject<int>();
   final BehaviorSubject<String> _playButtonStyle = BehaviorSubject<String>();
   final BehaviorSubject<bool> _artworkAccentColors = BehaviorSubject<bool>();
+  final BehaviorSubject<String> _language = BehaviorSubject<String>();
   var _currentSettings = AppSettings.sensibleDefaults();
 
   SettingsBloc(this._settingsService) {
@@ -120,6 +121,7 @@ class SettingsBloc extends Bloc {
       deleteDownloadsAfterDays: _settingsService.deleteDownloadsAfterDays,
       playButtonStyle: _settingsService.playButtonStyle,
       artworkAccentColors: _settingsService.artworkAccentColors,
+      language: _settingsService.language,
     );
 
     _settings.add(_currentSettings);
@@ -314,6 +316,12 @@ class SettingsBloc extends Bloc {
       _settings.add(_currentSettings);
       _settingsService.artworkAccentColors = value;
     });
+
+    _language.listen((value) {
+      _currentSettings = _currentSettings.copyWith(language: value);
+      _settings.add(_currentSettings);
+      _settingsService.language = value;
+    });
   }
 
   Stream<AppSettings> get settings => _settings.stream;
@@ -375,6 +383,8 @@ class SettingsBloc extends Bloc {
   void Function(String) get setPlayButtonStyle => _playButtonStyle.add;
 
   void Function(bool) get setArtworkAccentColors => _artworkAccentColors.add;
+
+  void Function(String) get setLanguage => _language.add;
 
   void Function(String) get setTheme => _theme.add;
 
@@ -463,6 +473,7 @@ class SettingsBloc extends Bloc {
     _deleteDownloadsAfterDays.close();
     _playButtonStyle.close();
     _artworkAccentColors.close();
+    _language.close();
     _settings.close();
   }
 }

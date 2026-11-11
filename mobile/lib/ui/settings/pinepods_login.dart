@@ -67,14 +67,14 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
         _usernameController.text.isEmpty ||
         _passwordController.text.isEmpty)) {
       setState(() {
-        _errorMessage = 'Please fill in all fields';
+        _errorMessage = L.of(context)!.fill_in_all_fields;
       });
       return;
     }
 
     if (_showMfaField && _mfaController.text.isEmpty) {
       setState(() {
-        _errorMessage = 'Please enter your MFA code';
+        _errorMessage = L.of(context)!.enter_mfa_code;
       });
       return;
     }
@@ -114,7 +114,7 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
           });
         } else {
           setState(() {
-            _errorMessage = result.errorMessage ?? 'MFA verification failed';
+            _errorMessage = result.errorMessage ?? L.of(context)!.mfa_verification_failed;
             _isLoading = false;
           });
         }
@@ -151,18 +151,18 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
             _tempMfaSessionToken = result.mfaSessionToken;
             _showMfaField = true;
             _isLoading = false;
-            _errorMessage = 'Please enter your MFA code';
+            _errorMessage = L.of(context)!.enter_mfa_code;
           });
         } else {
           setState(() {
-            _errorMessage = result.errorMessage ?? 'Login failed';
+            _errorMessage = result.errorMessage ?? L.of(context)!.login_failed;
             _isLoading = false;
           });
         }
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Error: ${e.toString()}';
+        _errorMessage = L.of(context)!.error_with_detail(e.toString());
         _isLoading = false;
       });
     }
@@ -207,16 +207,16 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SettingsDividerLabel(label: 'PinePods Server'),
+        SettingsDividerLabel(label: L.of(context)!.pinepods_server),
         const Divider(),
         if (_isLoggedIn) ...[
           // Show connected status
           ListTile(
-            title: const Text('PinePods Connection'),
+            title: Text(L.of(context)!.pinepods_connection),
             subtitle: Text(_connectedServer ?? ''),
             trailing: TextButton(
               onPressed: _logOut,
-              child: const Text('Log Out'),
+              child: Text(L.of(context)!.log_out),
             ),
           ),
         ] else ...[
@@ -228,23 +228,23 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
               children: [
                 TextField(
                   controller: _serverController,
-                  decoration: const InputDecoration(
-                    labelText: 'Server URL',
+                  decoration: InputDecoration(
+                    labelText: L.of(context)!.server_url,
                     hintText: 'https://your-pinepods-server.com',
                   ),
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: _usernameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Username',
+                  decoration: InputDecoration(
+                    labelText: L.of(context)!.username,
                   ),
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: _passwordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Password',
+                  decoration: InputDecoration(
+                    labelText: L.of(context)!.password,
                   ),
                   obscureText: true,
                   enabled: !_showMfaField,
@@ -255,12 +255,12 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
                   TextField(
                     controller: _mfaController,
                     decoration: InputDecoration(
-                      labelText: 'MFA Code',
-                      hintText: 'Enter 6-digit code',
+                      labelText: L.of(context)!.mfa_code,
+                      hintText: L.of(context)!.mfa_code_hint,
                       suffixIcon: IconButton(
                         icon: const Icon(PhosphorIconsRegular.x),
                         onPressed: _resetMfa,
-                        tooltip: 'Cancel MFA',
+                        tooltip: L.of(context)!.cancel_mfa,
                       ),
                     ),
                     keyboardType: TextInputType.number,
@@ -287,7 +287,7 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
                         strokeWidth: 2,
                       ),
                     )
-                        : Text(_showMfaField ? 'Verify MFA Code' : 'Connect'),
+                        : Text(_showMfaField ? 'Verify MFA Code' : L.of(context)!.connect),
                   ),
                 ),
               ],

@@ -67,7 +67,10 @@ impl TestApp {
         let pid = std::process::id();
         let slot = ((pid as u64).wrapping_mul(7919) + n as u64) % SLOTS + 1;
         let tag = format!("{pid:x}{n:x}");
-        let db_name = format!("pt_{tag}");
+        let db_name = match env.backend {
+            Backend::Sqlite => env::sqlite_dir().join(format!("pt_{tag}.db")).to_string_lossy().into_owned(),
+            _ => format!("pt_{tag}"),
+        };
         let id_base = slot as i64 * SLOT_WIDTH;
 
         clone_template(env, &db_name, id_base).await;
@@ -84,14 +87,15 @@ impl TestApp {
                 max_connections: 8,
                 min_connections: 0,
             },
-            redis: RedisConfig {
+            // SQLite installs default to the in-memory store; the others use Valkey.
+            redis: (env.backend != Backend::Sqlite).then(|| RedisConfig {
                 host: env.valkey_host.clone(),
                 port: env.valkey_port,
                 max_connections: 4,
                 password: None,
                 username: None,
                 database: None,
-            },
+            }),
             server: ServerConfig { port: 0, host: "127.0.0.1".into() },
             security: SecurityConfig {
                 api_key_header: "pinepods_api".into(),
@@ -135,10 +139,11 @@ impl TestApp {
         tweak(&mut config);
 
         let db_pool = DatabasePool::new(&config).await.expect("connect test database");
-        let redis_client = RedisClient::new(&config).await.expect("connect test valkey");
+        let redis_client = RedisClient::new(&config).await.expect("connect test valkey (or the in-memory store)");
         let instance_id: Arc<str> = Arc::from(format!("test-{tag}").as_str());
         let task_manager = Arc::new(pinepods_api::services::task_manager::TaskManager::new(
             redis_client.clone(),
+            db_pool.clone(),
             instance_id.clone(),
         ));
         let task_spawner = Arc::new(pinepods_api::services::tasks::TaskSpawner::new(
@@ -169,6 +174,12 @@ impl TestApp {
 
     pub fn backend(&self) -> Backend {
         self.env.backend
+    }
+
+    /// SQLite databases start from the baseline schema, so there is no older state to upgrade
+    /// from: tests of a migration's upgrade path skip themselves there.
+    pub fn upgrade_tests_unsupported(&self) -> bool {
+        self.env.backend == Backend::Sqlite
     }
 
     pub fn db(&self) -> &DatabasePool {
@@ -316,6 +327,11 @@ impl Drop for TestApp {
                         let mut c = env::admin_mysql(env).await;
                         let _ = c.execute(sqlx::AssertSqlSafe(format!("DROP DATABASE IF EXISTS `{name}`"))).await;
                     }
+                    Backend::Sqlite => {
+                        for suffix in ["", "-wal", "-shm"] {
+                            let _ = std::fs::remove_file(format!("{name}{suffix}"));
+                        }
+                    }
                 }
             });
         })
@@ -340,6 +356,19 @@ pub fn basic(username: &str, password: &str) -> String {
 
 async fn clone_template(env: &TestEnv, db_name: &str, id_base: i64) {
     match env.backend {
+        Backend::Sqlite => {
+            std::fs::copy(&env.template, db_name).expect("copy SQLite template");
+            let mut c = sqlx::SqliteConnection::connect(&format!("sqlite://{db_name}")).await.unwrap();
+            c.execute(sqlx::AssertSqlSafe(format!(
+                "UPDATE sqlite_sequence SET seq = {id_base};
+                 INSERT INTO sqlite_sequence (name, seq)
+                   SELECT name, {id_base} FROM sqlite_master
+                   WHERE type = 'table' AND sql LIKE '%AUTOINCREMENT%' AND name NOT IN (SELECT name FROM sqlite_sequence)"
+            )))
+            .await
+            .expect("offset id sequences");
+            c.close().await.unwrap();
+        }
         Backend::Postgres => {
             let mut admin = env::admin_pg(env).await;
             let create = format!(r#"CREATE DATABASE "{db_name}" TEMPLATE "{}""#, env.template);

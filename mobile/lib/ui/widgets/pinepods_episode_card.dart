@@ -14,6 +14,7 @@ import 'package:pinepods_mobile/ui/utils/live_progress.dart';
 import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class PinepodsEpisodeCard extends StatefulWidget {
   final PinepodsEpisode episode;
@@ -207,7 +208,7 @@ class _PinepodsEpisodeCardState extends State<PinepodsEpisodeCard> {
     final remaining = live != null && live.length.inSeconds > 0
         ? live.length.inSeconds - live.position.inSeconds
         : total - (widget.episode.listenDuration ?? 0);
-    return '${humanDuration(remaining)} left';
+    return L.of(context)!.time_left(humanDuration(remaining));
   }
 
   Future<void> _onButtonTap() async {
@@ -427,7 +428,7 @@ class _PinepodsEpisodeCardState extends State<PinepodsEpisodeCard> {
         : glyph;
 
     return Tooltip(
-      message: _isPlaying ? 'Pause' : 'Play',
+      message: _isPlaying ? 'Pause' : L.of(context)!.play,
       child: Material(
         color: fill ?? Colors.transparent,
         shape: const CircleBorder(),

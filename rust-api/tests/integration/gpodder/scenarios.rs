@@ -146,14 +146,19 @@ async fn big_first_sync_is_fast_and_fetches_nothing_inline() {
     conformance("big first sync", async {
         let s = GpodderScene::start().await;
         let phone = s.device("phone").await;
-        let feeds: Vec<String> = (0..500).map(|i| s.app.fixtures().url(&format!("big/{i}.xml"))).collect();
+        // Each feed answers after 10s, so fetching even one while answering would blow the 2s
+        // budget. The background imports the upload queues may start fetching straight away.
+        let feeds: Vec<String> = (0..500)
+            .map(|i| {
+                let xml = Feed::with_episodes(&format!("Big {i}"), 1).to_xml();
+                s.app.fixtures().serve(&format!("big/{i}.xml"), Fixture::new("application/rss+xml", xml).delay(Duration::from_secs(10)))
+            })
+            .collect();
         let refs: Vec<&str> = feeds.iter().map(String::as_str).collect();
 
         let r = phone.upload_subscription_changes(&refs, &[]).await;
         r.assert_ok();
-        assert!(r.elapsed < Duration::from_secs(2), "500-subscription upload took {:?}", r.elapsed);
-        let fetched: usize = (0..500).map(|i| s.app.fixtures().hits(&format!("big/{i}.xml")).len()).sum();
-        assert_eq!(fetched, 0, "the server fetched {fetched} feeds while answering the upload");
+        assert!(r.elapsed < Duration::from_secs(2), "500-subscription upload took {:?}, so feeds were fetched while answering", r.elapsed);
 
         let actions: Vec<_> = (0..5000)
             .map(|i| play_action(&feeds[i % 500], &format!("{}#ep{i}", feeds[i % 500]), Utc::now(), 0, 60, 1800))

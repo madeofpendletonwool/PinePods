@@ -46,4 +46,18 @@ void main() {
     expect(CarPlayService.toPinepodsEpisode(buildEpisode(guid: 'https://feed/ep')), isNull);
     expect(CarPlayService.toPinepodsEpisode(buildEpisode(guid: 'pinepods_x')), isNull);
   });
+
+  test('Up Next is the server queue minus the playing and finished episodes', () {
+    final queue = [
+      buildPinepodsEpisode(episodeId: 1),
+      buildPinepodsEpisode(episodeId: 2),
+      buildPinepodsEpisode(episodeId: 3, completed: true),
+      buildPinepodsEpisode(episodeId: 4),
+      buildPinepodsEpisode(episodeId: 5),
+    ];
+
+    expect(CarPlayService.upNextFrom(queue, playingEpisodeId: 2).map((e) => e.episodeId), [1, 4, 5]);
+    expect(CarPlayService.upNextFrom(queue, playingEpisodeId: 2, limit: 2).map((e) => e.episodeId), [1, 4]);
+    expect(CarPlayService.upNextFrom(queue).map((e) => e.episodeId), [1, 2, 4, 5]);
+  });
 }

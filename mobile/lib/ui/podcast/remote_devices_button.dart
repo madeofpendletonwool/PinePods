@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/services/nowplaying/nowplaying_service.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 String _fmtTime(double secs) {
   if (secs.isNaN || secs.isInfinite || secs < 0) return '00:00';
@@ -40,7 +41,7 @@ IconData _deviceIcon(String deviceType) {
 
 String _deviceLabel(NowPlayingDevice device) => device.deviceName.isNotEmpty
     ? device.deviceName
-    : (device.deviceType.isNotEmpty ? device.deviceType : 'Device');
+    : (device.deviceType.isNotEmpty ? device.deviceType : L.current.device);
 
 /// "Play on ▸": pick another device and start [episodeId] there (it resumes
 /// from the server-stored position). No-op when the service isn't available.
@@ -68,7 +69,7 @@ Future<void> showPlayOnDevicePicker(
   if (target == null) return;
   service.playOnDevice(target.deviceId, episodeId, isYoutube);
   messenger?.showSnackBar(
-    SnackBar(content: Text('Playing on ${_deviceLabel(target)}')),
+    SnackBar(content: Text(L.current.playing_on_device(_deviceLabel(target)))),
   );
 }
 
@@ -84,14 +85,14 @@ Widget _playOnList(BuildContext context, List<NowPlayingDevice> deviceList) {
           children: [
             const Icon(PhosphorIconsRegular.screencast),
             const SizedBox(width: 8),
-            Text('Play on…', style: Theme.of(context).textTheme.titleLarge),
+            Text(L.of(context)!.play_on, style: Theme.of(context).textTheme.titleLarge),
           ],
         ),
       ),
       if (targets.isEmpty)
-        const Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('No other devices are online.'),
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(L.of(context)!.no_other_devices_online),
         ),
       for (final d in targets)
         ListTile(
@@ -130,7 +131,7 @@ class RemoteDevicesButton extends StatelessWidget {
           alignment: Alignment.center,
           children: [
             IconButton(
-              tooltip: 'Other devices',
+              tooltip: L.of(context)!.other_devices,
               icon: Icon(PhosphorIconsRegular.devices, color: iconColor),
               onPressed: () => _showDevicePanel(context, service),
             ),
@@ -198,7 +199,7 @@ class _RemoteDevicesSheet extends StatelessWidget {
                   const Icon(PhosphorIconsRegular.devices),
                   const SizedBox(width: 8),
                   Text(
-                    'Other devices',
+                    L.of(context)!.other_devices,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ],
@@ -224,10 +225,10 @@ class _RemoteDevicesSheet extends StatelessWidget {
                 valueListenable: service.devices,
                 builder: (context, deviceList, _) {
                   if (deviceList.isEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.all(24),
+                    return Padding(
+                      padding: const EdgeInsets.all(24),
                       child: Text(
-                        'No other devices are online.',
+                        L.of(context)!.no_other_devices_online,
                         textAlign: TextAlign.center,
                       ),
                     );
@@ -322,7 +323,7 @@ class _DeviceRow extends StatelessWidget {
               children: [
                 if (device.supports('skip_back'))
                   IconButton(
-                    tooltip: 'Skip back 15s',
+                    tooltip: L.of(context)!.skip_back_15s,
                     icon: const Icon(PhosphorIconsRegular.arrowCounterClockwise),
                     onPressed: () => service.sendCommand(
                       device.deviceId,
@@ -332,7 +333,7 @@ class _DeviceRow extends StatelessWidget {
                   ),
                 if (device.supports(device.playing ? 'pause' : 'play'))
                   IconButton(
-                    tooltip: device.playing ? 'Pause' : 'Play',
+                    tooltip: device.playing ? 'Pause' : L.of(context)!.play,
                     icon: Icon(device.playing ? PhosphorIconsFill.pause : PhosphorIconsFill.play),
                     onPressed: () => service.sendCommand(
                       device.deviceId,
@@ -341,7 +342,7 @@ class _DeviceRow extends StatelessWidget {
                   ),
                 if (device.supports('skip_forward'))
                   IconButton(
-                    tooltip: 'Skip forward 30s',
+                    tooltip: L.of(context)!.skip_forward_30s,
                     icon: const Icon(PhosphorIconsRegular.clockClockwise),
                     onPressed: () => service.sendCommand(
                       device.deviceId,
@@ -353,7 +354,7 @@ class _DeviceRow extends StatelessWidget {
                 if (canSend) _sendHereButton(context, label),
                 TextButton.icon(
                   icon: const Icon(PhosphorIconsRegular.playCircle, size: 18),
-                  label: const Text('Play here'),
+                  label: Text(L.of(context)!.play_here),
                   onPressed: () {
                     service.playHere(device);
                     Navigator.of(context).pop();
@@ -372,12 +373,12 @@ class _DeviceRow extends StatelessWidget {
   Widget _sendHereButton(BuildContext context, String label) {
     return TextButton.icon(
       icon: const Icon(PhosphorIconsRegular.screencast, size: 18),
-      label: Text('Send to $label'),
+      label: Text(L.of(context)!.send_to_device(label)),
       onPressed: () {
         if (service.sendPlaybackTo(device.deviceId)) {
           final messenger = ScaffoldMessenger.maybeOf(context);
           Navigator.of(context).pop();
-          messenger?.showSnackBar(SnackBar(content: Text('Sent to $label')));
+          messenger?.showSnackBar(SnackBar(content: Text(L.of(context)!.sent_to_device(label))));
         }
       },
     );

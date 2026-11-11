@@ -76,7 +76,12 @@
     "no_chapters_available": "Ingen kapitler er tilgængelige",
     "now_playing": "Afspilles nu",
     "shownotes": "Shownoter",
-    "shownotes_unavailable": "Shownoter (utilgængelig)"
+    "shownotes_unavailable": "Shownoter (utilgængelig)",
+    "mute": "",
+    "unmute": "",
+    "speed": "",
+    "playback_speed": "",
+    "volume": ""
   },
   "auth": {
     "account_created_success": "Bruger blev oprettet succesfuldt! Du kan nu logge ind.",
@@ -219,10 +224,7 @@
     "failed_to_add": "Tilføjelse af lokal podcast fejlede: ",
     "podcast_added": "Lokal podcast blev tilføjet",
     "podcast_name_placeholder": "Podcastnavn",
-    "refresh_button": "Genindlæs mappe",
-    "refresh_description": "Læg nye lydfiler i mappen og tryk Opdater, for at tilføje dem som episoder.",
     "title": "Tilføj Lokal Podcast",
-    "refresh": "Opdater",
     "browse": "Udforsk",
     "select_a_folder": "Vælg en mappe",
     "no_subfolders": "Ingen undermapper her.",
@@ -416,13 +418,21 @@
     "ad_accuracy_mismatch": "",
     "ad_accuracy_streaming": "",
     "ad_skip_this": "",
-    "ad_keep_this": ""
+    "ad_keep_this": "",
+    "transcript_find": "",
+    "transcript_find_none": "",
+    "transcript_find_prev": "",
+    "transcript_find_next": "",
+    "transcript_jumped_to": "",
+    "transcript_play_from_here": "",
+    "transcript_jump_here": ""
   },
   "failed_to_find_podcast_metadata": "",
   "episode_list_item": {
     "completed": ""
   },
   "episodes_layout": {
+    "transcribe": "",
     "add": "",
     "add_remove_podcast": "",
     "auto_play_next_episode": "",
@@ -1476,7 +1486,26 @@
     "mark_complete": "",
     "save": "",
     "queue": "",
-    "download": ""
+    "download": "",
+    "transcripts_toggle": "",
+    "transcripts_toggle_hint": "",
+    "transcripts_heading": "",
+    "transcripts_one_episode": "",
+    "transcripts_episodes": "",
+    "transcripts_failed": "",
+    "transcripts_none_yet": "",
+    "transcripts_none_yet_body": "",
+    "transcripts_no_match": "",
+    "transcripts_searched": "",
+    "transcripts_more_episodes": "",
+    "transcripts_source_ai": "",
+    "transcripts_source_feed": "",
+    "transcripts_one_mention": "",
+    "transcripts_mentions": "",
+    "transcripts_play_from": "",
+    "transcripts_more_moments": "",
+    "transcripts_fewer_moments": "",
+    "no_title_matches": ""
   },
   "search_new": {
     "search_new": ""
@@ -1702,6 +1731,8 @@
     "youtube_channels": ""
   },
   "collections": {
+    "add_episodes_count": "",
+    "bulk_added": "",
     "collections": "",
     "add_to_collection": "",
     "new_collection": "",

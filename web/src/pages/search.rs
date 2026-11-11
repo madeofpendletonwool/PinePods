@@ -3,6 +3,7 @@ use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, FilterState, NotificationState, UIState};
 use crate::components::episode_list_view::EpisodeListView;
+use crate::components::transcript_hits::TranscriptHits;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::requests::episode::Episode;
 use crate::requests::pod_req::{
@@ -97,6 +98,21 @@ fn load_recents_from_storage() -> Vec<String> {
         .unwrap_or_default()
 }
 
+const TRANSCRIPTS_KEY: &str = "pp_search_transcripts";
+
+fn load_transcripts_pref() -> bool {
+    window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .and_then(|s| s.get_item(TRANSCRIPTS_KEY).ok().flatten())
+        .is_some_and(|v| v == "1")
+}
+
+fn save_transcripts_pref(on: bool) {
+    if let Some(s) = window().and_then(|w| w.local_storage().ok().flatten()) {
+        let _ = s.set_item(TRANSCRIPTS_KEY, if on { "1" } else { "0" });
+    }
+}
+
 fn save_recents_to_storage(recents: &[String]) {
     if let Some(s) = window().and_then(|w| w.local_storage().ok().flatten()) {
         let _ = s.set_item(
@@ -149,6 +165,9 @@ pub fn search(_props: &SearchProps) -> Html {
     let selected_categories = use_state(|| Vec::<String>::new());
     let is_selecting = use_state(|| false);
     let selected_episodes_set = use_state(|| HashSet::<i32>::new());
+    // Also search inside transcripts; remembered per browser.
+    let include_transcripts = use_state(load_transcripts_pref);
+    let transcript_total = use_state(|| Option::<i64>::None);
 
     // BrowserHistory for podcast tile clicks
     let history = BrowserHistory::new();
@@ -755,6 +774,9 @@ pub fn search(_props: &SearchProps) -> Html {
     sel_ids.extend(sel_cur.iter().filter(|id| !visible_ep_ids.contains(id)).cloned().collect::<Vec<_>>());
     let sel_user_id = user_id.unwrap_or(0);
 
+    // Transcript hits are on screen, so an empty title/show-notes result isn't "no results".
+    let transcripts_shown = *include_transcripts && !(*current_term).is_empty() && (*transcript_total).unwrap_or(0) > 0;
+
     // ── HTML ─────────────────────────────────────────────────────────────────
     html! {
         <>
@@ -800,6 +822,23 @@ pub fn search(_props: &SearchProps) -> Html {
 
                 <div class="sp-chips">
                     { render_chips(&set_filter) }
+                    <span class="sp-chip-sep" aria-hidden="true"></span>
+                    <button
+                        class={classes!("sp-chip", "sp-chip-transcripts", (*include_transcripts).then_some("is-active"))}
+                        aria-pressed={(*include_transcripts).to_string()}
+                        title={i18n.t("search.transcripts_toggle_hint")}
+                        onclick={{
+                            let include_transcripts = include_transcripts.clone();
+                            Callback::from(move |_: MouseEvent| {
+                                let on = !*include_transcripts;
+                                save_transcripts_pref(on);
+                                include_transcripts.set(on);
+                            })
+                        }}
+                    >
+                        <i class={if *include_transcripts { "ph-fill ph-check-square" } else { "ph ph-square" }}></i>
+                        <span>{ i18n.t("search.transcripts_toggle") }</span>
+                    </button>
                     if is_collapsed && !visible_empty {
                         <button
                             class={classes!("sp-chip", (*is_selecting).then_some("is-active"))}
@@ -976,7 +1015,18 @@ pub fn search(_props: &SearchProps) -> Html {
                 } else {
                     // ── Results view ──────────────────────────────────────
 
+                    if *include_transcripts && !(*current_term).is_empty() {
+                        <TranscriptHits
+                            term={(*current_term).clone()}
+                            on_total={{
+                                let transcript_total = transcript_total.clone();
+                                Callback::from(move |t: Option<i64>| transcript_total.set(t))
+                            }}
+                        />
+                    }
+
                     // Results count header
+                    if !(visible_empty && transcripts_shown) {
                     <div class="sp-sec-head" style="margin-top: 8px;">
                         <h3 style="text-transform: none; letter-spacing: 0;">
                             <span class="sp-results-count">
@@ -1003,6 +1053,7 @@ pub fn search(_props: &SearchProps) -> Html {
                             </a>
                         }
                     </div>
+                    }
 
                     // Smart selection row
                     if *is_selecting && !visible_empty {
@@ -1043,6 +1094,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                                     episode_ids: sel_ids,
                                                     user_id: sel_user_id,
                                                     is_youtube: None,
+                                                    position: None,
                                                 };
                                                 match call_bulk_mark_episodes_completed(
                                                     &server_name.unwrap_or_default(),
@@ -1081,6 +1133,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                                     episode_ids: sel_ids,
                                                     user_id: sel_user_id,
                                                     is_youtube: None,
+                                                    position: None,
                                                 };
                                                 match call_bulk_save_episodes(
                                                     &server_name.unwrap_or_default(),
@@ -1119,6 +1172,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                                     episode_ids: sel_ids,
                                                     user_id: sel_user_id,
                                                     is_youtube: None,
+                                                    position: None,
                                                 };
                                                 match call_bulk_queue_episodes(
                                                     &server_name.unwrap_or_default(),
@@ -1157,6 +1211,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                                     episode_ids: sel_ids,
                                                     user_id: sel_user_id,
                                                     is_youtube: None,
+                                                    position: None,
                                                 };
                                                 match call_bulk_download_episodes(
                                                     &server_name.unwrap_or_default(),
@@ -1183,8 +1238,10 @@ pub fn search(_props: &SearchProps) -> Html {
                         </div>
                     }
 
-                    // No results empty state
-                    if visible_empty && !*loading_more {
+                    // No results empty state (a quiet line when transcript hits are shown above)
+                    if visible_empty && !*loading_more && transcripts_shown {
+                        <p class="sp-no-title-matches">{ i18n.t("search.no_title_matches") }</p>
+                    } else if visible_empty && !*loading_more {
                         <div class="sp-noresults">
                             <i class="ph ph-binoculars"></i>
                             <h4>{ i18n.t("search.no_matches_header") }</h4>

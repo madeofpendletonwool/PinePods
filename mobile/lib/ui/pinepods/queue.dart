@@ -15,6 +15,7 @@ import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class PinepodsQueue extends StatefulWidget {
   const PinepodsQueue({Key? key}) : super(key: key);
@@ -53,7 +54,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
           settings.pinepodsApiKey == null || 
           settings.pinepodsUserId == null) {
         setState(() {
-          _errorMessage = 'Not connected to PinePods server. Please login first.';
+          _errorMessage = L.of(context)!.not_connected_please_login;
           _isLoading = false;
         });
         return;
@@ -82,7 +83,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
       await LocalDownloadUtils.loadLocalDownloadStatuses(context, enrichedEpisodes);
     } catch (e) {
       setState(() {
-        _errorMessage = 'Failed to load queued episodes: ${e.toString()}';
+        _errorMessage = L.of(context)!.failed_to_load_queue_error(e.toString());
         _isLoading = false;
       });
     }
@@ -130,7 +131,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
       final userId = settings.pinepodsUserId;
 
       if (userId == null) {
-        _showSnackBar('Not logged in', Colors.red);
+        _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
         // Reload to restore original order if API call fails
         await _loadQueuedEpisodes();
         return;
@@ -140,14 +141,14 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
       final success = await _pinepodsService.reorderQueue(userId, reorderItems);
 
       if (!success) {
-        _showSnackBar('Failed to update queue order', Colors.red);
+        _showSnackBar(L.current.failed_to_update_queue_order, Colors.red);
         // Reload to restore original order if API call fails
         await _loadQueuedEpisodes();
       } else {
         _syncQueueDownloads();
       }
     } catch (e) {
-      _showSnackBar('Error updating queue order: $e', Colors.red);
+      _showSnackBar(L.current.error_updating_queue_order(e.toString()), Colors.red);
       // Reload to restore original order if API call fails
       await _loadQueuedEpisodes();
     }
@@ -157,8 +158,8 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     
     if (_audioService == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Audio service not available'),
+        SnackBar(
+          content: Text(L.of(context)!.audio_service_not_available),
           backgroundColor: Colors.red,
         ),
       );
@@ -173,7 +174,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to play episode: ${e.toString()}'),
+          content: Text(L.current.failed_to_play_episode(e.toString())),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 3),
         ),
@@ -249,9 +250,9 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     final success = await LocalDownloadUtils.localDownloadEpisode(context, episode);
     
     if (success) {
-      LocalDownloadUtils.showSnackBar(context, 'Episode download started', Colors.green);
+      LocalDownloadUtils.showSnackBar(context, L.current.episode_download_started, Colors.green);
     } else {
-      LocalDownloadUtils.showSnackBar(context, 'Failed to start download', Colors.red);
+      LocalDownloadUtils.showSnackBar(context, L.current.failed_to_start_download, Colors.red);
     }
   }
   
@@ -263,11 +264,11 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     if (deletedCount > 0) {
       LocalDownloadUtils.showSnackBar(
         context, 
-        'Deleted $deletedCount local download${deletedCount > 1 ? 's' : ''}', 
+        L.current.deleted_local_downloads(deletedCount), 
         Colors.orange
       );
     } else {
-      LocalDownloadUtils.showSnackBar(context, 'Local download not found', Colors.red);
+      LocalDownloadUtils.showSnackBar(context, L.current.local_download_not_found, Colors.red);
     }
   }
 
@@ -284,7 +285,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -301,12 +302,12 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(_episodes[episodeIndex], saved: true);
         });
-        _showSnackBar('Episode saved!', Colors.green);
+        _showSnackBar(L.current.episode_saved, Colors.green);
       } else {
-        _showSnackBar('Failed to save episode', Colors.red);
+        _showSnackBar(L.current.failed_to_save_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error saving episode: $e', Colors.red);
+      _showSnackBar(L.current.error_saving_episode(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -319,7 +320,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -336,12 +337,12 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(_episodes[episodeIndex], saved: false);
         });
-        _showSnackBar('Removed from saved episodes', Colors.orange);
+        _showSnackBar(L.current.removed_from_saved_episodes, Colors.orange);
       } else {
-        _showSnackBar('Failed to remove saved episode', Colors.red);
+        _showSnackBar(L.current.failed_to_remove_saved_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error removing saved episode: $e', Colors.red);
+      _showSnackBar(L.current.error_removing_saved_episode(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -354,7 +355,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -371,12 +372,12 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: true);
         });
-        _showSnackBar('Episode download queued!', Colors.green);
+        _showSnackBar(L.current.episode_download_queued, Colors.green);
       } else {
-        _showSnackBar('Failed to queue download', Colors.red);
+        _showSnackBar(L.current.failed_to_queue_download, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error downloading episode: $e', Colors.red);
+      _showSnackBar(L.current.error_downloading_episode(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -389,7 +390,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -406,12 +407,12 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: false);
         });
-        _showSnackBar('Episode deleted from server', Colors.orange);
+        _showSnackBar(L.current.episode_deleted_from_server, Colors.orange);
       } else {
-        _showSnackBar('Failed to delete episode', Colors.red);
+        _showSnackBar(L.current.failed_to_delete_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error deleting episode: $e', Colors.red);
+      _showSnackBar(L.current.error_deleting_episode(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -424,7 +425,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -443,7 +444,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
           setState(() {
             _episodes.removeAt(episodeIndex);
           });
-          _showSnackBar('Removed from queue', Colors.orange);
+          _showSnackBar(L.current.removed_from_queue, Colors.orange);
           _syncQueueDownloads();
         }
       } else {
@@ -458,16 +459,16 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: true);
           });
-          _showSnackBar('Added to queue!', Colors.green);
+          _showSnackBar(L.current.added_to_queue_excl, Colors.green);
           _syncQueueDownloads();
         }
       }
 
       if (!success) {
-        _showSnackBar('Failed to update queue', Colors.red);
+        _showSnackBar(L.current.failed_to_update_queue, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error updating queue: $e', Colors.red);
+      _showSnackBar(L.current.error_updating_queue(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -480,7 +481,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -498,7 +499,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: false);
           });
-          _showSnackBar('Marked as incomplete', Colors.orange);
+          _showSnackBar(L.current.marked_as_incomplete, Colors.orange);
         }
       } else {
         success = await _pinepodsService.markEpisodeCompleted(
@@ -510,15 +511,15 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: true);
           });
-          _showSnackBar('Marked as complete!', Colors.green);
+          _showSnackBar(L.current.marked_as_complete, Colors.green);
         }
       }
 
       if (!success) {
-        _showSnackBar('Failed to update completion status', Colors.red);
+        _showSnackBar(L.current.failed_to_update_completion, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error updating completion: $e', Colors.red);
+      _showSnackBar(L.current.error_updating_completion(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -580,22 +581,22 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
         child: Center(
           child: SoftEmptyState(
             icon: PhosphorIconsRegular.warningCircle,
-            title: 'Couldn\'t load the queue',
+            title: L.of(context)!.couldnt_load_queue,
             body: _errorMessage,
-            action: FilledButton.tonal(onPressed: _refresh, child: const Text('Retry')),
+            action: FilledButton.tonal(onPressed: _refresh, child: Text(L.of(context)!.retry)),
           ),
         ),
       );
     }
 
     if (_episodes.isEmpty) {
-      return const SliverFillRemaining(
+      return SliverFillRemaining(
         hasScrollBody: false,
         child: Center(
           child: SoftEmptyState(
             icon: PhosphorIconsRegular.queue,
-            title: 'Your queue is empty',
-            body: 'Episodes you queue will appear here',
+            title: L.of(context)!.queue_empty,
+            body: L.of(context)!.queue_empty_body,
           ),
         ),
       );
@@ -609,11 +610,11 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
       slivers: [
         SliverToBoxAdapter(
           child: SoftSectionHeader(
-            title: 'Queue',
+            title: L.of(context)!.queue,
             count: _episodes.length,
             trailing: [
               IconButton(
-                tooltip: 'Refresh',
+                tooltip: L.of(context)!.refresh,
                 icon: const Icon(PhosphorIconsRegular.arrowClockwise),
                 onPressed: _refresh,
               ),

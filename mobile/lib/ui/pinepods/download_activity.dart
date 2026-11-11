@@ -8,6 +8,7 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class DownloadActivity extends StatefulWidget {
   const DownloadActivity({super.key});
@@ -58,7 +59,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
         _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
         serverTasks = await _pinepodsService.getDownloadActivity(settings.pinepodsUserId!);
       } catch (e) {
-        serverError = 'Failed to load server download activity.';
+        serverError = L.current.failed_to_load_server_download_activity;
       }
     }
 
@@ -97,9 +98,9 @@ class _DownloadActivityState extends State<DownloadActivity> {
         status: _statusForState(e.downloadState),
         progress: (e.downloadPercentage ?? 0).toDouble(),
         message: e.downloadState == DownloadState.failed
-            ? 'Local download failed'
+            ? L.of(context)!.local_download_failed
             : e.downloadState == DownloadState.cancelled
-                ? 'Download cancelled'
+                ? L.of(context)!.download_cancelled
                 : null,
         createdAt: updated,
         updatedAt: updated,
@@ -137,7 +138,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
       if (episode == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Episode no longer available'), duration: Duration(seconds: 2)),
+          SnackBar(content: Text(L.of(context)!.episode_no_longer_available), duration: const Duration(seconds: 2)),
         );
         return;
       }
@@ -145,7 +146,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? 'Local download restarted' : 'Failed to restart download'),
+          content: Text(success ? L.of(context)!.local_download_restarted : L.of(context)!.failed_to_restart_download),
           backgroundColor: success ? Colors.green : Colors.red,
           duration: const Duration(seconds: 2),
         ),
@@ -171,7 +172,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(success ? 'Download queued' : 'Failed to queue download'),
+        content: Text(success ? 'Download queued' : L.of(context)!.failed_to_queue_download),
         backgroundColor: success ? Colors.green : Colors.red,
         duration: const Duration(seconds: 2),
       ),
@@ -183,9 +184,9 @@ class _DownloadActivityState extends State<DownloadActivity> {
   String _relativeTime(DateTime dt) {
     final diff = DateTime.now().difference(dt);
     if (diff.inMinutes < 1) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
+    if (diff.inMinutes < 60) return L.of(context)!.minutes_ago_short(diff.inMinutes);
+    if (diff.inHours < 24) return L.of(context)!.hours_ago_short(diff.inHours);
+    return L.of(context)!.days_ago_short(diff.inDays);
   }
 
   @override
@@ -194,12 +195,12 @@ class _DownloadActivityState extends State<DownloadActivity> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Download Activity'),
+        title: Text(L.of(context)!.download_activity_title),
         actions: [
           IconButton(
             icon: const Icon(PhosphorIconsRegular.arrowClockwise),
             onPressed: _loadActivity,
-            tooltip: 'Refresh',
+            tooltip: L.of(context)!.refresh,
           ),
         ],
       ),
@@ -221,7 +222,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
             const SizedBox(height: 16),
             Text(_errorMessage!, textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: _loadActivity, child: const Text('Retry')),
+            ElevatedButton(onPressed: _loadActivity, child: Text(L.of(context)!.retry)),
           ],
         ),
       );
@@ -234,10 +235,10 @@ class _DownloadActivityState extends State<DownloadActivity> {
           children: [
             Icon(PhosphorIconsRegular.downloadSimple, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
-            Text('No recent download activity', style: theme.textTheme.titleMedium),
+            Text(L.of(context)!.no_recent_download_activity, style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(
-              'Downloads triggered in the last 7 days will appear here.',
+              L.of(context)!.download_activity_empty_body,
               style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
               textAlign: TextAlign.center,
             ),
@@ -275,7 +276,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
                 ),
               );
 
-    final title = task.episodeTitle ?? _titleFromMessage(task.message) ?? 'Unknown episode';
+    final title = task.episodeTitle ?? _titleFromMessage(task.message) ?? L.of(context)!.unknown_episode;
     final subtitle = task.podcastName;
     final timeLabel = _relativeTime(task.updatedAt);
 
@@ -343,7 +344,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
                     child: OutlinedButton.icon(
                       onPressed: task.episodeId != null ? () => _retryDownload(task) : null,
                       icon: const Icon(PhosphorIconsRegular.arrowCounterClockwise, size: 14),
-                      label: const Text('Retry', style: TextStyle(fontSize: 12)),
+                      label: Text(L.of(context)!.retry, style: const TextStyle(fontSize: 12)),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         side: BorderSide(color: theme.primaryColor),
@@ -375,7 +376,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
           Icon(isLocal ? PhosphorIconsRegular.deviceMobile : PhosphorIconsRegular.cloud, size: 11, color: color),
           const SizedBox(width: 3),
           Text(
-            isLocal ? 'Local' : 'Server',
+            isLocal ? 'Local' : L.of(context)!.server,
             style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600),
           ),
         ],
@@ -386,7 +387,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
   // Extract a title from a status message like "Downloaded Episode Name" or "Preparing Episode Name"
   String? _titleFromMessage(String? message) {
     if (message == null) return null;
-    for (final prefix in ['Downloaded ', 'Downloading ', 'Preparing ', 'Finalizing ', 'Processing ', 'Connecting to ', 'Starting download ']) {
+    for (final prefix in ['Downloaded ', 'Downloading ', 'Preparing ', 'Finalizing ', 'Processing ', 'Connecting to ', 'Starting download ']) { // i18n-ignore
       if (message.startsWith(prefix)) {
         return message.substring(prefix.length);
       }

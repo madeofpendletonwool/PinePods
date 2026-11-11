@@ -1,14 +1,15 @@
 # rust-api integration tests
 
 Every test boots the real axum router (`pinepods_api::create_app`) against its **own freshly
-migrated database** (Postgres or MariaDB) plus Valkey, and drives it over HTTP exactly as the
+migrated database** (Postgres, MariaDB or SQLite) plus Valkey (SQLite runs use the in-memory
+store instead, as a SQLite install does by default), and drives it over HTTP exactly as the
 web and mobile clients do. Nothing is mocked except the outside internet.
 
 ## Running
 
 ```sh
-scripts/integration-tests.sh                    # both backends, every test
-scripts/integration-tests.sh --db postgres      # one backend (postgres | mariadb)
+scripts/integration-tests.sh                    # every backend, every test
+scripts/integration-tests.sh --db postgres      # one backend (postgres | mariadb | sqlite)
 scripts/integration-tests.sh -- queue           # extra args go to `cargo test` (name filter)
 scripts/integration-tests.sh -- accounts -- --nocapture
 scripts/integration-tests.sh down               # stop the throwaway containers
@@ -17,14 +18,14 @@ scripts/integration-tests.sh --gpodder mock -- gpodder # gpodder protocol tests 
 
 The script starts Postgres, MariaDB and Valkey from `tests/docker-compose.yml` (off-default
 ports, tmpfs storage) and builds a Python venv under `target/` for the migration runner. CI
-(`.github/workflows/rust-api-tests.yml`) runs the same thing as a matrix over both databases,
+(`.github/workflows/rust-api-tests.yml`) runs the same thing as a matrix over the three databases,
 using service containers (`PINEPODS_TEST_EXTERNAL_SERVICES=1`).
 
 Useful environment variables:
 
 | Variable | Meaning |
 |---|---|
-| `PINEPODS_TEST_DB_TYPE` | `postgresql` or `mariadb` (set by the script) |
+| `PINEPODS_TEST_DB_TYPE` | `postgresql`, `mariadb` or `sqlite` (set by the script) |
 | `PINEPODS_TEST_DB_HOST` / `_PORT` / `_USER` / `_PASSWORD` | database server |
 | `PINEPODS_TEST_VALKEY_HOST` / `_PORT` | Valkey server |
 | `PINEPODS_TEST_PYTHON` | Python used to run `startup/setup_database_new.py` |
@@ -38,7 +39,15 @@ Useful environment variables:
 - **Schema.** On first use the harness runs the real migrations (`startup/setup_database_new.py`)
   once into a template database named after a hash of the migration files, so a migration change
   rebuilds it automatically. Each test then clones the template (`CREATE DATABASE … TEMPLATE` on
-  Postgres, a table copy on MariaDB) and drops its clone when the `TestApp` is dropped.
+  Postgres, a table copy on MariaDB, a file copy on SQLite) and drops its clone when the `TestApp`
+  is dropped. The SQLite template lives under `target/sqlite-templates`.
+- **SQLite.** SQLite runs the PostgreSQL query arms through a SQL translation layer
+  (`src/database/dialect.rs`), so a new query needs no SQLite code of its own, but run
+  `--db sqlite` to check it translates. Tests that replay old migrations skip SQLite
+  (`app.upgrade_tests_unsupported()`): new SQLite databases start from a schema baseline.
+  `schema_baseline.rs` fails (on Postgres) when the migrations no longer match that baseline;
+  regenerate it with `python -m database_functions.sqlite_baseline <dsn of a freshly migrated
+  Postgres database>`.
 - **Isolation.** Tests run in parallel. Each gets its own database, a unique tag used in
   usernames and fixture paths, and an ID range (sequences / `AUTO_INCREMENT` offset per test) so
   keys in the shared Valkey never collide.

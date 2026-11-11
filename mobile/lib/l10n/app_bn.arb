@@ -1,0 +1,18 @@
+{
+  "@@locale": "bn",
+  "cancel_button_label": "বাতিল",
+  "cancel_option_label": "বাতিল",
+  "podcast_details_refreshed": "ফিড থেকে পডকাস্টের তথ্য রিফ্রেশ হয়েছে",
+  "title_contains": "শিরোনামে আছে",
+  "save": "সংরক্ষণ",
+  "unsubscribe": "সদস্যতা বাতিল",
+  "copy": "কপি",
+  "remove": "সরান",
+  "refresh": "রিফ্রেশ",
+  "search_failed": "সার্চ ব্যর্থ হয়েছে",
+  "try_again": "আবার চেষ্টা করুন",
+  "server_url": "সার্ভার URL",
+  "username": "ব্যবহারকারীর নাম",
+  "password": "পাসওয়ার্ড",
+  "sync_now": "এখনই সিঙ্ক করুন"
+}

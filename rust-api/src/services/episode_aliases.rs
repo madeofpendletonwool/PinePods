@@ -18,6 +18,7 @@ use tracing::{debug, warn};
 use crate::database::DatabasePool;
 use crate::error::AppResult;
 use crate::AppState;
+use crate::database::dialect::dialect_match;
 
 // Bodies larger than this (uploads, backups) are passed through untouched.
 const MAX_REWRITTEN_BODY: usize = 1024 * 1024;
@@ -51,12 +52,12 @@ impl MergedEpisodes {
             SOME => return true,
             _ => {}
         }
-        let found = match db {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query_scalar::<_, i32>(r#"SELECT 1 FROM "EpisodeIDAliases" LIMIT 1"#).fetch_optional(pool).await
-            }
-            DatabasePool::MySQL(pool) => sqlx::query_scalar::<_, i32>("SELECT 1 FROM EpisodeIDAliases LIMIT 1").fetch_optional(pool).await,
-        };
+        let found = dialect_match!(db, {
+            pg(pool) => {
+                q::query_scalar::<i32>(r#"SELECT 1 FROM "EpisodeIDAliases" LIMIT 1"#).fetch_optional(pool).await
+            },
+            mysql(pool) => sqlx::query_scalar::<_, i32>("SELECT 1 FROM EpisodeIDAliases LIMIT 1").fetch_optional(pool).await,
+        });
         match found {
             Ok(row) => {
                 self.0.store(if row.is_some() { SOME } else { NONE }, Ordering::Relaxed);
@@ -75,14 +76,14 @@ pub async fn current_ids(merged: &MergedEpisodes, db: &DatabasePool, ids: &[i32]
     if ids.is_empty() || !merged.any(db).await {
         return Ok(HashMap::new());
     }
-    let rows: Vec<(i32, i32)> = match db {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query_as(r#"SELECT oldepisodeid, episodeid FROM "EpisodeIDAliases" WHERE oldepisodeid = ANY($1)"#)
+    let rows: Vec<(i32, i32)> = dialect_match!(db, {
+        pg(pool) => {
+            q::query_as(r#"SELECT oldepisodeid, episodeid FROM "EpisodeIDAliases" WHERE oldepisodeid = ANY($1)"#)
                 .bind(ids)
                 .fetch_all(pool)
                 .await?
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             let marks = vec!["?"; ids.len()].join(", ");
             let sql = format!("SELECT OldEpisodeID, EpisodeID FROM EpisodeIDAliases WHERE OldEpisodeID IN ({marks})");
             let mut q = sqlx::query_as(sqlx::AssertSqlSafe(sql));
@@ -90,8 +91,8 @@ pub async fn current_ids(merged: &MergedEpisodes, db: &DatabasePool, ids: &[i32]
                 q = q.bind(id);
             }
             q.fetch_all(pool).await?
-        }
-    };
+        },
+    });
     Ok(rows.into_iter().collect())
 }
 

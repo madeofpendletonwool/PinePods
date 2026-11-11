@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/entities/pinepods_collection.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/user_stats.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
@@ -458,6 +459,8 @@ class PinepodsService {
     bool isYoutube, {
     int? playingEpisodeId,
     bool? playingIsYoutube,
+    /// 'top' or 'bottom'; null uses the user's default.
+    String? position,
   }) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
@@ -473,6 +476,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
         if (playingEpisodeId != null) 'playing_episode_id': playingEpisodeId,
         if (playingIsYoutube != null) 'playing_is_youtube': playingIsYoutube,
+        if (position != null) 'position': position,
       });
 
       final response = await _post(
@@ -594,6 +598,56 @@ class PinepodsService {
         message = (jsonDecode(response.body) as Map<String, dynamic>)['message'] as String? ?? message;
       } catch (_) {}
       throw Exception(message);
+    }
+  }
+
+  // Check one podcast for new episodes now: its feed, YouTube channel or
+  // local folder. Returns how many episodes it added (YouTube channels
+  // report none; reload the list). Throws with the server's reason when the
+  // check failed or the host asked Pinepods to wait.
+  Future<int> refreshPodcast(int podcastId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/podcast/$podcastId/refresh');
+    final response = await _client
+        .post(url, headers: {'Api-Key': _apiKey!})
+        .timeout(const Duration(seconds: 90));
+    final body = response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw Exception(body['detail'] ?? body['message'] ?? 'HTTP ${response.statusCode}');
+    }
+    if (body['status'] != 'refreshed') {
+      throw Exception(body['detail'] ?? body['status']);
+    }
+    return (body['new_episodes'] as List?)?.length ?? 0;
+  }
+
+  // Whether the scheduled refresh and Refresh all check this podcast.
+  Future<bool> getAutoRefresh(int podcastId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/podcast/$podcastId/auto_refresh');
+    final response = await _client.get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) {
+      throw Exception('HTTP ${response.statusCode}');
+    }
+    return (jsonDecode(response.body) as Map<String, dynamic>)['auto_refresh'] as bool? ?? true;
+  }
+
+  Future<void> setAutoRefresh(int podcastId, bool enabled) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/podcast/$podcastId/auto_refresh');
+    final response = await _client.put(
+      url,
+      headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+      body: jsonEncode({'auto_refresh': enabled}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('HTTP ${response.statusCode}');
     }
   }
 
@@ -881,6 +935,23 @@ class PinepodsService {
       _devLog('Error getting episode transcript: $e');
     }
     return null;
+  }
+
+  /// The generated transcript as a file body: [format] is 'srt', 'vtt' or 'txt'.
+  Future<String> exportEpisodeTranscript(int episodeId, int userId, String format) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/episode_transcript_export').replace(queryParameters: {
+      'episode_id': '$episodeId',
+      'user_id': '$userId',
+      'format': format,
+    });
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) {
+      throw Exception('Transcript download failed (${response.statusCode})');
+    }
+    return utf8.decode(response.bodyBytes);
   }
 
   // POST /api/data/transcribe_episode — trigger transcription (async).
@@ -1729,6 +1800,197 @@ class PinepodsService {
     }
   }
 
+  // --- Collections ------------------------------------------------------
+  // Hand-picked groups of episodes; the default one is "Saved".
+
+  Map<String, String> get _jsonHeaders => {'Api-Key': _apiKey!, 'Content-Type': 'application/json'};
+
+  void _requireAuth() {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+  }
+
+  /// The server's error text from a JSON `{message}` body, or the status code.
+  String _errorText(http.Response response) {
+    try {
+      final data = jsonDecode(response.body);
+      final msg = data['message'] ?? data['detail'] ?? data['error'];
+      if (msg is String && msg.isNotEmpty) return msg;
+    } catch (_) {}
+    return 'Server returned ${response.statusCode}';
+  }
+
+  Future<List<PinepodsCollection>> getCollections(int userId) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/user/$userId');
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    final list = jsonDecode(response.body)['collections'] as List<dynamic>? ?? [];
+    return list.map((c) => PinepodsCollection.fromJson(c as Map<String, dynamic>)).toList();
+  }
+
+  /// Distinct categories across the user's podcasts, for auto-add.
+  Future<List<String>> getUserCategories(int userId) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/categories/$userId');
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    return (jsonDecode(response.body)['categories'] as List<dynamic>? ?? []).cast<String>();
+  }
+
+  /// Returns the new collection's id. With [backfill], episodes already in
+  /// [autoAddCategories] are added too.
+  Future<int> createCollection(
+    int userId, {
+    required String name,
+    String? description,
+    String icon = 'ph-bookmark-simple',
+    List<String>? autoAddCategories,
+    bool backfill = false,
+  }) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/create');
+    final response = await _post(url,
+        headers: _jsonHeaders,
+        body: jsonEncode({
+          'user_id': userId,
+          'name': name,
+          'description': description,
+          'icon': icon,
+          'auto_add_categories': autoAddCategories,
+          'backfill': backfill,
+        }));
+    if (response.statusCode == 409) throw Exception('A collection with that name already exists');
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    return (jsonDecode(response.body)['collection_id'] as num).toInt();
+  }
+
+  Future<void> updateCollection(
+    int collectionId, {
+    required String name,
+    String? description,
+    required String icon,
+    required List<String> autoAddCategories,
+    bool backfill = false,
+  }) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/$collectionId');
+    final response = await _client
+        .patch(url,
+            headers: _jsonHeaders,
+            body: jsonEncode({
+              'name': name,
+              'description': description ?? '',
+              'icon': icon,
+              'auto_add_categories': autoAddCategories,
+              'backfill': backfill,
+            }))
+        .timeout(_timeout);
+    if (response.statusCode == 409) throw Exception('A collection with that name already exists');
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+  }
+
+  Future<void> deleteCollection(int collectionId) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/$collectionId');
+    final response = await _client.delete(url, headers: {'Api-Key': _apiKey!}).timeout(_timeout);
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+  }
+
+  Future<void> setEpisodeInCollection(
+      int collectionId, int userId, int episodeId, bool isYoutube, bool inCollection) async {
+    _requireAuth();
+    final action = inCollection ? 'add_episode' : 'remove_episode';
+    final url = Uri.parse('$_server/api/data/collections/$collectionId/$action');
+    final response = await _post(url,
+        headers: _jsonHeaders,
+        body: jsonEncode({'user_id': userId, 'episode_id': episodeId, 'is_youtube': isYoutube}));
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+  }
+
+  /// Adds every `(episodeId, isYoutube)` pair to one collection.
+  Future<void> bulkAddToCollection(
+      int collectionId, int userId, List<(int, bool)> episodes) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/bulk_add');
+    final response = await _post(url,
+        headers: _jsonHeaders,
+        body: jsonEncode({
+          'user_id': userId,
+          'collection_id': collectionId,
+          'episodes': [for (final (id, yt) in episodes) [id, yt]],
+        }));
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+  }
+
+  /// Ids of the collections (including Saved) that hold this episode.
+  Future<Set<int>> getEpisodeCollections(int userId, int episodeId, bool isYoutube) async {
+    _requireAuth();
+    final url = Uri.parse(
+        '$_server/api/data/episode_collections/$userId/$episodeId?is_youtube=$isYoutube');
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    return (jsonDecode(response.body)['collection_ids'] as List<dynamic>? ?? [])
+        .map((e) => (e as num).toInt())
+        .toSet();
+  }
+
+  Future<EpisodePage> getCollectionEpisodesPaged(
+    int collectionId, {
+    int limit = 50,
+    int offset = 0,
+    String sortBy = 'date',
+    String sortOrder = 'desc',
+    String filter = 'all',
+  }) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/collections/$collectionId/episodes').replace(
+      queryParameters: {
+        'limit': '$limit',
+        'offset': '$offset',
+        'sort_by': sortBy,
+        'sort_order': sortOrder,
+        'filter': filter,
+      },
+    );
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    final data = jsonDecode(response.body);
+    final list = data['saved_episodes'] as List<dynamic>? ?? [];
+    return EpisodePage(
+      episodes: list.map((e) => PinepodsEpisode.fromJson(e as Map<String, dynamic>)).toList(),
+      total: (data['total'] as num?)?.toInt() ?? list.length,
+    );
+  }
+
+  // --- Bulk episode actions (multi-select) -------------------------------
+
+  /// POST /api/data/bulk_<action>: `mark_episodes_completed`, `save_episodes`,
+  /// `queue_episodes` or `download_episodes`. Returns the server's summary.
+  Future<String> bulkEpisodeAction(
+      String action, List<int> episodeIds, int userId, bool isYoutube) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/bulk_$action');
+    final response = await _post(url,
+        headers: _jsonHeaders,
+        body: jsonEncode({'episode_ids': episodeIds, 'user_id': userId, 'is_youtube': isYoutube}));
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    return jsonDecode(response.body)['message'] as String? ?? 'Done';
+  }
+
+  /// Queues transcriptions; the server runs them one at a time and skips
+  /// episodes that already have an AI transcript. Returns its summary.
+  Future<String> bulkTranscribeEpisodes(List<int> episodeIds, int userId) async {
+    _requireAuth();
+    final url = Uri.parse('$_server/api/data/bulk_transcribe_episodes');
+    final response = await _post(url,
+        headers: _jsonHeaders,
+        body: jsonEncode({'episode_ids': episodeIds, 'user_id': userId, 'force': false}));
+    if (response.statusCode != 200) throw Exception(_errorText(response));
+    return jsonDecode(response.body)['detail'] as String? ?? 'Transcriptions queued';
+  }
+
   // Get episode metadata
   Future<PinepodsEpisode?> getEpisodeMetadata(
     int episodeId,
@@ -2143,6 +2405,28 @@ class PinepodsService {
   }
 
   /// How many days of videos a channel keeps; 0 is no limit.
+  /// Where Add to queue puts an episode by default: 'top' or 'bottom'.
+  Future<String> getQueueAddPosition(int userId) async {
+    final url = Uri.parse('$_server/api/data/get_queue_add_position/$userId');
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) {
+      throw Exception('Failed to get queue position: ${response.statusCode}');
+    }
+    return (jsonDecode(response.body) as Map<String, dynamic>)['position'] as String? ?? 'bottom';
+  }
+
+  Future<void> setQueueAddPosition(int userId, String position) async {
+    final url = Uri.parse('$_server/api/data/update_queue_add_position');
+    final response = await _put(
+      url,
+      headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+      body: jsonEncode({'user_id': userId, 'position': position}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to save queue position: ${response.statusCode}');
+    }
+  }
+
   Future<int?> getFeedCutoffDays(int podcastId, int userId) async {
     final url = Uri.parse('$_server/api/data/get_feed_cutoff_days').replace(
       queryParameters: {'podcast_id': podcastId.toString(), 'user_id': userId.toString()},
@@ -2786,6 +3070,23 @@ class PinepodsService {
       _devLog('Error searching episodes: $e');
       rethrow;
     }
+  }
+
+  /// Search inside the transcripts of the user's episodes. Throws
+  /// [TranscriptSearchUnsupported] when the server predates transcript search.
+  Future<TranscriptSearchPage> searchTranscripts(String query, {int limit = 20, int offset = 0}) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/transcripts/search').replace(
+      queryParameters: {'q': query, 'limit': '$limit', 'offset': '$offset'},
+    );
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode == 404) throw TranscriptSearchUnsupported();
+    if (response.statusCode != 200) {
+      throw Exception('Failed to search transcripts: ${response.statusCode}');
+    }
+    return TranscriptSearchPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   // Fetch podcast 2.0 data for a specific episode
@@ -3641,6 +3942,64 @@ class SearchResultPage {
   final int total;
 
   SearchResultPage({required this.results, required this.total});
+}
+
+class TranscriptSearchUnsupported implements Exception {}
+
+/// A place in a transcript where the search was said.
+class TranscriptMoment {
+  /// Seconds into the episode; null for transcripts without timings.
+  final double? start;
+  final String text;
+
+  TranscriptMoment({this.start, required this.text});
+
+  factory TranscriptMoment.fromJson(Map<String, dynamic> json) => TranscriptMoment(
+        start: (json['start'] as num?)?.toDouble(),
+        text: json['text'] as String? ?? '',
+      );
+}
+
+class TranscriptHit {
+  final SearchEpisodeResult episode;
+
+  /// `generated` (AI, made on the server) or `feed` (published by the podcast).
+  final String source;
+  final int mentions;
+  final List<TranscriptMoment> moments;
+
+  TranscriptHit({required this.episode, required this.source, required this.mentions, required this.moments});
+
+  factory TranscriptHit.fromJson(Map<String, dynamic> json) => TranscriptHit(
+        episode: SearchEpisodeResult.fromJson(json['episode'] as Map<String, dynamic>),
+        source: json['source'] as String? ?? 'feed',
+        mentions: (json['mentions'] as num?)?.toInt() ?? 0,
+        moments: (json['moments'] as List<dynamic>? ?? [])
+            .map((m) => TranscriptMoment.fromJson(m as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+class TranscriptSearchPage {
+  final List<TranscriptHit> results;
+  final int total;
+
+  /// Lowercased words and phrases to highlight.
+  final List<String> terms;
+
+  /// How many of the user's episodes have a searchable transcript.
+  final int searchableEpisodes;
+
+  TranscriptSearchPage({required this.results, required this.total, required this.terms, required this.searchableEpisodes});
+
+  factory TranscriptSearchPage.fromJson(Map<String, dynamic> json) => TranscriptSearchPage(
+        results: (json['results'] as List<dynamic>? ?? [])
+            .map((r) => TranscriptHit.fromJson(r as Map<String, dynamic>))
+            .toList(),
+        total: (json['total'] as num?)?.toInt() ?? 0,
+        terms: (json['terms'] as List<dynamic>? ?? []).map((t) => t.toString()).toList(),
+        searchableEpisodes: (json['searchable_episodes'] as num?)?.toInt() ?? 0,
+      );
 }
 
 class DownloadTask {

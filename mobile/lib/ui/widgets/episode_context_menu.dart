@@ -5,8 +5,10 @@ import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/services/nowplaying/nowplaying_service.dart';
 import 'package:pinepods_mobile/ui/podcast/remote_devices_button.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
+import 'package:pinepods_mobile/ui/pinepods/collection_sheets.dart';
 
-class EpisodeContextMenu extends StatelessWidget {
+class EpisodeContextMenu extends StatefulWidget {
   final PinepodsEpisode episode;
   final VoidCallback? onSave;
   final VoidCallback? onRemoveSaved;
@@ -14,9 +16,13 @@ class EpisodeContextMenu extends StatelessWidget {
   final VoidCallback? onLocalDownload;
   final VoidCallback? onDeleteLocalDownload;
   final VoidCallback? onQueue;
+  /// Add to the 'top' or 'bottom' of the queue instead of the user's default.
+  final void Function(String position)? onQueueAt;
   final VoidCallback? onMarkComplete;
   final VoidCallback? onDismiss;
   final VoidCallback? onPodcastTap;
+  /// Shown on a collection's page: removes the episode from that collection.
+  final VoidCallback? onRemoveFromCollection;
   final bool isDownloadedLocally;
 
   const EpisodeContextMenu({
@@ -28,11 +34,33 @@ class EpisodeContextMenu extends StatelessWidget {
     this.onLocalDownload,
     this.onDeleteLocalDownload,
     this.onQueue,
+    this.onQueueAt,
     this.onMarkComplete,
     this.onDismiss,
     this.onPodcastTap,
+    this.onRemoveFromCollection,
     this.isDownloadedLocally = false,
   }) : super(key: key);
+
+  @override
+  State<EpisodeContextMenu> createState() => _EpisodeContextMenuState();
+}
+
+class _EpisodeContextMenuState extends State<EpisodeContextMenu> {
+  bool _queueChoicesOpen = false;
+
+  PinepodsEpisode get episode => widget.episode;
+  VoidCallback? get onSave => widget.onSave;
+  VoidCallback? get onRemoveSaved => widget.onRemoveSaved;
+  VoidCallback? get onDownload => widget.onDownload;
+  VoidCallback? get onLocalDownload => widget.onLocalDownload;
+  VoidCallback? get onDeleteLocalDownload => widget.onDeleteLocalDownload;
+  VoidCallback? get onQueue => widget.onQueue;
+  void Function(String position)? get onQueueAt => widget.onQueueAt;
+  VoidCallback? get onMarkComplete => widget.onMarkComplete;
+  VoidCallback? get onDismiss => widget.onDismiss;
+  VoidCallback? get onPodcastTap => widget.onPodcastTap;
+  bool get isDownloadedLocally => widget.isDownloadedLocally;
 
   @override
   Widget build(BuildContext context) {
@@ -111,35 +139,87 @@ class EpisodeContextMenu extends StatelessWidget {
                     _buildMenuOption(
                       context,
                       icon: episode.saved ? PhosphorIconsFill.bookmarkSimple : PhosphorIconsRegular.bookmarkSimple,
-                      text: episode.saved ? 'Remove from Saved' : 'Save Episode',
+                      text: episode.saved ? L.of(context)!.remove_from_saved : L.of(context)!.save_episode,
                       onTap: episode.saved ? onRemoveSaved : onSave,
                     ),
+
+                    if (episode.episodeId > 0)
+                      _buildMenuOption(
+                        context,
+                        icon: PhosphorIconsRegular.folderPlus,
+                        text: L.of(context)!.add_to_collection_menu,
+                        onTap: () {
+                          // Dismiss first and open the picker from the root navigator, as
+                          // some callers dismiss with Navigator.pop.
+                          final rootContext = Navigator.of(context, rootNavigator: true).context;
+                          widget.onDismiss?.call();
+                          showAddToCollectionSheet(rootContext,
+                              episodes: [(episode.episodeId, episode.isYoutube)]);
+                        },
+                      ),
+
+                    if (widget.onRemoveFromCollection != null)
+                      _buildMenuOption(
+                        context,
+                        icon: PhosphorIconsRegular.folderMinus,
+                        text: L.of(context)!.remove_from_collection,
+                        onTap: widget.onRemoveFromCollection,
+                      ),
                     
                     _buildMenuOption(
                       context,
                       icon: episode.downloaded ? PhosphorIconsRegular.trash : PhosphorIconsRegular.cloudArrowDown,
-                      text: episode.downloaded ? 'Delete from Server' : 'Download to Server',
+                      text: episode.downloaded ? L.of(context)!.delete_from_server : L.of(context)!.download_to_server_title,
                       onTap: onDownload,
                     ),
                     
                     _buildMenuOption(
                       context,
                       icon: isDownloadedLocally ? PhosphorIconsRegular.trashSimple : PhosphorIconsRegular.fileArrowDown,
-                      text: isDownloadedLocally ? 'Delete Local Download' : 'Download Locally',
+                      text: isDownloadedLocally ? L.of(context)!.delete_local_download : L.of(context)!.download_locally,
                       onTap: isDownloadedLocally ? onDeleteLocalDownload : onLocalDownload,
                     ),
                     
                     _buildMenuOption(
                       context,
-                      icon: episode.queued ? PhosphorIconsRegular.queue : PhosphorIconsRegular.queue,
-                      text: episode.queued ? 'Remove from Queue' : 'Add to Queue',
+                      icon: PhosphorIconsRegular.queue,
+                      text: episode.queued ? L.of(context)!.remove_from_queue : L.of(context)!.add_to_queue,
                       onTap: onQueue,
+                      trailing: !episode.queued && onQueueAt != null
+                          ? IconButton(
+                              tooltip: L.of(context)!.choose_top_or_bottom,
+                              visualDensity: VisualDensity.compact,
+                              icon: Icon(
+                                _queueChoicesOpen
+                                    ? PhosphorIconsRegular.caretUp
+                                    : PhosphorIconsRegular.caretDown,
+                                size: 18,
+                              ),
+                              onPressed: () => setState(() => _queueChoicesOpen = !_queueChoicesOpen),
+                            )
+                          : null,
                     ),
+                    if (_queueChoicesOpen && !episode.queued && onQueueAt != null) ...[
+                      _buildMenuOption(
+                        context,
+                        icon: PhosphorIconsRegular.arrowLineUp,
+                        text: L.of(context)!.add_to_top_of_queue,
+                        onTap: () => onQueueAt!('top'),
+                        indent: 32,
+                      ),
+                      _buildMenuOption(
+                        context,
+                        icon: PhosphorIconsRegular.arrowLineDown,
+                        text: L.of(context)!.add_to_bottom_of_queue,
+                        onTap: () => onQueueAt!('bottom'),
+                        indent: 32,
+                      ),
+                    ],
                     
                     _buildMenuOption(
                       context,
                       icon: episode.completed ? PhosphorIconsFill.checkCircle : PhosphorIconsRegular.checkCircle,
-                      text: episode.completed ? 'Mark as Incomplete' : 'Mark as Complete',
+                      text: episode.completed ? L.of(context)!.mark_as_incomplete : L.of(context)!.mark_as_complete,
                       onTap: onMarkComplete,
                     ),
 
@@ -169,7 +249,7 @@ class EpisodeContextMenu extends StatelessWidget {
         return _buildMenuOption(
           context,
           icon: PhosphorIconsRegular.screencast,
-          text: 'Play on device…',
+          text: L.of(context)!.play_on_device,
           onTap: () {
             // Some callers dismiss with Navigator.pop, so dismiss first and open
             // the picker from the root navigator's (still-mounted) context.
@@ -192,12 +272,14 @@ class EpisodeContextMenu extends StatelessWidget {
     required String text,
     VoidCallback? onTap,
     bool enabled = true,
+    Widget? trailing,
+    double indent = 0,
   }) {
     return InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        padding: EdgeInsets.fromLTRB(8 + indent, trailing != null ? 4 : 12, 8, trailing != null ? 4 : 12),
         child: Row(
           children: [
             Icon(
@@ -219,6 +301,7 @@ class EpisodeContextMenu extends StatelessWidget {
                 ),
               ),
             ),
+            if (trailing != null) trailing,
           ],
         ),
       ),

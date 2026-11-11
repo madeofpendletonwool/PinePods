@@ -4,9 +4,10 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class OidcService {
-  static const String userAgent = 'PinePods Mobile/1.0';
+  static const String userAgent = 'PinePods Mobile/1.0'; // i18n-ignore
   static const String callbackUrlScheme = 'pinepods';
   static const String callbackPath = '/auth/callback';
   
@@ -166,7 +167,7 @@ class OidcService {
       // Check for error
       if (queryParams.containsKey('error')) {
         return OidcCallbackResult.error(
-          error: queryParams['error'] ?? 'Unknown error',
+          error: queryParams['error'] ?? L.current.unknown_error_occurred,
           errorDescription: queryParams['error_description'],
         );
       }
@@ -193,7 +194,7 @@ class OidcService {
       
       return OidcCallbackResult.error(
         error: 'missing_parameters',
-        errorDescription: 'Neither API key nor authorization code found in callback',
+        errorDescription: 'Neither API key nor authorization code found in callback', // i18n-ignore
       );
     } catch (e) {
       return OidcCallbackResult.error(
@@ -243,11 +244,11 @@ class OidcService {
       } else {
         final errorData = jsonDecode(response.body);
         return OidcAuthResult.failure(
-          errorData['error'] ?? 'Authentication failed',
+          errorData['error'] ?? L.current.authentication_failed_plain,
         );
       }
     } catch (e) {
-      return OidcAuthResult.failure('Network error: ${e.toString()}');
+      return OidcAuthResult.failure(L.current.network_error(e.toString()));
     }
   }
   
@@ -310,7 +311,7 @@ class OidcProvider {
   }
 
   /// Get display text for the provider button
-  String get displayText => buttonText ?? 'Login with $providerName';
+  String get displayText => buttonText ?? L.current.login_with_provider(providerName);
   
   /// Get button color or default
   String get buttonColorHex => buttonColor ?? '#007bff';

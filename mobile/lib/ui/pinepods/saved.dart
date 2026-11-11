@@ -20,6 +20,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
+import 'package:pinepods_mobile/ui/icons/collection_icons.dart';
+import 'package:pinepods_mobile/ui/pinepods/collection_sheets.dart';
+import 'package:pinepods_mobile/entities/pinepods_collection.dart';
 
 /// Sort direction options for saved episodes
 enum SavedSortDirection {
@@ -72,11 +76,16 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
   bool _favoritesOnly = false;
   Set<int> _favoritePodcastIds = {};
 
+  // Collections other than Saved; [_active] is the one shown (null = Saved).
+  List<PinepodsCollection> _collections = [];
+  PinepodsCollection? _active;
+
   @override
   void initState() {
     super.initState();
     _loadSortPreference();
     _loadSavedEpisodes();
+    _loadCollections();
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -268,6 +277,90 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
 
   PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
 
+  Future<void> _loadCollections() async {
+    final client = collectionsClient(context);
+    if (client == null) return;
+    try {
+      final cols = await client.$1.getCollections(client.$2);
+      if (!mounted) return;
+      setState(() {
+        _collections = cols.where((c) => !c.isDefault).toList();
+        // Keep the shown collection current (name/icon edits), or fall back to Saved.
+        if (_active != null) {
+          _active = _collections.where((c) => c.id == _active!.id).firstOrNull;
+          if (_active == null) _loadSavedEpisodes();
+        }
+      });
+    } catch (_) {
+      // Non-fatal: the page still shows Saved.
+    }
+  }
+
+  void _selectCollection(PinepodsCollection? collection) {
+    if (collection?.id == _active?.id) return;
+    setState(() {
+      _active = collection;
+      _searchController.clear();
+      _searchQuery = '';
+    });
+    _loadSavedEpisodes();
+  }
+
+  Future<void> _newCollection() async {
+    final created = await showCollectionEditor(context);
+    if (created == null || !mounted) return;
+    await _loadCollections();
+    final match = _collections.where((c) => c.id == created.id).firstOrNull;
+    if (match != null) _selectCollection(match);
+  }
+
+  Future<void> _editActiveCollection() async {
+    final active = _active;
+    if (active == null) return;
+    final result = await showCollectionEditor(context, existing: active);
+    if (result == null || !mounted) return;
+    if (result.deleted) {
+      setState(() => _active = null);
+      _loadSavedEpisodes();
+    }
+    _loadCollections();
+  }
+
+  Future<void> _removeFromActiveCollection(int episodeIndex) async {
+    final active = _active;
+    final client = collectionsClient(context);
+    if (active == null || client == null) return;
+    final episode = _episodes[episodeIndex];
+    try {
+      await client.$1.setEpisodeInCollection(active.id, client.$2, episode.episodeId, episode.isYoutube, false);
+      if (!mounted) return;
+      setState(() {
+        _episodes.removeAt(episodeIndex);
+        _total = (_total - 1).clamp(0, _total);
+        _offset = (_offset - 1).clamp(0, _offset);
+        _filterEpisodes();
+      });
+      _showSnackBar(L.current.removed_from_collection(active.name), Colors.orange);
+      _loadCollections();
+    } catch (e) {
+      _showSnackBar(L.current.failed_to_remove_error(e.toString()), Colors.red);
+    }
+  }
+
+  /// One page of the shown list: Saved, or the active collection.
+  Future<EpisodePage> _fetchPage(int userId, int offset) {
+    final sortBy = _sortByParam(_sortDirection);
+    final sortOrder = _sortOrderParam(_sortDirection);
+    final filter = _filterParam(_activeFilter);
+    final active = _active;
+    if (active != null) {
+      return _pinepodsService.getCollectionEpisodesPaged(active.id,
+          limit: 50, offset: offset, sortBy: sortBy, sortOrder: sortOrder, filter: filter);
+    }
+    return _pinepodsService.getSavedEpisodesPaged(userId,
+        limit: 50, offset: offset, sortBy: sortBy, sortOrder: sortOrder, filter: filter);
+  }
+
   Future<void> _loadSavedEpisodes() async {
     setState(() {
       _isLoading = true;
@@ -286,7 +379,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
           settings.pinepodsApiKey == null ||
           settings.pinepodsUserId == null) {
         setState(() {
-          _errorMessage = 'Not connected to PinePods server. Please login first.';
+          _errorMessage = L.of(context)!.not_connected_please_login;
           _isLoading = false;
         });
         return;
@@ -296,14 +389,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
       final userId = settings.pinepodsUserId!;
 
-      final page = await _pinepodsService.getSavedEpisodesPaged(
-        userId,
-        limit: 50,
-        offset: 0,
-        sortBy: _sortByParam(_sortDirection),
-        sortOrder: _sortOrderParam(_sortDirection),
-        filter: _filterParam(_activeFilter),
-      );
+      final page = await _fetchPage(userId, 0);
 
       final enrichedEpisodes = await PositionUtils.enrichEpisodesWithBestPositions(
         context,
@@ -324,7 +410,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       await _loadFavoritePodcastIds(userId);
     } catch (e) {
       setState(() {
-        _errorMessage = 'Failed to load saved episodes: ${e.toString()}';
+        _errorMessage = L.current.failed_to_load_saved_episodes_error(e.toString());
         _isLoading = false;
       });
     }
@@ -346,14 +432,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     setState(() => _isLoadingMore = true);
 
     try {
-      final page = await _pinepodsService.getSavedEpisodesPaged(
-        userId,
-        limit: 50,
-        offset: _offset,
-        sortBy: _sortByParam(_sortDirection),
-        sortOrder: _sortOrderParam(_sortDirection),
-        filter: _filterParam(_activeFilter),
-      );
+      final page = await _fetchPage(userId, _offset);
 
       final enrichedEpisodes = await PositionUtils.enrichEpisodesWithBestPositions(
         context,
@@ -378,6 +457,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
 
   Future<void> _refresh() async {
     LocalDownloadUtils.clearCache();
+    _loadCollections();
     await _loadSavedEpisodes();
   }
 
@@ -385,8 +465,8 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     
     if (_audioService == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Audio service not available'),
+        SnackBar(
+          content: Text(L.of(context)!.audio_service_not_available),
           backgroundColor: Colors.red,
         ),
       );
@@ -401,7 +481,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to play episode: ${e.toString()}'),
+          content: Text(L.current.failed_to_play_episode(e.toString())),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 3),
         ),
@@ -451,6 +531,10 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
           Navigator.of(context).pop();
           _toggleQueueEpisode(episodeIndex);
         },
+        onQueueAt: (position) {
+          Navigator.of(context).pop();
+          _toggleQueueEpisode(episodeIndex, position: position);
+        },
         onMarkComplete: () {
           Navigator.of(context).pop();
           _toggleMarkComplete(episodeIndex);
@@ -458,6 +542,12 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
         onDismiss: () {
           Navigator.of(context).pop();
         },
+        onRemoveFromCollection: _active == null
+            ? null
+            : () {
+                Navigator.of(context).pop();
+                _removeFromActiveCollection(episodeIndex);
+              },
         onPodcastTap: () {
           Navigator.of(context).pop();
           navigateToPodcastById(
@@ -477,9 +567,9 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     final success = await LocalDownloadUtils.localDownloadEpisode(context, episode);
     
     if (success) {
-      LocalDownloadUtils.showSnackBar(context, 'Episode download started', Colors.green);
+      LocalDownloadUtils.showSnackBar(context, L.current.episode_download_started, Colors.green);
     } else {
-      LocalDownloadUtils.showSnackBar(context, 'Failed to start download', Colors.red);
+      LocalDownloadUtils.showSnackBar(context, L.current.failed_to_start_download, Colors.red);
     }
   }
 
@@ -491,11 +581,11 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     if (deletedCount > 0) {
       LocalDownloadUtils.showSnackBar(
         context, 
-        'Deleted $deletedCount local download${deletedCount > 1 ? 's' : ''}', 
+        L.current.deleted_local_downloads(deletedCount), 
         Colors.orange
       );
     } else {
-      LocalDownloadUtils.showSnackBar(context, 'Local download not found', Colors.red);
+      LocalDownloadUtils.showSnackBar(context, L.current.local_download_not_found, Colors.red);
     }
   }
 
@@ -514,7 +604,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -531,12 +621,12 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(_episodes[episodeIndex], saved: true);
         });
-        _showSnackBar('Episode saved!', Colors.green);
+        _showSnackBar(L.current.episode_saved, Colors.green);
       } else {
-        _showSnackBar('Failed to save episode', Colors.red);
+        _showSnackBar(L.current.failed_to_save_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error saving episode: $e', Colors.red);
+      _showSnackBar(L.current.error_saving_episode(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -549,7 +639,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -563,17 +653,21 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       );
 
       if (success) {
-        // REMOVE the episode from the list since it's no longer saved
         setState(() {
-          _episodes.removeAt(episodeIndex);
-          _filterEpisodes(); // Update filtered list after removal
+          if (_active == null) {
+            // Off the Saved list now; a collection still holds it.
+            _episodes.removeAt(episodeIndex);
+          } else {
+            _episodes[episodeIndex] = _updateEpisodeProperty(episode, saved: false);
+          }
+          _filterEpisodes();
         });
-        _showSnackBar('Removed from saved episodes', Colors.orange);
+        _showSnackBar(L.current.removed_from_saved_episodes, Colors.orange);
       } else {
-        _showSnackBar('Failed to remove saved episode', Colors.red);
+        _showSnackBar(L.current.failed_to_remove_saved_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error removing saved episode: $e', Colors.red);
+      _showSnackBar(L.current.error_removing_saved_episode(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -586,7 +680,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -603,12 +697,12 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: true);
         });
-        _showSnackBar('Episode download queued!', Colors.green);
+        _showSnackBar(L.current.episode_download_queued, Colors.green);
       } else {
-        _showSnackBar('Failed to queue download', Colors.red);
+        _showSnackBar(L.current.failed_to_queue_download, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error downloading episode: $e', Colors.red);
+      _showSnackBar(L.current.error_downloading_episode(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -621,7 +715,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -638,25 +732,25 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: false);
         });
-        _showSnackBar('Episode deleted from server', Colors.orange);
+        _showSnackBar(L.current.episode_deleted_from_server, Colors.orange);
       } else {
-        _showSnackBar('Failed to delete episode', Colors.red);
+        _showSnackBar(L.current.failed_to_delete_episode, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error deleting episode: $e', Colors.red);
+      _showSnackBar(L.current.error_deleting_episode(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
   }
 
-  Future<void> _toggleQueueEpisode(int episodeIndex) async {
+  Future<void> _toggleQueueEpisode(int episodeIndex, {String? position}) async {
     final episode = _episodes[episodeIndex];
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -674,27 +768,28 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: false);
           });
-          _showSnackBar('Removed from queue', Colors.orange);
+          _showSnackBar(L.current.removed_from_queue, Colors.orange);
         }
       } else {
         success = await _pinepodsService.queueEpisode(
           episode.episodeId,
           userId,
           episode.isYoutube,
+          position: position,
         );
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: true);
           });
-          _showSnackBar('Added to queue!', Colors.green);
+          _showSnackBar(L.current.added_to_queue_excl, Colors.green);
         }
       }
 
       if (!success) {
-        _showSnackBar('Failed to update queue', Colors.red);
+        _showSnackBar(L.current.failed_to_update_queue, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error updating queue: $e', Colors.red);
+      _showSnackBar(L.current.error_updating_queue(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -707,7 +802,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      _showSnackBar('Not logged in', Colors.red);
+      _showSnackBar(L.of(context)!.not_logged_in, Colors.red);
       return;
     }
 
@@ -725,7 +820,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: false);
           });
-          _showSnackBar('Marked as incomplete', Colors.orange);
+          _showSnackBar(L.current.marked_as_incomplete, Colors.orange);
         }
       } else {
         success = await _pinepodsService.markEpisodeCompleted(
@@ -737,15 +832,15 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: true);
           });
-          _showSnackBar('Marked as complete!', Colors.green);
+          _showSnackBar(L.current.marked_as_complete, Colors.green);
         }
       }
 
       if (!success) {
-        _showSnackBar('Failed to update completion status', Colors.red);
+        _showSnackBar(L.current.failed_to_update_completion, Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error updating completion: $e', Colors.red);
+      _showSnackBar(L.current.error_updating_completion(e.toString()), Colors.red);
     }
 
     _hideContextMenu();
@@ -773,6 +868,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       queued: queued ?? episode.queued,
       downloaded: downloaded ?? episode.downloaded,
       isYoutube: episode.isYoutube,
+      podcastId: episode.podcastId,
       saveDate: episode.saveDate,
     );
   }
@@ -789,19 +885,38 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const SliverFillRemaining(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading saved episodes...'),
-            ],
-          ),
+    final title = _active?.name ?? L.of(context)!.saved;
+    final header = <Widget>[
+      SliverToBoxAdapter(
+        child: SoftSectionHeader(
+          title: title,
+          count: _isLoading || _errorMessage.isNotEmpty ? null : _filteredEpisodes.length,
+          trailing: [
+            if (_active != null)
+              IconButton(
+                tooltip: L.of(context)!.edit_collection,
+                icon: const Icon(PhosphorIconsRegular.pencilSimple),
+                onPressed: _editActiveCollection,
+              ),
+            IconButton(
+              tooltip: L.of(context)!.refresh,
+              icon: const Icon(PhosphorIconsRegular.arrowClockwise),
+              onPressed: _refresh,
+            ),
+          ],
         ),
-      );
+      ),
+      SliverToBoxAdapter(child: _buildCollectionChips()),
+    ];
+
+    if (_isLoading) {
+      return MultiSliver(children: [
+        ...header,
+        const SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ]);
     }
 
     if (_errorMessage.isNotEmpty) {
@@ -810,83 +925,115 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
           ? null 
           : _errorMessage,
         onRetry: _refresh,
-        title: 'Saved Episodes Unavailable',
+        title: L.of(context)!.saved_episodes_unavailable,
         subtitle: _errorMessage.isServerConnectionError
-          ? 'Unable to connect to the PinePods server'
-          : 'Failed to load saved episodes',
+          ? L.of(context)!.unable_to_connect_server
+          : L.of(context)!.failed_to_load_saved_episodes,
       );
     }
 
-    if (_episodes.isEmpty) {
-      return const SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(
-          child: SoftEmptyState(
-            icon: PhosphorIconsRegular.bookmarkSimple,
-            title: 'No saved episodes',
-            body: 'Episodes you save will appear here',
+    if (_episodes.isEmpty && _activeFilter == EpisodeFilter.all) {
+      return MultiSliver(children: [
+        ...header,
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: _active == null
+                ? SoftEmptyState(
+                    icon: PhosphorIconsRegular.bookmarkSimple,
+                    title: L.of(context)!.no_saved_episodes,
+                    body: L.of(context)!.saved_empty_body,
+                  )
+                : SoftEmptyState(
+                    icon: collectionIcon(_active!.icon),
+                    title: L.of(context)!.collection_empty_title(_active!.name),
+                    body: L.of(context)!.collection_empty_body,
+                  ),
           ),
         ),
-      );
+      ]);
     }
 
     return MultiSliver(
       children: [
-        SliverToBoxAdapter(
-          child: SoftSectionHeader(
-            title: 'Saved',
-            count: _filteredEpisodes.length,
-            trailing: [
-              IconButton(
-                tooltip: 'Refresh',
-                icon: const Icon(PhosphorIconsRegular.arrowClockwise),
-                onPressed: _refresh,
-              ),
-            ],
-          ),
-        ),
+        ...header,
         ListToolbar.sliver(context, _buildToolbar()),
         _buildEpisodesList(),
       ],
     );
   }
 
+  /// Saved, then each collection, then "New".
+  Widget _buildCollectionChips() {
+    final pills = <Widget>[
+      FilterPill(
+        label: L.of(context)!.saved,
+        icon: PhosphorIconsRegular.bookmarkSimple,
+        selected: _active == null,
+        onTap: () => _selectCollection(null),
+      ),
+      for (final c in _collections)
+        FilterPill(
+          label: c.name,
+          icon: collectionIcon(c.icon),
+          selected: _active?.id == c.id,
+          onTap: () => _selectCollection(c),
+        ),
+      FilterPill(
+        label: L.of(context)!.new_collection_chip,
+        icon: PhosphorIconsRegular.plus,
+        selected: false,
+        onTap: _newCollection,
+      ),
+    ];
+    return SizedBox(
+      height: 46,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+        itemCount: pills.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) => pills[i],
+      ),
+    );
+  }
+
   ListToolbar<SavedSortDirection> _buildToolbar() {
     return ListToolbar<SavedSortDirection>(
       searchController: _searchController,
-      searchHint: 'Search episodes',
+      searchHint: L.of(context)!.search_episodes_label,
       filters: [
         ToolbarFilter(
-          label: 'All',
+          label: L.of(context)!.filter_all,
           selected: _activeFilter == EpisodeFilter.all && !_favoritesOnly,
           onTap: _clearAllFilters,
         ),
         ToolbarFilter(
-          label: 'In progress',
+          label: L.of(context)!.filter_in_progress,
           selected: _activeFilter == EpisodeFilter.inProgress,
           onTap: () => _setFilter(
               _activeFilter == EpisodeFilter.inProgress ? EpisodeFilter.all : EpisodeFilter.inProgress),
         ),
         ToolbarFilter(
-          label: 'Completed',
+          label: L.of(context)!.completed,
           selected: _activeFilter == EpisodeFilter.completed,
           onTap: () => _setFilter(
               _activeFilter == EpisodeFilter.completed ? EpisodeFilter.all : EpisodeFilter.completed),
         ),
         ToolbarFilter(
-          label: 'Favorites',
+          label: L.of(context)!.favorites,
           icon: _favoritesOnly ? PhosphorIconsFill.star : PhosphorIconsRegular.star,
           selected: _favoritesOnly,
           onTap: _toggleFavoritesFilter,
         ),
       ],
-      sortOptions: const {
-        SavedSortDirection.newestFirst: 'Newest first',
-        SavedSortDirection.oldestFirst: 'Oldest first',
-        SavedSortDirection.shortestFirst: 'Shortest first',
-        SavedSortDirection.longestFirst: 'Longest first',
-        SavedSortDirection.titleAZ: 'Title A–Z',
-        SavedSortDirection.titleZA: 'Title Z–A',
+      sortOptions: {
+        SavedSortDirection.newestFirst: L.of(context)!.sort_newest_first,
+        SavedSortDirection.oldestFirst: L.of(context)!.sort_oldest_first,
+        SavedSortDirection.shortestFirst: L.of(context)!.sort_shortest_first,
+        SavedSortDirection.longestFirst: L.of(context)!.sort_longest_first,
+        SavedSortDirection.titleAZ: L.of(context)!.sort_title_az,
+        SavedSortDirection.titleZA: L.of(context)!.sort_title_za,
       },
       sortValue: _sortDirection,
       onSort: _setSortDirection,
@@ -897,13 +1044,13 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     final hasActiveSearch = _searchQuery.isNotEmpty;
     if (_filteredEpisodes.isEmpty &&
         !_isLoadingMore &&
-        (hasActiveSearch || _favoritesOnly)) {
+        (hasActiveSearch || _favoritesOnly || _activeFilter != EpisodeFilter.all)) {
       return SliverToBoxAdapter(
         child: SoftEmptyState(
           icon: PhosphorIconsRegular.funnelSimpleX,
-          title: 'No episodes found',
+          title: L.of(context)!.no_episodes_found,
           body: _getNoResultsMessage(),
-          action: TextButton(onPressed: _clearAllFilters, child: const Text('Clear filters')),
+          action: TextButton(onPressed: _clearAllFilters, child: Text(L.of(context)!.clear_filters)),
         ),
       );
     }
@@ -951,22 +1098,14 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
   }
 
   String _getNoResultsMessage() {
-    final parts = <String>[];
-
-    if (_searchQuery.isNotEmpty) {
-      parts.add('matching "$_searchQuery"');
-    }
-
+    final l = L.of(context)!;
+    final hasQuery = _searchQuery.isNotEmpty;
     if (_activeFilter == EpisodeFilter.completed) {
-      parts.add('that are completed');
-    } else if (_activeFilter == EpisodeFilter.inProgress) {
-      parts.add('that are in progress');
+      return hasQuery ? l.no_completed_episodes_match_query(_searchQuery) : l.no_completed_episodes;
     }
-
-    if (parts.isEmpty) {
-      return 'No episodes match your filters';
+    if (_activeFilter == EpisodeFilter.inProgress) {
+      return hasQuery ? l.no_in_progress_episodes_match_query(_searchQuery) : l.no_in_progress_episodes;
     }
-
-    return 'No episodes ${parts.join(' and ')}';
+    return hasQuery ? l.no_episodes_match_query(_searchQuery) : l.no_episodes_match_filters;
   }
 }

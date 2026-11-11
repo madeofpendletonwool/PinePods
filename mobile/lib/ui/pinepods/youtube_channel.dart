@@ -9,6 +9,7 @@ import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
 import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 /// Subscribes to [channel]; returns its podcast ID, or null after showing why it failed.
 Future<int?> subscribeToChannel(BuildContext context, YouTubeChannelResult channel) async {
@@ -16,18 +17,18 @@ Future<int?> subscribeToChannel(BuildContext context, YouTubeChannelResult chann
   final messenger = ScaffoldMessenger.of(context);
   final userId = settings.pinepodsUserId;
   if (userId == null || settings.pinepodsServer == null || settings.pinepodsApiKey == null) {
-    messenger.showSnackBar(const SnackBar(content: Text('Not logged in to PinePods server')));
+    messenger.showSnackBar(SnackBar(content: Text(L.of(context)!.not_logged_in_to_server)));
     return null;
   }
   final service = PinepodsService()..setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
   try {
     final podcastId = await service.subscribeToYouTubeChannel(channel.channelId, userId);
     messenger.showSnackBar(
-      SnackBar(content: Text('Subscribed to ${channel.name}. Videos are being added in the background.')),
+      SnackBar(content: Text(L.current.subscribed_to_channel(channel.name))),
     );
     return podcastId;
   } catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text("Couldn't subscribe: ${_reason(e)}")));
+    messenger.showSnackBar(SnackBar(content: Text(L.current.couldnt_subscribe(_reason(e)))));
     return null;
   }
 }
@@ -37,14 +38,14 @@ Future<bool> unsubscribeFromChannel(BuildContext context, YouTubeChannelResult c
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Unsubscribe'),
-      content: Text('Unsubscribe from "${channel.name}"? Its videos and your history with them are removed.'),
+      title: Text(L.of(context)!.unsubscribe),
+      content: Text(L.of(context)!.unsubscribe_channel_confirm(channel.name)),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(context, false), child: Text(L.of(context)!.cancel_button_label)),
         TextButton(
           onPressed: () => Navigator.pop(context, true),
           style: TextButton.styleFrom(foregroundColor: Colors.red),
-          child: const Text('Unsubscribe'),
+          child: Text(L.of(context)!.unsubscribe),
         ),
       ],
     ),
@@ -58,10 +59,10 @@ Future<bool> unsubscribeFromChannel(BuildContext context, YouTubeChannelResult c
   final service = PinepodsService()..setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
   try {
     final ok = await service.removeYouTubeChannel(channel.name, channel.url, userId);
-    messenger.showSnackBar(SnackBar(content: Text(ok ? 'Unsubscribed' : "Couldn't unsubscribe")));
+    messenger.showSnackBar(SnackBar(content: Text(ok ? 'Unsubscribed' : L.current.couldnt_unsubscribe)));
     return ok;
   } catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text("Couldn't unsubscribe: ${_reason(e)}")));
+    messenger.showSnackBar(SnackBar(content: Text(L.current.couldnt_unsubscribe_error(_reason(e)))));
     return false;
   }
 }
@@ -121,7 +122,7 @@ class _YouTubeChannelPageState extends State<YouTubeChannelPage> {
   Future<void> _openOnYouTube(String url) async {
     final messenger = ScaffoldMessenger.of(context);
     if (!await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication)) {
-      messenger.showSnackBar(const SnackBar(content: Text("Couldn't open YouTube")));
+      messenger.showSnackBar(SnackBar(content: Text(L.current.couldnt_open_youtube)));
     }
   }
 
@@ -132,8 +133,8 @@ class _YouTubeChannelPageState extends State<YouTubeChannelPage> {
     final onAccent = onColor(accent);
     final subscribed = _podcastId != null;
     final meta = [
-      if (_channel.subscriberCount != null) '${_compact(_channel.subscriberCount!)} subscribers',
-      if (_channel.videoCount != null) '${_channel.videoCount} videos',
+      if (_channel.subscriberCount != null) L.of(context)!.subscribers_count(_compact(_channel.subscriberCount!)),
+      if (_channel.videoCount != null) L.of(context)!.videos_count(_channel.videoCount!),
     ].join('  ·  ');
 
     final pillStyle = FilledButton.styleFrom(
@@ -156,7 +157,7 @@ class _YouTubeChannelPageState extends State<YouTubeChannelPage> {
         title: Text(_channel.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
-            tooltip: 'Open on YouTube',
+            tooltip: L.of(context)!.open_on_youtube,
             icon: const Icon(PhosphorIconsRegular.arrowSquareOut),
             onPressed: () => _openOnYouTube(_channel.url),
           ),
@@ -213,19 +214,19 @@ class _YouTubeChannelPageState extends State<YouTubeChannelPage> {
                                 fallbackArtwork: _channel.thumbnailUrl,
                               ),
                         icon: const Icon(PhosphorIconsFill.play, size: 18),
-                        label: const Text('Open channel'),
+                        label: Text(L.of(context)!.open_channel),
                       )
                     : FilledButton.icon(
                         style: pillStyle,
                         onPressed: _busy ? null : _subscribe,
                         icon: _busy ? spinner : const Icon(PhosphorIconsBold.plus, size: 18),
-                        label: const Text('Subscribe'),
+                        label: Text(L.of(context)!.subscribe),
                       ),
               ),
               if (subscribed) ...[
                 const SizedBox(width: 10),
                 CircleAction(
-                  tooltip: 'Unsubscribe',
+                  tooltip: L.of(context)!.unsubscribe,
                   icon: _busy ? spinner : Icon(PhosphorIconsBold.check, color: accent, size: 20),
                   onTap: _busy ? null : _unsubscribe,
                 ),
@@ -251,15 +252,14 @@ class _YouTubeChannelPageState extends State<YouTubeChannelPage> {
           ],
           if (_channel.recentVideos.isNotEmpty) ...[
             const SizedBox(height: 20),
-            Text('Recent videos', style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.bold)),
+            Text(L.of(context)!.recent_videos, style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             for (final video in _channel.recentVideos) _VideoRow(video: video, onTap: () => _openOnYouTube(video.url)),
           ],
           if (!subscribed) ...[
             const SizedBox(height: 16),
             Text(
-              'Subscribing adds the channel to your library. Your server downloads the audio of its videos '
-              'so you can play them like podcast episodes.',
+              L.of(context)!.youtube_subscribe_explainer,
               style: theme.textTheme.bodySmall!.copyWith(color: theme.hintColor),
             ),
           ],

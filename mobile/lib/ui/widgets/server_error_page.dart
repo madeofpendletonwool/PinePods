@@ -1,6 +1,7 @@
 // lib/ui/widgets/server_error_page.dart
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/l10n/L.dart';
 
 class ServerErrorPage extends StatelessWidget {
   final String? errorMessage;
@@ -73,7 +74,7 @@ class ServerErrorPage extends StatelessWidget {
 
           // Title
           Text(
-            title ?? 'Server Unavailable',
+            title ?? L.of(context)!.server_unavailable,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.bold,
               color: Theme.of(context).colorScheme.onSurface,
@@ -84,7 +85,7 @@ class ServerErrorPage extends StatelessWidget {
 
           // Subtitle
           Text(
-            subtitle ?? 'Unable to connect to the PinePods server',
+            subtitle ?? L.of(context)!.unable_to_connect_server,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
               color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
             ),
@@ -116,7 +117,7 @@ class ServerErrorPage extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        'Error Details',
+                        L.of(context)!.error_details,
                         style: Theme.of(context).textTheme.labelMedium?.copyWith(
                           fontWeight: FontWeight.w600,
                           color: Theme.of(context).colorScheme.error,
@@ -160,7 +161,7 @@ class ServerErrorPage extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      'Troubleshooting Tips',
+                      L.of(context)!.troubleshooting_tips,
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: Theme.of(context).colorScheme.primary,
@@ -169,10 +170,10 @@ class ServerErrorPage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                _buildTroubleshootingTip(context, '• Check your internet connection'),
-                _buildTroubleshootingTip(context, '• Verify server settings in the app'),
-                _buildTroubleshootingTip(context, '• Ensure the PinePods server is running'),
-                _buildTroubleshootingTip(context, '• Contact your administrator if the issue persists'),
+                _buildTroubleshootingTip(context, '• ${L.of(context)!.tip_check_internet}'),
+                _buildTroubleshootingTip(context, '• ${L.of(context)!.tip_verify_settings_in_app}'),
+                _buildTroubleshootingTip(context, '• ${L.of(context)!.tip_server_running}'),
+                _buildTroubleshootingTip(context, '• ${L.of(context)!.tip_contact_admin_persists}'),
               ],
             ),
           ),
@@ -186,7 +187,7 @@ class ServerErrorPage extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(PhosphorIconsRegular.arrowClockwise),
-                label: const Text('Retry'),
+                label: Text(L.of(context)!.retry),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),

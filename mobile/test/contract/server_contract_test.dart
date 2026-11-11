@@ -199,7 +199,7 @@ void main() {
           );
 
       // Every choice the create-playlist screen offers has to be one the server takes.
-      for (final sortOrder in playlistSortOptions.keys) {
+      for (final sortOrder in playlistSortOptions) {
         expect(await service.createPlaylist(request('Contract $sortOrder', sortOrder)), isTrue, reason: sortOrder);
       }
 

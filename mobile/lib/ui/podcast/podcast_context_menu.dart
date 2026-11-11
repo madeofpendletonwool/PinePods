@@ -147,7 +147,7 @@ class _CupertinoContextMenu extends StatelessWidget {
                       isDefaultAction: true,
                       onPressed: () {
                         bloc.podcastEvent(PodcastEvent.markAllPlayed);
-                        Navigator.pop(context, 'Cancel');
+                        Navigator.pop(context, L.of(context)!.cancel_button_label);
                       },
                       child: Text(L.of(context)!.mark_episodes_played_label),
                     ),
@@ -155,7 +155,7 @@ class _CupertinoContextMenu extends StatelessWidget {
                       isDefaultAction: true,
                       onPressed: () {
                         bloc.podcastEvent(PodcastEvent.clearAllPlayed);
-                        Navigator.pop(context, 'Cancel');
+                        Navigator.pop(context, L.of(context)!.cancel_button_label);
                       },
                       child: Text(L.of(context)!.mark_episodes_not_played_label),
                     ),
@@ -167,7 +167,7 @@ class _CupertinoContextMenu extends StatelessWidget {
                           refresh: true,
                         ));
                         if (context.mounted) {
-                          Navigator.pop(context, 'Cancel');
+                          Navigator.pop(context, L.of(context)!.cancel_button_label);
                         }
                       },
                       child: Text(L.of(context)!.refresh_feed_label),
@@ -185,7 +185,7 @@ class _CupertinoContextMenu extends StatelessWidget {
                         }
 
                         if (context.mounted) {
-                          Navigator.pop(context, 'Cancel');
+                          Navigator.pop(context, L.of(context)!.cancel_button_label);
                         }
                       },
                       child: Text(L.of(context)!.open_show_website_label),
@@ -194,7 +194,7 @@ class _CupertinoContextMenu extends StatelessWidget {
                   cancelButton: CupertinoActionSheetAction(
                     isDefaultAction: true,
                     onPressed: () {
-                      Navigator.pop(context, 'Cancel');
+                      Navigator.pop(context, L.of(context)!.cancel_button_label);
                     },
                     child: Text(L.of(context)!.cancel_option_label),
                   ),

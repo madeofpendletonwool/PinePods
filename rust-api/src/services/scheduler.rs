@@ -27,6 +27,7 @@ pub enum JobKind {
     Sync,
     Nightly,
     Cleanup,
+    FeedTranscripts,
 }
 
 impl JobKind {
@@ -36,6 +37,7 @@ impl JobKind {
             JobKind::Sync => "sync",
             JobKind::Nightly => "nightly tasks",
             JobKind::Cleanup => "cleanup",
+            JobKind::FeedTranscripts => "feed transcripts",
         }
     }
 }
@@ -43,7 +45,7 @@ impl JobKind {
 /// At most one run per job kind at a time; a run that would overlap the previous one is skipped.
 #[derive(Default)]
 pub struct SingleFlight {
-    running: [AtomicBool; 4],
+    running: [AtomicBool; 5],
 }
 
 impl SingleFlight {
@@ -183,6 +185,15 @@ impl BackgroundScheduler {
             })
         })?;
 
+        // Store the transcripts feeds publish, so they can be searched, a batch every 10 minutes.
+        let transcripts_state = app_state.clone();
+        let transcripts_job = Job::new_async("0 5/10 * * * *", move |_uuid, _l| {
+            let state = transcripts_state.clone();
+            Box::pin(async move {
+                guarded(JobKind::FeedTranscripts, crate::services::feed_transcripts::run_due(&state.db_pool)).await;
+            })
+        })?;
+
         // Add jobs to scheduler
         self.scheduler.add(refresh_job).await?;
         self.scheduler.add(sync_job).await?;
@@ -192,6 +203,7 @@ impl BackgroundScheduler {
         self.scheduler.add(auto_complete_job).await?;
         self.scheduler.add(backup_job).await?;
         self.scheduler.add(ytdlp_job).await?;
+        self.scheduler.add(transcripts_job).await?;
 
         // Start the scheduler
         self.scheduler.start().await?;
