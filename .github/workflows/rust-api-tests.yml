@@ -86,11 +86,14 @@ jobs:
 
       - name: Install migration dependencies
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -qy libmariadb-dev
           python -m pip install -q -r rust-api/tests/requirements.txt
-          # Production runs migrations with the mariadb connector; use it here too.
-          python -m pip install -q mariadb
+          # Production runs migrations with the mariadb connector; use it when apt is
+          # reachable, otherwise migrations fall back to mysql-connector-python.
+          if sudo apt-get update -qq && sudo apt-get install -qy libmariadb-dev; then
+            python -m pip install -q mariadb
+          else
+            echo "::warning::apt unavailable; using mysql-connector-python for migrations"
+          fi
 
       - name: Unit tests
         working-directory: rust-api

@@ -961,8 +961,14 @@
               "application/octet-stream": {}
             }
           },
+          "400": {
+            "description": "Incorrect database password"
+          },
           "401": {
             "description": "Invalid or missing API key"
+          },
+          "500": {
+            "description": "Database dump failed"
           }
         },
         "security": [
