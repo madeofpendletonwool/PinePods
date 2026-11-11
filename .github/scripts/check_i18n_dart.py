@@ -18,7 +18,7 @@ from pathlib import Path
 _SKIP_PATHS = ('lib/l10n/', 'lib/ui/themes.dart')
 
 # A single- or double-quoted Dart string literal (no raw/triple-quoted strings).
-_STRING_RE = re.compile(r"""(?<![r\w])(['"])((?:\\.|(?!\1).)*)\1""")
+_STRING_RE = re.compile(r"""(?<![r\w])(['"])((?:\\.|(?!\1)[^\\])*)\1""")
 
 # Interpolations are replaced before the text heuristics run.
 _INTERP_RE = re.compile(r'\$\{[^}]*\}|\$[A-Za-z_]\w*')
