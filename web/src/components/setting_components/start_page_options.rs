@@ -1,6 +1,6 @@
 use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
-use crate::requests::setting_reqs::{call_get_startpage, call_set_startpage, call_set_global_podcast_cover_preference, call_get_podcast_cover_preference};
+use crate::requests::setting_reqs::{call_get_startpage, call_set_startpage, call_set_global_podcast_cover_preference, call_get_podcast_cover_preference, call_get_podcast_count_display, call_update_podcast_count_display};
 use crate::requests::pod_req::{call_get_collection_add_ui, call_set_collection_add_ui, call_set_use_gravatar};
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{HtmlSelectElement, HtmlInputElement};
@@ -23,6 +23,60 @@ pub fn startpage() -> Html {
     // State for collection add-mode preference
     let collection_add_ui = use_state(|| "modal".to_string());
     let collection_loading = use_state(|| true);
+
+    // Which episode count the Podcasts page shows
+    let podcast_count = use_state(|| "total".to_string());
+    let podcast_count_loading = use_state(|| true);
+    {
+        let podcast_count = podcast_count.clone();
+        let podcast_count_loading = podcast_count_loading.clone();
+        let state = state.clone();
+        use_effect_with((), move |_| {
+            if let (Some(api_key), Some(user_id), Some(server_name)) = (
+                state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
+                state.user_details.as_ref().map(|d| d.UserID),
+                state.auth_details.as_ref().map(|d| d.server_name.clone()),
+            ) {
+                spawn_local(async move {
+                    if let Ok(display) = call_get_podcast_count_display(server_name, api_key, user_id).await {
+                        podcast_count.set(display);
+                    }
+                    podcast_count_loading.set(false);
+                });
+            } else {
+                podcast_count_loading.set(false);
+            }
+            || ()
+        });
+    }
+    let on_podcast_count_change = {
+        let podcast_count = podcast_count.clone();
+        let state = state.clone();
+        let i18n_failed = i18n.t("start_page_options.failed_to_update_podcast_count").to_string();
+        Callback::from(move |e: Event| {
+            let Some(select) = e.target_dyn_into::<HtmlSelectElement>() else { return };
+            let value = select.value();
+            let previous = (*podcast_count).clone();
+            podcast_count.set(value.clone());
+            if let (Some(api_key), Some(user_id), Some(server_name)) = (
+                state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
+                state.user_details.as_ref().map(|d| d.UserID),
+                state.auth_details.as_ref().map(|d| d.server_name.clone()),
+            ) {
+                let podcast_count = podcast_count.clone();
+                let i18n_failed = i18n_failed.clone();
+                spawn_local(async move {
+                    if let Err(e) = call_update_podcast_count_display(server_name, api_key, user_id, value).await {
+                        podcast_count.set(previous);
+                        let formatted_error = format_error_message(&e.to_string());
+                        Dispatch::<NotificationState>::global().reduce_mut(|s| {
+                            s.error_message = Some(format!("{}{}", i18n_failed, formatted_error));
+                        });
+                    }
+                });
+            }
+        })
+    };
 
     {
         let selected_startpage = selected_startpage.clone();
@@ -326,6 +380,19 @@ pub fn startpage() -> Html {
                             </button>
                         </>
                     }
+                </div>
+            </div>
+
+            <div class="settings-row">
+                <div>
+                    <div class="settings-row-label">{i18n.t("start_page_options.podcast_count")}</div>
+                    <div class="settings-row-desc">{i18n.t("start_page_options.podcast_count_description")}</div>
+                </div>
+                <div class="settings-row-control">
+                    <select class="select" onchange={on_podcast_count_change} disabled={*podcast_count_loading}>
+                        <option value="total" selected={*podcast_count == "total"}>{i18n.t("start_page_options.podcast_count_total")}</option>
+                        <option value="unplayed" selected={*podcast_count == "unplayed"}>{i18n.t("start_page_options.podcast_count_unplayed")}</option>
+                    </select>
                 </div>
             </div>
 

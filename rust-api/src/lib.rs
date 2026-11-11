@@ -198,6 +198,8 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::auth::update_auto_complete_seconds))
         .routes(routes!(handlers::auth::get_queue_add_position))
         .routes(routes!(handlers::auth::update_queue_add_position))
+        .routes(routes!(handlers::auth::get_podcast_count_display))
+        .routes(routes!(handlers::auth::update_podcast_count_display))
         .routes(routes!(handlers::auth::user_admin_check))
         .routes(routes!(handlers::auth::import_opml))
         .routes(routes!(handlers::auth::import_progress))

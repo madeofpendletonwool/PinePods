@@ -132,6 +132,8 @@ pub struct PodcastResponse {
     pub oldest_episode_date: Option<String>,
     pub newest_episode_date: Option<String>,
     pub play_count: i64,
+    /// Episodes (and videos) of this podcast the user hasn't finished.
+    pub unplayed_count: i64,
 }
 
 // Lean per-subscription inputs for the recommendation taste profile (#103). Deliberately
@@ -265,6 +267,38 @@ impl QueueAddPosition {
 pub struct QueueAddPositionSetting {
     pub user_id: i32,
     pub position: QueueAddPosition,
+}
+
+/// Which episode count the Podcasts page shows for each podcast.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum PodcastCountDisplay {
+    /// Every episode of the podcast.
+    Total,
+    /// Only episodes the user hasn't finished.
+    Unplayed,
+}
+
+impl PodcastCountDisplay {
+    pub fn from_setting(value: Option<&str>) -> Self {
+        match value {
+            Some(v) if v.eq_ignore_ascii_case("unplayed") => Self::Unplayed,
+            _ => Self::Total,
+        }
+    }
+
+    pub fn as_setting(self) -> &'static str {
+        match self {
+            Self::Total => "total",
+            Self::Unplayed => "unplayed",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct PodcastCountDisplaySetting {
+    pub user_id: i32,
+    pub display: PodcastCountDisplay,
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]

@@ -734,7 +734,13 @@ impl DatabasePool {
                                          (SELECT MAX(v.publishedat) FROM "YouTubeVideos" v WHERE v.podcastid = "Podcasts".podcastid)),
                                 'YYYY-MM-DD"T"HH24:MI:SS') as newest_episode_date,
                         (SELECT COUNT(*) FROM "UserEpisodeHistory" h JOIN "Episodes" e ON e.episodeid = h.episodeid
-                         WHERE h.userid = $1 AND e.feedid = "Podcasts".feedid) as play_count
+                         WHERE h.userid = $1 AND e.feedid = "Podcasts".feedid) as play_count,
+                        (SELECT COUNT(*) FROM "Episodes" e
+                         WHERE e.feedid = "Podcasts".feedid
+                           AND NOT EXISTS (SELECT 1 FROM "UserEpisodeState" s
+                                           WHERE s.userid = $1 AND s.episodeid = e.episodeid AND s.completed = TRUE))
+                        + (SELECT COUNT(*) FROM "YouTubeVideos" v
+                           WHERE v.podcastid = "Podcasts".podcastid AND COALESCE(v.completed, FALSE) = FALSE) as unplayed_count
                     FROM "Podcasts"
                     WHERE userid = $1 AND COALESCE(displaypodcast, TRUE) = TRUE
                     ORDER BY podcastname"#
@@ -765,6 +771,7 @@ impl DatabasePool {
                         oldest_episode_date: row.try_get("oldest_episode_date")?,
                         newest_episode_date: row.try_get("newest_episode_date")?,
                         play_count: row.try_get("play_count")?,
+                        unplayed_count: row.try_get("unplayed_count")?,
                     });
                 }
                 Ok(podcasts)
@@ -796,11 +803,18 @@ impl DatabasePool {
                                              (SELECT MAX(v.PublishedAt) FROM YouTubeVideos v WHERE v.PodcastID = Podcasts.PodcastID)),
                                     '%Y-%m-%dT%H:%i:%s') as newest_episode_date,
                         (SELECT COUNT(*) FROM UserEpisodeHistory h JOIN Episodes e ON e.EpisodeID = h.EpisodeID
-                         WHERE h.UserID = ? AND e.FeedID = Podcasts.FeedID) as play_count
+                         WHERE h.UserID = ? AND e.FeedID = Podcasts.FeedID) as play_count,
+                        (SELECT COUNT(*) FROM Episodes e
+                         WHERE e.FeedID = Podcasts.FeedID
+                           AND NOT EXISTS (SELECT 1 FROM UserEpisodeState s
+                                           WHERE s.UserID = ? AND s.EpisodeID = e.EpisodeID AND s.Completed = 1))
+                        + (SELECT COUNT(*) FROM YouTubeVideos v
+                           WHERE v.PodcastID = Podcasts.PodcastID AND COALESCE(v.Completed, 0) = 0) as unplayed_count
                     FROM Podcasts
                     WHERE UserID = ? AND COALESCE(DisplayPodcast, 1) = 1
                     ORDER BY PodcastName"
                 )
+                .bind(user_id)
                 .bind(user_id)
                 .bind(user_id)
                 .fetch_all(pool)
@@ -828,6 +842,7 @@ impl DatabasePool {
                         oldest_episode_date: row.try_get("oldest_episode_date")?,
                         newest_episode_date: row.try_get("newest_episode_date")?,
                         play_count: row.try_get("play_count")?,
+                        unplayed_count: row.try_get("unplayed_count")?,
                     });
                 }
                 Ok(podcasts)
