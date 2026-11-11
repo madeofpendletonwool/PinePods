@@ -6,6 +6,52 @@
 // cannot be used to smuggle an internal IPv4 address past the check.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
+use std::sync::LazyLock;
+
+static FEED_ALLOWLIST: LazyLock<FeedAllowlist> = LazyLock::new(|| {
+    FeedAllowlist::parse(
+        &std::env::var("PINEPODS_FEED_ALLOWED_HOSTS").unwrap_or_default(),
+        &std::env::var("PINEPODS_FEED_ALLOWED_CIDRS").unwrap_or_default(),
+    )
+});
+
+#[derive(Clone, Default)]
+struct FeedAllowlist {
+    hosts: Vec<String>,
+    cidrs: Vec<ipnet::IpNet>,
+}
+
+impl FeedAllowlist {
+    fn parse(hosts: &str, cidrs: &str) -> Self {
+        let hosts = hosts.split(',').map(str::trim).filter(|entry| !entry.is_empty()).filter_map(|entry| {
+            match url::Host::parse(entry) {
+                Ok(host) if !entry.contains('*') => Some(host.to_string().trim_end_matches('.').to_string()),
+                _ => {
+                    tracing::warn!("Ignoring invalid PINEPODS_FEED_ALLOWED_HOSTS entry");
+                    None
+                }
+            }
+        }).collect();
+        let cidrs = cidrs.split(',').map(str::trim).filter(|entry| !entry.is_empty()).filter_map(|entry| {
+            match entry.parse::<ipnet::IpNet>() {
+                Ok(network) => Some(network),
+                Err(_) => {
+                    tracing::warn!("Ignoring invalid PINEPODS_FEED_ALLOWED_CIDRS entry");
+                    None
+                }
+            }
+        }).collect();
+        Self { hosts, cidrs }
+    }
+
+    fn allows_host(&self, host: &str) -> bool {
+        self.hosts.iter().any(|allowed| allowed == host.trim_end_matches('.'))
+    }
+
+    fn allows_ip(&self, ip: IpAddr) -> bool {
+        self.cidrs.iter().any(|network| network.contains(&ip))
+    }
+}
 
 /// Integration tests serve fixture feeds/audio from a loopback HTTP server, which this guard
 /// would otherwise (correctly) refuse. Only the `test-support` feature can open that hole, and
@@ -76,10 +122,14 @@ fn is_blocked_v6(v6: Ipv6Addr) -> bool {
 
 /// Validate a URL before any server-side fetch.
 ///
-/// Returns Ok(()) only if the scheme is http/https and *every* address the host
-/// resolves to is a public, routable address. Resolution failure or any blocked
-/// address yields Err with a short reason.
+/// Returns Ok(()) only for http/https URLs whose host is explicitly allowed or
+/// whose resolved addresses are all public or in an explicitly allowed CIDR.
+/// Resolution failure or any other blocked address yields Err with a short reason.
 pub fn ensure_safe_public_url(raw_url: &str) -> Result<(), String> {
+    ensure_safe_url_with_allowlist(raw_url, &FEED_ALLOWLIST)
+}
+
+fn ensure_safe_url_with_allowlist(raw_url: &str, allowlist: &FeedAllowlist) -> Result<(), String> {
     let parsed = url::Url::parse(raw_url).map_err(|e| format!("invalid URL: {}", e))?;
 
     match parsed.scheme() {
@@ -92,6 +142,10 @@ pub fn ensure_safe_public_url(raw_url: &str) -> Result<(), String> {
         .ok_or_else(|| "URL has no host".to_string())?
         .to_string();
 
+    if allowlist.allows_host(&host_raw) {
+        return Ok(());
+    }
+
     // url::Url::host_str() returns IPv6 literals wrapped in brackets
     // (e.g. "[::1]"); strip them before attempting a literal-IP parse.
     let host = host_raw
@@ -102,7 +156,7 @@ pub fn ensure_safe_public_url(raw_url: &str) -> Result<(), String> {
 
     // If the host is already a literal IP, classify it directly.
     if let Ok(ip) = host.parse::<IpAddr>() {
-        return if is_blocked_ip(ip) {
+        return if !allowlist.allows_ip(ip) && is_blocked_ip(ip) {
             Err(format!("destination IP {} is private/reserved", ip))
         } else {
             Ok(())
@@ -120,7 +174,7 @@ pub fn ensure_safe_public_url(raw_url: &str) -> Result<(), String> {
         return Err(format!("host '{}' resolved to no addresses", host));
     }
     for ip in &addrs {
-        if is_blocked_ip(*ip) {
+        if !allowlist.allows_ip(*ip) && is_blocked_ip(*ip) {
             return Err(format!(
                 "host '{}' resolves to private/reserved address {}",
                 host, ip
@@ -145,11 +199,15 @@ pub async fn ensure_safe_public_url_async(raw_url: &str) -> Result<(), String> {
 /// Attach to any client that fetches an attacker-controlled URL; pair it with an
 /// up-front `ensure_safe_public_url_async` check on the initial URL.
 pub fn guarded_redirect_policy() -> reqwest::redirect::Policy {
-    reqwest::redirect::Policy::custom(|attempt| {
+    redirect_policy_with_allowlist(FEED_ALLOWLIST.clone())
+}
+
+fn redirect_policy_with_allowlist(allowlist: FeedAllowlist) -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(move |attempt| {
         if attempt.previous().len() >= 10 {
             return attempt.stop();
         }
-        match ensure_safe_public_url(attempt.url().as_str()) {
+        match ensure_safe_url_with_allowlist(attempt.url().as_str(), &allowlist) {
             Ok(()) => attempt.follow(),
             Err(_) => attempt.stop(),
         }
@@ -173,12 +231,88 @@ mod tests {
             "gopher://127.0.0.1/",
             "file:///etc/passwd",
         ] {
-            assert!(ensure_safe_public_url(u).is_err(), "should block {}", u);
+            assert!(ensure_safe_url_with_allowlist(u, &FeedAllowlist::default()).is_err(), "should block {}", u);
         }
     }
 
     #[test]
     fn allows_public_literal() {
         assert!(ensure_safe_public_url("http://93.184.216.34/audio.mp3").is_ok());
+    }
+
+    #[test]
+    fn allows_only_exact_configured_hosts() {
+        let allowlist = FeedAllowlist::parse(" Feeds.Example.INTERNAL., 192.168.1.10, [fd00::1], ", "");
+        for allowed in [
+            "https://feeds.example.internal/rss",
+            "https://FEEDS.EXAMPLE.INTERNAL.:8443/rss",
+            "http://192.168.1.10/feed",
+            "http://[fd00::1]/feed",
+        ] {
+            assert!(ensure_safe_url_with_allowlist(allowed, &allowlist).is_ok(), "should allow {allowed}");
+        }
+        for host in ["sub.feeds.example.internal", "feeds.example.internal.evil", "other.internal"] {
+            assert!(!allowlist.allows_host(host), "should not allow {host}");
+        }
+        assert!(ensure_safe_url_with_allowlist("http://192.168.1.11/feed", &allowlist).is_err());
+        assert!(ensure_safe_url_with_allowlist("ftp://feeds.example.internal/rss", &allowlist).is_err());
+    }
+
+    #[test]
+    fn allows_only_configured_cidrs() {
+        let allowlist = FeedAllowlist::parse("", " 192.168.10.0/24, fd12:3456::/48, ");
+        for allowed in ["http://192.168.10.1/feed", "http://192.168.10.255/feed", "https://[fd12:3456::1]/feed"] {
+            assert!(ensure_safe_url_with_allowlist(allowed, &allowlist).is_ok(), "should allow {allowed}");
+        }
+        for blocked in [
+            "http://192.168.11.1/feed",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://[fd12:3457::1]/feed",
+            "http://[::ffff:192.168.10.1]/feed",
+            "http://[64:ff9b::c0a8:a01]/feed",
+        ] {
+            assert!(ensure_safe_url_with_allowlist(blocked, &allowlist).is_err(), "should block {blocked}");
+        }
+    }
+
+    #[test]
+    fn invalid_entries_do_not_disable_guard() {
+        let allowlist = FeedAllowlist::parse("*, *.internal, http://192.168.1.1/feed", "invalid, 192.168.0.0/33, fd00::/129");
+        assert!(allowlist.hosts.is_empty());
+        assert!(allowlist.cidrs.is_empty());
+        assert!(ensure_safe_url_with_allowlist("http://192.168.1.1/feed", &allowlist).is_err());
+    }
+
+    #[test]
+    fn cidrs_apply_to_resolved_addresses() {
+        let allowlist = FeedAllowlist::parse("", "127.0.0.0/8, ::1/128");
+        assert!(ensure_safe_url_with_allowlist("http://localhost/feed", &allowlist).is_ok());
+    }
+
+    #[tokio::test]
+    async fn redirects_recheck_each_destination() {
+        use axum::{response::Redirect, routing::get, Router};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new()
+            .route("/start", get(|| async { Redirect::temporary("/trusted") }))
+            .route("/trusted", get(|| async { Redirect::temporary("http://169.254.169.254/latest/meta-data/") }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        for allowlist in [FeedAllowlist::parse("127.0.0.1", ""), FeedAllowlist::parse("", "127.0.0.0/8")] {
+            let client = reqwest::Client::builder()
+                .no_proxy()
+                .timeout(std::time::Duration::from_secs(5))
+                .redirect(redirect_policy_with_allowlist(allowlist))
+                .build()
+                .unwrap();
+            let response = client.get(format!("http://{address}/start")).send().await.unwrap();
+            assert_eq!(response.url().path(), "/trusted");
+            assert_eq!(response.status(), reqwest::StatusCode::TEMPORARY_REDIRECT);
+            assert_eq!(response.headers()[reqwest::header::LOCATION], "http://169.254.169.254/latest/meta-data/");
+        }
+
+        server.abort();
     }
 }

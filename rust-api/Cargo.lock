@@ -2137,6 +2137,7 @@ dependencies = [
  "hex",
  "http-body-util",
  "id3",
+ "ipnet",
  "lazy_static",
  "lettre",
  "mp3-metadata",
