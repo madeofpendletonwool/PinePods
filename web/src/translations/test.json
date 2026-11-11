@@ -432,6 +432,7 @@
     "completed": ""
   },
   "episodes_layout": {
+    "transcribe": "",
     "add": "ZZTEST-ADD-ZZTEST",
     "add_remove_podcast": "ZZTEST-ADD-REMOVE-PODCAST-ZZTEST",
     "auto_play_next_episode": "",
@@ -1730,6 +1731,8 @@
     "youtube_channels": "ZZTEST-YOUTUBE-CHANNELS-ZZTEST"
   },
   "collections": {
+    "add_episodes_count": "",
+    "bulk_added": "",
     "collections": "",
     "add_to_collection": "",
     "new_collection": "",

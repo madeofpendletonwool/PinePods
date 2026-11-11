@@ -432,6 +432,7 @@
     "completed": "Lu"
   },
   "episodes_layout": {
+    "transcribe": "",
     "add": "Ajouter",
     "add_remove_podcast": "Cliquez pour ajouter ou supprimer le podcast du flux",
     "auto_play_next_episode": "Jouer automatiquement le prochain épisode",
@@ -1730,6 +1731,8 @@
     "youtube_channels": "Chaînes YouTube"
   },
   "collections": {
+    "add_episodes_count": "",
+    "bulk_added": "",
     "collections": "",
     "add_to_collection": "",
     "new_collection": "",

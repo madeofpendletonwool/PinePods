@@ -3943,6 +3943,68 @@ pub async fn transcribe_episode(
     Ok(Json(serde_json::json!({ "task_id": task_id, "detail": "Transcription started." })))
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct BulkTranscribeEpisodesRequest {
+    pub episode_ids: Vec<i32>,
+    pub user_id: i32,
+    /// Re-transcribe episodes that already have a transcript.
+    #[serde(default)]
+    pub force: bool,
+}
+
+/// Queue transcriptions for several episodes. They run one at a time; episodes that already
+/// have a transcript are skipped unless `force` is set.
+#[utoipa::path(
+    post,
+    path = "/bulk_transcribe_episodes",
+    tag = "settings",
+    summary = "Queue transcriptions for several episodes (AI sidecar)",
+    request_body = BulkTranscribeEpisodesRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Queued; one task id per episode", body = serde_json::Value),
+        (status = 400, description = "No episodes given"),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 404, description = "An episode isn't one of the user's"),
+        (status = 503, description = "AI service unavailable"),
+    ),
+)]
+pub async fn bulk_transcribe_episodes(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<BulkTranscribeEpisodesRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only process your own episodes."));
+    }
+    let mut episode_ids = request.episode_ids;
+    let mut seen = std::collections::HashSet::new();
+    episode_ids.retain(|id| seen.insert(*id));
+    if episode_ids.is_empty() {
+        return Err(AppError::bad_request("No episodes given."));
+    }
+    crate::handlers::require_episodes_owner(&state, request.user_id, &episode_ids, false).await?;
+    if !state.ai_available.is_available() {
+        return Err(AppError::service_unavailable("AI service is not available."));
+    }
+
+    let count = episode_ids.len();
+    let task_ids = state
+        .task_spawner
+        .spawn_bulk_transcribe(episode_ids, request.user_id, request.force)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "task_ids": task_ids,
+        "detail": format!("Queued {} episode{} for transcription.", count, if count == 1 { "" } else { "s" }),
+    })))
+}
+
 // Read the stored generated transcript for an episode
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct EpisodeTranscriptQuery {

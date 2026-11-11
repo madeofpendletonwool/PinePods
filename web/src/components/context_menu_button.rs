@@ -1182,6 +1182,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             Dispatch::<CollectionModalState>::global().reduce_mut(move |s| {
                 s.open = true;
                 s.episode = Some(episode);
+                s.bulk_episodes.clear();
             });
         })
     };

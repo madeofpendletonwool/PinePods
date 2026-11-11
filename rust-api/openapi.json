@@ -1206,6 +1206,52 @@
         ]
       }
     },
+    "/api/data/bulk_transcribe_episodes": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Queue transcriptions for several episodes (AI sidecar)",
+        "operationId": "bulk_transcribe_episodes",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkTranscribeEpisodesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Queued; one task id per episode",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "No episodes given"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "An episode isn't one of the user's"
+          },
+          "503": {
+            "description": "AI service unavailable"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/check_episode_in_db/{user_id}": {
       "get": {
         "tags": [
@@ -13903,6 +13949,30 @@
               "null"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "BulkTranscribeEpisodesRequest": {
+        "type": "object",
+        "required": [
+          "episode_ids",
+          "user_id"
+        ],
+        "properties": {
+          "episode_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Re-transcribe episodes that already have a transcript."
           }
         }
       },
