@@ -8917,3 +8917,36 @@ def migration_116_gpodder_session_app_password(conn, db_type: str) -> None:
         logger.info("Migration 116 completed")
     finally:
         cursor.close()
+
+
+@register_migration(
+    "119",
+    "user_auto_queue_new_podcasts",
+    "UserSettings.AutoQueueNewPodcasts: new subscriptions start with Podcasts.AutoQueue on",
+    requires=["001"],
+    sqlite=True,
+)
+def migration_119_user_auto_queue_new_podcasts(conn, db_type: str) -> None:
+    """A per-user default for auto-queue. When it is on, a podcast the user subscribes to
+    starts with AutoQueue on, so the server queues its new episodes on refresh. Existing
+    podcasts are left alone. Off by default."""
+    cursor = conn.cursor()
+    try:
+        if db_type == "sqlite":
+            cursor.execute('PRAGMA table_info("UserSettings")')
+            exists = any(row[1].lower() == "autoqueuenewpodcasts" for row in cursor.fetchall())
+        else:
+            exists = _column_exists(cursor, db_type, "UserSettings", "AutoQueueNewPodcasts")
+        if not exists:
+            # SQLite reports a column by its declared name, and its schema is all lowercase.
+            table, column, default = {
+                "postgresql": ('"UserSettings"', "AutoQueueNewPodcasts", "FALSE"),
+                "sqlite": ('"UserSettings"', "autoqueuenewpodcasts", "0"),
+            }.get(db_type, ("UserSettings", "AutoQueueNewPodcasts", "FALSE"))
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} BOOLEAN NOT NULL DEFAULT {default}")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()

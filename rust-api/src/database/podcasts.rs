@@ -111,6 +111,35 @@ pub(crate) fn clean_categories(
         .collect()
 }
 
+// A new subscription starts with auto-queue on when its user asked for that by default. Runs in
+// the subscription's transaction: a new subscribed row, or a kept-for-episodes row being subscribed.
+dialect_fn!([apply_auto_queue_default_pg, apply_auto_queue_default_lite]
+    async fn(conn: &mut q::Conn, podcast_id: i32, user_id: i32) -> AppResult<()> {
+    q::query(
+        r#"UPDATE "Podcasts" SET autoqueue = TRUE
+           WHERE podcastid = $1
+             AND EXISTS (SELECT 1 FROM "UserSettings" WHERE userid = $2 AND autoqueuenewpodcasts = TRUE)"#,
+    )
+    .bind(podcast_id)
+    .bind(user_id)
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
+});
+
+async fn apply_auto_queue_default_mysql(conn: &mut sqlx::MySqlConnection, podcast_id: i32, user_id: i32) -> AppResult<()> {
+    sqlx::query(
+        "UPDATE Podcasts SET AutoQueue = TRUE
+         WHERE PodcastID = ?
+           AND EXISTS (SELECT 1 FROM UserSettings WHERE UserID = ? AND AutoQueueNewPodcasts = TRUE)",
+    )
+    .bind(podcast_id)
+    .bind(user_id)
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
+}
+
 impl DatabasePool {
     // Add podcast - matches Python add_podcast function exactly
     pub async fn add_podcast(
@@ -230,6 +259,7 @@ impl DatabasePool {
                 
                 // Update UserStats table
                 if subscribed {
+                    q::pick(apply_auto_queue_default_pg, apply_auto_queue_default_lite)(&mut tx, podcast_id, podcast_values.user_id).await?;
                     q::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded + 1 WHERE userid = $1"#)
                         .bind(podcast_values.user_id)
                         .execute(&mut *tx)
@@ -322,6 +352,7 @@ impl DatabasePool {
                 
                 // Update UserStats table
                 if subscribed {
+                    apply_auto_queue_default_mysql(&mut tx, podcast_id, podcast_values.user_id).await?;
                     sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = ?")
                         .bind(podcast_values.user_id)
                         .execute(&mut *tx)
@@ -387,6 +418,7 @@ impl DatabasePool {
                     .await?
                     .rows_affected() > 0;
                 if flipped {
+                    q::pick(apply_auto_queue_default_pg, apply_auto_queue_default_lite)(&mut tx, podcast_id, user_id).await?;
                     q::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded + 1 WHERE userid = $1"#)
                         .bind(user_id)
                         .execute(&mut *tx)
@@ -405,6 +437,7 @@ impl DatabasePool {
                     .await?
                     .rows_affected() > 0;
                 if flipped {
+                    apply_auto_queue_default_mysql(&mut tx, podcast_id, user_id).await?;
                     sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = ?")
                         .bind(user_id)
                         .execute(&mut *tx)
@@ -574,6 +607,7 @@ impl DatabasePool {
                 .await?;
                 
                 let podcast_id: i32 = row.try_get("podcastid")?;
+                q::pick(apply_auto_queue_default_pg, apply_auto_queue_default_lite)(&mut tx, podcast_id, podcast_values.user_id).await?;
                 
                 // Update UserStats table
                 q::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded + 1 WHERE userid = $1"#)
@@ -635,6 +669,7 @@ impl DatabasePool {
                 .await?;
                 
                 let podcast_id = result.last_insert_id() as i32;
+                apply_auto_queue_default_mysql(&mut tx, podcast_id, podcast_values.user_id).await?;
                 
                 // Update UserStats table
                 sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = ?")
