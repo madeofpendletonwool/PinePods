@@ -1523,7 +1523,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 }
             }
         };
-        let play_label = if playing { "Pause" } else { "Play" };
+        let play_label = AttrValue::from(i18n.t(if playing { "episode.pause" } else { "episode.play" }).to_string());
         let drag = sheet_drag.clone();
         let on_shownotes_click = {
             let show_modal = show_modal.clone();
@@ -1662,7 +1662,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     <span>{ "15" }</span>
                                 </button>
                             </div>
-                            <button onclick={toggle_playback.clone()} class="player-fs-ctrl player-fs-ctrl-big pp-play" title={play_label} aria-label={play_label}>
+                            <button onclick={toggle_playback.clone()} class="player-fs-ctrl player-fs-ctrl-big pp-play" title={play_label.clone()} aria-label={play_label.clone()}>
                                 { play_icon(playing) }
                             </button>
                             <div class="player-fs-side-btns">
@@ -1743,7 +1743,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             <button onclick={skip_backward.clone()} class="player-btn pp-skip-sm" title="Back 15 seconds">
                                 <i class="ph ph-arrow-counter-clockwise"></i>
                             </button>
-                            <button onclick={toggle_playback.clone()} class="player-btn pp-play pp-play--sm" title={play_label} aria-label={play_label}>
+                            <button onclick={toggle_playback.clone()} class="player-btn pp-play pp-play--sm" title={play_label.clone()} aria-label={play_label.clone()}>
                                 { play_icon(playing) }
                             </button>
                             <button onclick={skip_forward.clone()} class="player-btn pp-skip-sm" title="Forward 15 seconds">
@@ -1763,7 +1763,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             on_change={update_volume_closure}
                             class={classes!("pp-hover-only", "pp-bar-volume")}
                         />
-                        <button onclick={toggle_playback.clone()} class="player-btn pp-play pp-play--sm pp-phone-only" title={play_label} aria-label={play_label}>
+                        <button onclick={toggle_playback.clone()} class="player-btn pp-play pp-play--sm pp-phone-only" title={play_label.clone()} aria-label={play_label.clone()}>
                             { play_icon(playing) }
                         </button>
                         <button onclick={title_click.clone()} class="player-btn pp-expand" title="Open player">

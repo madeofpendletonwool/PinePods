@@ -6,6 +6,7 @@
 
 use crate::components::context::UIState;
 use gloo::events::{EventListener, EventListenerOptions, EventListenerPhase};
+use i18nrs::yew::use_translation;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -561,6 +562,10 @@ pub struct VolumeProps {
 /// Mute toggle plus an inline slider. Muting remembers the level to come back to.
 #[function_component(VolumeControl)]
 pub fn volume_control(props: &VolumeProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_mute = i18n.t("audio.mute").to_string();
+    let i18n_unmute = i18n.t("audio.unmute").to_string();
+    let i18n_volume = i18n.t("audio.volume").to_string();
     let restore = use_mut_ref(|| 100.0f64);
     if props.volume > 0.0 {
         *restore.borrow_mut() = props.volume;
@@ -581,11 +586,11 @@ pub fn volume_control(props: &VolumeProps) -> Html {
     html! {
         <div class={classes!("pp-volume", props.class.clone())}>
             <button type="button" class="player-btn" onclick={toggle}
-                title={if props.volume > 0.0 { "Mute" } else { "Unmute" }}>
+                title={if props.volume > 0.0 { i18n_mute } else { i18n_unmute }}>
                 <i class={classes!("ph", icon)}></i>
             </button>
             <Slider value={props.volume} min={0.0} max={100.0} step={1.0}
-                on_input={props.on_change.clone()} label="Volume"
+                on_input={props.on_change.clone()} label={i18n_volume}
                 value_text={Some(AttrValue::from(format!("{}%", props.volume as i32)))}
                 class={classes!("pp-volume-slider")} />
         </div>
@@ -610,6 +615,9 @@ pub struct SpeedProps {
 /// A speed pill that opens presets and a fine slider above it.
 #[function_component(SpeedControl)]
 pub fn speed_control(props: &SpeedProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_speed = i18n.t("audio.speed").to_string();
+    let i18n_playback_speed = i18n.t("audio.playback_speed").to_string();
     let open = use_state(|| false);
     let toggle = {
         let open = open.clone();
@@ -639,20 +647,20 @@ pub fn speed_control(props: &SpeedProps) -> Html {
     html! {
         <div class="pp-speed">
             <button type="button" class={classes!("pp-pill", (*open).then_some("is-open"))}
-                onclick={toggle} title="Playback speed" aria-expanded={open.to_string()}>
+                onclick={toggle} title={i18n_playback_speed.clone()} aria-expanded={open.to_string()}>
                 <i class="ph ph-gauge"></i>
                 <span>{ fmt_speed(speed) }</span>
             </button>
             if *open {
                 <div class="pp-popover-scrim" onclick={close} />
-                <div class="pp-popover" role="dialog" aria-label="Playback speed">
+                <div class="pp-popover" role="dialog" aria-label={i18n_playback_speed.clone()}>
                     <div class="pp-popover-head">
-                        <span>{ "Speed" }</span>
+                        <span>{ i18n_speed }</span>
                         <span class="pp-popover-value">{ fmt_speed(speed) }</span>
                     </div>
                     <div class="pp-chips">{ presets }</div>
                     <Slider value={speed} min={0.5} max={3.0} step={0.05}
-                        on_input={props.on_change.clone()} label="Playback speed"
+                        on_input={props.on_change.clone()} label={i18n_playback_speed}
                         value_text={Some(AttrValue::from(fmt_speed(speed)))} />
                 </div>
             }

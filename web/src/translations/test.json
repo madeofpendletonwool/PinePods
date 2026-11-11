@@ -76,7 +76,12 @@
     "no_chapters_available": "ZZTEST-NO-CHAPTERS-AVAILABLE-ZZTEST",
     "now_playing": "",
     "shownotes": "ZZTEST-SHOWNOTES-ZZTEST",
-    "shownotes_unavailable": "ZZTEST-SHOWNOTES-UNAVAILABLE-ZZTEST"
+    "shownotes_unavailable": "ZZTEST-SHOWNOTES-UNAVAILABLE-ZZTEST",
+    "mute": "ZZTEST-MUTE-ZZTEST",
+    "unmute": "ZZTEST-UNMUTE-ZZTEST",
+    "speed": "ZZTEST-SPEED-ZZTEST",
+    "playback_speed": "ZZTEST-PLAYBACK-SPEED-ZZTEST",
+    "volume": "ZZTEST-VOLUME-ZZTEST"
   },
   "auth": {
     "account_created_success": "ZZTEST-ACCOUNT-CREATED-SUCCESS-ZZTEST",

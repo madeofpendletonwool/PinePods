@@ -76,7 +76,12 @@
     "no_chapters_available": "Нет доступных глав",
     "now_playing": "",
     "shownotes": "Примечания",
-    "shownotes_unavailable": "Примечания (Недоступно)"
+    "shownotes_unavailable": "Примечания (Недоступно)",
+    "mute": "",
+    "unmute": "",
+    "speed": "",
+    "playback_speed": "",
+    "volume": ""
   },
   "auth": {
     "account_created_success": "Аккаунт успешно создан! Теперь вы можете войти.",
