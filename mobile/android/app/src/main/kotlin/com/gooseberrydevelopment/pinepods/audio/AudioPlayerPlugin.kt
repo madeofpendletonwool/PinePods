@@ -159,6 +159,11 @@ class AudioPlayerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                     result.success(null)
                 }
 
+                "refreshCarBrowse" -> {
+                    mediaService?.notifyBrowseContentChanged()
+                    result.success(null)
+                }
+
                 "seek" -> {
                     val position = call.argument<Int>("position")
                     if (position != null) {
