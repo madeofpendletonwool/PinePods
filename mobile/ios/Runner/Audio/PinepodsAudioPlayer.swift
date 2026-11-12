@@ -498,6 +498,18 @@ class PinepodsAudioPlayer: NSObject {
         resumeRequestedPlayback()
     }
 
+    /// A headset or remote play/pause toggle. See PlaybackIntent.toggleShouldPause.
+    func togglePlayPause() {
+        let item = player?.currentItem
+        let itemUsable = item != nil && item?.status != .failed
+        let transportActive = player.map { $0.timeControlStatus != .paused } ?? false
+        if playbackIntent.toggleShouldPause(transportActive: transportActive, itemUsable: itemUsable) {
+            pause()
+        } else {
+            play()
+        }
+    }
+
     private func resumeRequestedPlayback() {
         guard playbackIntent.canResumeLoadedEpisode else { return }
         activateAudioSession()
