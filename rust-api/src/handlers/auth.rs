@@ -1931,6 +1931,67 @@ pub async fn update_queue_add_position(
     Ok(Json(data))
 }
 
+/// Whether a podcast the user subscribes to starts with auto-queue on (#648).
+#[utoipa::path(
+    get,
+    path = "/get_auto_queue_new_podcasts/{user_id}",
+    tag = "auth",
+    summary = "Get the auto-queue default for new subscriptions",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::AutoQueueNewPodcastsSetting),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Another user's setting"),
+    ),
+)]
+pub async fn get_auto_queue_new_podcasts(
+    headers: HeaderMap,
+    Path(user_id): Path<i32>,
+    State(state): State<AppState>,
+) -> Result<Json<crate::models::AutoQueueNewPodcastsSetting>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    if user_id != state.db_pool.get_user_id_from_api_key(&api_key).await? {
+        return Err(AppError::forbidden("You can only view your own auto-queue setting"));
+    }
+    let enabled = state.db_pool.get_auto_queue_new_podcasts(user_id).await?;
+    Ok(Json(crate::models::AutoQueueNewPodcastsSetting { user_id, enabled }))
+}
+
+/// Set whether a podcast the user subscribes to starts with auto-queue on. Podcasts the user
+/// already has keep their own setting.
+#[utoipa::path(
+    put,
+    path = "/update_auto_queue_new_podcasts",
+    tag = "auth",
+    summary = "Set the auto-queue default for new subscriptions",
+    request_body = crate::models::AutoQueueNewPodcastsSetting,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::AutoQueueNewPodcastsSetting),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Another user's setting"),
+    ),
+)]
+pub async fn update_auto_queue_new_podcasts(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(data): Json<crate::models::AutoQueueNewPodcastsSetting>,
+) -> Result<Json<crate::models::AutoQueueNewPodcastsSetting>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    if data.user_id != state.db_pool.get_user_id_from_api_key(&api_key).await? {
+        return Err(AppError::forbidden("You can only change your own auto-queue setting"));
+    }
+    state.db_pool.set_auto_queue_new_podcasts(data.user_id, data.enabled).await?;
+    Ok(Json(data))
+}
+
 // Password reset endpoint - Always returns success for security (prevents username enumeration)
 #[utoipa::path(
     post,

@@ -267,6 +267,13 @@ pub struct QueueAddPositionSetting {
     pub position: QueueAddPosition,
 }
 
+/// Whether a podcast the user subscribes to starts with auto-queue on (#648).
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct AutoQueueNewPodcastsSetting {
+    pub user_id: i32,
+    pub enabled: bool,
+}
+
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct ClearQueueRequest {
     pub user_id: i32,

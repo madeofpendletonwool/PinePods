@@ -2365,6 +2365,52 @@ pub async fn call_update_queue_add_position(
     Ok(())
 }
 
+/// Whether a podcast the user subscribes to starts with auto-queue on (#648).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct AutoQueueNewPodcastsSetting {
+    pub user_id: i32,
+    pub enabled: bool,
+}
+
+pub async fn call_get_auto_queue_new_podcasts(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/get_auto_queue_new_podcasts/{}", server_name, user_id);
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+    if !response.ok() {
+        return Err(Error::msg(format!("Error getting the auto-queue default: {}", response.status_text())));
+    }
+    let setting: AutoQueueNewPodcastsSetting = response.json().await?;
+    Ok(setting.enabled)
+}
+
+pub async fn call_update_auto_queue_new_podcasts(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    enabled: bool,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/update_auto_queue_new_podcasts", server_name);
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&AutoQueueNewPodcastsSetting { user_id, enabled })
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+    if !response.ok() {
+        return Err(Error::msg(format!("Error updating the auto-queue default: {}", response.status_text())));
+    }
+    Ok(())
+}
+
 pub async fn call_get_default_volume(
     server_name: String,
     api_key: String,

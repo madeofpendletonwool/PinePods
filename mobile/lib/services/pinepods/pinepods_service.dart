@@ -2427,6 +2427,28 @@ class PinepodsService {
     }
   }
 
+  /// Whether a podcast the user subscribes to starts with auto-queue on (#648).
+  Future<bool> getAutoQueueNewPodcasts(int userId) async {
+    final url = Uri.parse('$_server/api/data/get_auto_queue_new_podcasts/$userId');
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode != 200) {
+      throw Exception('Failed to get the auto-queue default: ${response.statusCode}');
+    }
+    return (jsonDecode(response.body) as Map<String, dynamic>)['enabled'] == true;
+  }
+
+  Future<void> setAutoQueueNewPodcasts(int userId, bool enabled) async {
+    final url = Uri.parse('$_server/api/data/update_auto_queue_new_podcasts');
+    final response = await _put(
+      url,
+      headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+      body: jsonEncode({'user_id': userId, 'enabled': enabled}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to save the auto-queue default: ${response.statusCode}');
+    }
+  }
+
   Future<int?> getFeedCutoffDays(int podcastId, int userId) async {
     final url = Uri.parse('$_server/api/data/get_feed_cutoff_days').replace(
       queryParameters: {'podcast_id': podcastId.toString(), 'user_id': userId.toString()},
@@ -3307,6 +3329,51 @@ class PinepodsService {
       }
     } catch (e) {
       _devLog('Error getting auto-play-next status: $e');
+      return false;
+    }
+  }
+
+  /// Whether the server adds this podcast's new episodes to the queue when it refreshes the feed
+  /// (#648). False when the request fails.
+  Future<bool> getAutoQueueStatus(int podcastId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/get_auto_queue_status');
+
+    try {
+      final response = await _post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode({'podcast_id': podcastId, 'user_id': userId}),
+      );
+      if (response.statusCode != 200) return false;
+      return jsonDecode(response.body)['auto_queue'] == true;
+    } catch (e) {
+      _devLog('Error getting auto-queue status: $e');
+      return false;
+    }
+  }
+
+  /// Turns adding new episodes to the queue on or off for a podcast (#648). True when the server
+  /// saved it.
+  Future<bool> setAutoQueue(int podcastId, int userId, bool enabled) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/enable_auto_queue');
+
+    try {
+      final response = await _post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode({'podcast_id': podcastId, 'user_id': userId, 'auto_queue': enabled}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      _devLog('Error setting auto-queue: $e');
       return false;
     }
   }

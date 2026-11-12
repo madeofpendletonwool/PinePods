@@ -2,7 +2,7 @@
 
 use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
-use crate::requests::setting_reqs::{call_get_auto_complete_seconds, call_update_auto_complete_seconds, call_get_default_volume, call_update_default_volume, call_get_queue_add_position, call_update_queue_add_position};
+use crate::requests::setting_reqs::{call_get_auto_complete_seconds, call_update_auto_complete_seconds, call_get_default_volume, call_update_default_volume, call_get_queue_add_position, call_update_queue_add_position, call_get_auto_queue_new_podcasts, call_update_auto_queue_new_podcasts};
 use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -207,6 +207,58 @@ pub fn playback_settings() -> Html {
                 wasm_bindgen_futures::spawn_local(async move {
                     if let Err(e) = call_update_queue_add_position(server_name, api_key, user_id, value).await {
                         queue_position.set(previous);
+                        let formatted_error = format_error_message(&e.to_string());
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                            state.error_message = Some(format!("{}{}", i18n_failed, formatted_error));
+                        });
+                    }
+                });
+            }
+        })
+    };
+
+    // Whether new subscriptions start with auto-queue on (#648)
+    let auto_queue_new = use_state(|| false);
+    let auto_queue_new_loading = use_state(|| true);
+    {
+        let auto_queue_new = auto_queue_new.clone();
+        let auto_queue_new_loading = auto_queue_new_loading.clone();
+        use_effect_with(
+            (api_key.clone(), server_name.clone()),
+            move |(api_key, server_name)| {
+                if let (Some(Some(api_key)), Some(server_name), Some(user_id)) =
+                    (api_key.clone(), server_name.clone(), user_id)
+                {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(enabled) = call_get_auto_queue_new_podcasts(server_name, api_key, user_id).await {
+                            auto_queue_new.set(enabled);
+                        }
+                        auto_queue_new_loading.set(false);
+                    });
+                } else {
+                    auto_queue_new_loading.set(false);
+                }
+                || ()
+            },
+        );
+    }
+    let on_auto_queue_new_change = {
+        let auto_queue_new = auto_queue_new.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let i18n_failed = i18n.t("playback_settings.failed_to_update_auto_queue_new").to_string();
+        Callback::from(move |e: Event| {
+            let enabled = e.target_unchecked_into::<HtmlInputElement>().checked();
+            let previous = *auto_queue_new;
+            auto_queue_new.set(enabled);
+            if let (Some(Some(api_key)), Some(server_name), Some(user_id)) =
+                (api_key.clone(), server_name.clone(), user_id)
+            {
+                let auto_queue_new = auto_queue_new.clone();
+                let i18n_failed = i18n_failed.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(e) = call_update_auto_queue_new_podcasts(server_name, api_key, user_id, enabled).await {
+                        auto_queue_new.set(previous);
                         let formatted_error = format_error_message(&e.to_string());
                         Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!("{}{}", i18n_failed, formatted_error));
@@ -648,6 +700,19 @@ pub fn playback_settings() -> Html {
                     <option value="bottom" selected={*queue_position == "bottom"}>{i18n.t("playback_settings.queue_add_bottom")}</option>
                     <option value="top" selected={*queue_position == "top"}>{i18n.t("playback_settings.queue_add_top")}</option>
                 </select>
+            </div>
+        </div>
+        <div class="settings-row">
+            <div>
+                <div class="settings-row-label">{i18n.t("playback_settings.auto_queue_new_podcasts")}</div>
+                <div class="settings-row-desc">{i18n.t("playback_settings.auto_queue_new_podcasts_description")}</div>
+            </div>
+            <div class="settings-row-control">
+                <label class="toggle">
+                    <input type="checkbox" disabled={*auto_queue_new_loading} checked={*auto_queue_new}
+                        onchange={on_auto_queue_new_change} />
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
             </div>
         </div>
         if *show_success {

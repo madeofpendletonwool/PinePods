@@ -167,7 +167,16 @@ impl TestApp {
             ai_available: pinepods_api::services::ai_client::AiAvailability::new(),
             merged_episodes: Default::default(),
         };
-        let router = pinepods_api::create_app(state.clone());
+        // Building the router and its OpenAPI document takes more stack in a debug build than a
+        // 2 MB test thread has once a test's own future is large. The server builds it on its
+        // 8 MB main thread; do the same here.
+        let router_state = state.clone();
+        let router = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || pinepods_api::create_app(router_state))
+            .expect("spawn router builder")
+            .join()
+            .expect("build router");
 
         TestApp { env, state, router, db_name, tag, fixtures, admin: tokio::sync::OnceCell::new() }
     }
