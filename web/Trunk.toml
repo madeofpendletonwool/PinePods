@@ -5,6 +5,10 @@ release = true
 
 [tools]
 wasm-opt = ["-Oz", "--enable-mutable-globals"]
+# The project uses the Tailwind v3 setup (tailwind.config.js). trunk 0.22+ downloads Tailwind v4 by
+# default, which generates an incomplete stylesheet for it, so pin the version used by the dockerfile
+# build (trunk 0.21.14 default).
+tailwindcss = "3.3.5"
 
 # [watch]
 # ignore = ["dist/**"]
