@@ -113,3 +113,48 @@ fn gravatars_use_the_address_hash_and_a_size() {
     assert!(url.contains("80"), "{url}");
     assert!(!url.contains("someone@example.com"), "the address itself isn't sent: {url}");
 }
+
+mod media_session {
+    use crate::components::media_session::{effect, Action, Effect, SKIP_SECONDS};
+    use wasm_bindgen_test::*;
+
+    #[wasm_bindgen_test]
+    fn track_keys_skip_within_the_episode() {
+        assert_eq!(effect(Action::NextTrack, None, None), Some(Effect::SeekBy(SKIP_SECONDS)));
+        assert_eq!(effect(Action::PreviousTrack, None, None), Some(Effect::SeekBy(-SKIP_SECONDS)));
+    }
+
+    #[wasm_bindgen_test]
+    fn seek_keys_use_the_offset_the_os_asks_for() {
+        assert_eq!(effect(Action::SeekForward, Some(30.0), None), Some(Effect::SeekBy(30.0)));
+        assert_eq!(effect(Action::SeekBackward, Some(10.0), None), Some(Effect::SeekBy(-10.0)));
+        assert_eq!(effect(Action::SeekForward, None, None), Some(Effect::SeekBy(SKIP_SECONDS)));
+        for bad in [0.0, -5.0, f64::NAN, f64::INFINITY] {
+            assert_eq!(effect(Action::SeekBackward, Some(bad), None), Some(Effect::SeekBy(-SKIP_SECONDS)));
+        }
+    }
+
+    #[wasm_bindgen_test]
+    fn scrubbing_needs_a_usable_time() {
+        assert_eq!(effect(Action::SeekTo, None, Some(42.5)), Some(Effect::SeekTo(42.5)));
+        assert_eq!(effect(Action::SeekTo, None, Some(0.0)), Some(Effect::SeekTo(0.0)));
+        assert_eq!(effect(Action::SeekTo, None, None), None);
+        assert_eq!(effect(Action::SeekTo, None, Some(-1.0)), None);
+        assert_eq!(effect(Action::SeekTo, None, Some(f64::NAN)), None);
+    }
+
+    #[wasm_bindgen_test]
+    fn play_and_pause_are_explicit_not_toggles() {
+        assert_eq!(effect(Action::Play, None, None), Some(Effect::Play));
+        assert_eq!(effect(Action::Pause, None, None), Some(Effect::Pause));
+    }
+
+    #[wasm_bindgen_test]
+    fn every_action_has_its_spec_name() {
+        let names: Vec<_> = Action::ALL.iter().map(|a| a.name()).collect();
+        assert_eq!(
+            names,
+            ["play", "pause", "seekbackward", "seekforward", "previoustrack", "nexttrack", "seekto"]
+        );
+    }
+}

@@ -65,6 +65,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let video_container_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
+    crate::components::media_session::use_media_session(
+        props.episode_id,
+        props.title.clone(),
+        props.episode.podcastname.clone(),
+        props.artwork_url.clone(),
+        audio_state.audio_playing.unwrap_or(false),
+        audio_state.playback_speed,
+    );
     let show_modal = use_state(|| false);
 
     // Memoize the audio playing state to reduce re-renders
