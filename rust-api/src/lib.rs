@@ -23,6 +23,7 @@ pub mod database;
 pub mod error;
 pub mod gpodder;
 pub mod handlers;
+pub mod listener;
 pub mod memory_store;
 pub mod models;
 pub mod openapi;
@@ -30,6 +31,8 @@ pub mod paths;
 pub mod redis_client;
 pub mod redis_manager;
 pub mod services;
+#[cfg(target_os = "linux")]
+pub mod systemd;
 
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
