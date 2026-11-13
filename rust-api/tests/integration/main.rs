@@ -33,6 +33,7 @@ mod podcast_refresh;
 mod podcasting20;
 mod podcasts;
 mod podping;
+mod progress;
 mod queue;
 mod refresh;
 mod refresh_schedule;

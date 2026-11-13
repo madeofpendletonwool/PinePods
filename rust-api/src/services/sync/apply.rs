@@ -50,7 +50,8 @@ pub async fn apply_episode_actions(db: &DatabasePool, user_id: i32, actions: &[E
 /// - Only `play` and `new` change state; `download`/`delete` are ignored.
 /// - Per episode only the newest action (by action time) counts; on a tie the later one wins.
 /// - Last-write-wins: it's applied only if newer than the local `ListenDate` (progress or
-///   completion time). Positions can go backwards.
+///   completion time). Positions can go backwards. An action dated in the future counts as
+///   happening now.
 /// - `play` at or past `total - AutoCompleteSeconds` (60s when that's off) completes the
 ///   episode; `total` is the action's, else the local duration. A local duration of 0 is
 ///   replaced by the action's total.
@@ -86,10 +87,14 @@ pub async fn apply_resolved(
         _ => DEFAULT_COMPLETE_WITHIN,
     };
 
+    let received = chrono::Utc::now();
     for (episode_id, action) in newest {
         // Not one of the user's episodes (can't happen through the resolver, but cheap to check).
         let Some(state) = states.get(&episode_id) else { continue };
-        if state.listen_date.is_some_and(|local| action.timestamp <= local) {
+        // A remote clock that runs ahead can't put a change in the future, where it would beat
+        // every local write until the time came.
+        let at = action.timestamp.min(received);
+        if state.listen_date.is_some_and(|local| at <= local) {
             summary.older += 1;
             continue;
         }
@@ -105,14 +110,19 @@ pub async fn apply_resolved(
                 if total.is_some_and(|t| position >= t - complete_within) {
                     db.mark_episode_completed(episode_id, user_id, false, origin).await?;
                 } else {
-                    db.set_listen_position(user_id, episode_id, position, action.timestamp, origin).await?;
+                    use crate::database::{Observed, ProgressWrite, WriteRule};
+                    let write = ProgressWrite {
+                        observed: Observed::At(at.naive_utc()),
+                        ..ProgressWrite::now(episode_id, false, position, WriteRule::Newest)
+                    };
+                    db.write_progress(user_id, write, origin).await?;
                 }
             }
             ActionKind::New => db.mark_episode_uncompleted(episode_id, user_id, false, origin).await?,
             ActionKind::Download | ActionKind::Delete => continue,
         }
         // The change is as of the action's time, not ours, for the next comparison.
-        db.sync_set_listen_date(user_id, episode_id, action.timestamp).await?;
+        db.sync_set_listen_date(user_id, episode_id, at).await?;
         summary.applied += 1;
     }
     debug!(

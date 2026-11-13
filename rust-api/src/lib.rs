@@ -269,6 +269,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::settings::extend_shared_link))
         .routes(routes!(handlers::podcasts::increment_played))
         .routes(routes!(handlers::podcasts::record_listen_duration))
+        .routes(routes!(handlers::progress::record_progress))
         .routes(routes!(handlers::podcasts::get_podcast_id_from_ep_id))
         .routes(routes!(handlers::podcasts::get_stats))
         .routes(routes!(handlers::podcasts::get_extended_stats))

@@ -151,7 +151,7 @@ impl DatabasePool {
                 // Top 5 podcasts by listen time
                 let podcast_rows = q::query(r#"
                     SELECT p.podcastid, p.podcastname, COALESCE(p.artworkurl, '') as artworkurl,
-                           SUM(ueh.listenduration) AS total_seconds
+                           SUM(ueh.listenedseconds) AS total_seconds
                     FROM "UserEpisodeHistory" ueh
                     INNER JOIN "Episodes" e ON ueh.episodeid = e.episodeid
                     INNER JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = ueh.userid
@@ -171,7 +171,7 @@ impl DatabasePool {
 
                 // Categories with listen time (parse in Rust since format varies)
                 let cat_rows = q::query(r#"
-                    SELECT p.categories, SUM(ueh.listenduration) AS total_seconds
+                    SELECT p.categories, SUM(ueh.listenedseconds) AS total_seconds
                     FROM "UserEpisodeHistory" ueh
                     INNER JOIN "Episodes" e ON ueh.episodeid = e.episodeid
                     INNER JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = ueh.userid
@@ -268,7 +268,7 @@ impl DatabasePool {
                 // all rows to Sunday (index 0).
                 let dow_rows = q::query(r#"
                     SELECT EXTRACT(DOW FROM listendate)::int AS dow,
-                           SUM(listenduration) AS total_seconds
+                           SUM(listenedseconds) AS total_seconds
                     FROM "UserEpisodeHistory"
                     WHERE userid = $1 AND listendate IS NOT NULL
                     GROUP BY EXTRACT(DOW FROM listendate) ORDER BY dow
@@ -299,7 +299,7 @@ impl DatabasePool {
                 let podcast_rows = sqlx::query(
                     "SELECT p.PodcastID as podcastid, p.PodcastName as podcastname,
                             COALESCE(p.ArtworkURL, '') as artworkurl,
-                            SUM(ueh.ListenDuration) AS total_seconds
+                            SUM(ueh.ListenedSeconds) AS total_seconds
                      FROM UserEpisodeHistory ueh
                      INNER JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
                      INNER JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ueh.UserID
@@ -319,7 +319,7 @@ impl DatabasePool {
 
                 // Categories
                 let cat_rows = sqlx::query(
-                    "SELECT p.Categories as categories, SUM(ueh.ListenDuration) AS total_seconds
+                    "SELECT p.Categories as categories, SUM(ueh.ListenedSeconds) AS total_seconds
                      FROM UserEpisodeHistory ueh
                      INNER JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
                      INNER JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ueh.UserID
@@ -418,7 +418,7 @@ impl DatabasePool {
                 // DOW: MySQL DAYOFWEEK returns 1=Sun..7=Sat, subtract 1 for 0-indexed
                 let dow_rows = sqlx::query(
                     "SELECT DAYOFWEEK(ListenDate) - 1 AS dow,
-                            SUM(ListenDuration) AS total_seconds
+                            SUM(ListenedSeconds) AS total_seconds
                      FROM UserEpisodeHistory
                      WHERE UserID = ? AND ListenDate IS NOT NULL
                      GROUP BY DAYOFWEEK(ListenDate) ORDER BY dow"

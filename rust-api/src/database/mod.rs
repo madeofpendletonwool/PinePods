@@ -28,6 +28,8 @@ mod episodes;
 mod queue;
 mod saved;
 mod history;
+mod progress;
+pub use progress::{Observed, ProgressOutcome, ProgressWrite, WriteRule};
 mod stats;
 mod home;
 mod playlists;

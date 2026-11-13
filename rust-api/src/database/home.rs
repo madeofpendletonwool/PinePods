@@ -484,7 +484,7 @@ impl DatabasePool {
                     LEFT JOIN (
                         SELECT "Episodes".feedid as feedid,
                                COUNT(DISTINCT "UserEpisodeHistory".episodeid) as play_count,
-                               SUM("UserEpisodeHistory".listenduration) as total_listen_time
+                               SUM("UserEpisodeHistory".listenedseconds) as total_listen_time
                         FROM "UserEpisodeHistory"
                         JOIN "Episodes" ON "UserEpisodeHistory".episodeid = "Episodes".episodeid
                         WHERE "UserEpisodeHistory".userid = $1
@@ -559,7 +559,7 @@ impl DatabasePool {
                 let weekly_fut = async {
                     let row = q::query(
                         r#"SELECT
-                            COALESCE(SUM("UserEpisodeHistory".listenduration), 0)::bigint AS seconds_listened,
+                            COALESCE(SUM("UserEpisodeHistory".listenedseconds), 0)::bigint AS seconds_listened,
                             COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM "UserEpisodeState" ues
                                 WHERE ues.episodeid = "Episodes".episodeid AND ues.userid = "UserEpisodeHistory".userid AND ues.completed)) AS episodes_completed
                         FROM "UserEpisodeHistory"
@@ -824,7 +824,7 @@ impl DatabasePool {
                     LEFT JOIN (
                         SELECT Episodes.FeedID as FeedID,
                                COUNT(DISTINCT UserEpisodeHistory.EpisodeID) as play_count,
-                               SUM(UserEpisodeHistory.ListenDuration) as total_listen_time
+                               SUM(UserEpisodeHistory.ListenedSeconds) as total_listen_time
                         FROM UserEpisodeHistory
                         JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID
                         WHERE UserEpisodeHistory.UserID = ?
@@ -901,7 +901,7 @@ impl DatabasePool {
                 let weekly_fut = async {
                     let row = sqlx::query(
                         "SELECT \
-                            CAST(COALESCE(SUM(UserEpisodeHistory.ListenDuration), 0) AS SIGNED) AS seconds_listened, \
+                            CAST(COALESCE(SUM(UserEpisodeHistory.ListenedSeconds), 0) AS SIGNED) AS seconds_listened, \
                             CAST(COALESCE(SUM(CASE WHEN EXISTS (SELECT 1 FROM UserEpisodeState ues \
                                 WHERE ues.EpisodeID = Episodes.EpisodeID AND ues.UserID = UserEpisodeHistory.UserID AND ues.Completed = 1) \
                                 THEN 1 ELSE 0 END), 0) AS SIGNED) AS episodes_completed \

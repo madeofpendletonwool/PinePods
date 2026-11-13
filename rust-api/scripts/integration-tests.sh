@@ -105,6 +105,10 @@ if [[ -z "${PINEPODS_TEST_EXTERNAL_SERVICES:-}" ]]; then
   install_db_tool_shims
 fi
 
+# Tests poll the whole request (router, handler, sync, queries) on the test's own thread, and in
+# a debug build that already takes most of the default 2 MiB.
+export RUST_MIN_STACK="${RUST_MIN_STACK:-8388608}"
+
 cd "$API_DIR"
 status=0
 for db in "${DBS[@]}"; do

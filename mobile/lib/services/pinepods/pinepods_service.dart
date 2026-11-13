@@ -1144,6 +1144,36 @@ class PinepodsService {
           {'user_id': userId, 'podcast_id': podcastId}) !=
       null;
 
+  /// Report listening progress: positions, time played and finished episodes,
+  /// each with the moment it was observed. The server lets the newest
+  /// observation of an episode win, whichever device made it, so a batch saved
+  /// up offline is safe to send late. [updates] are maps with `episode_id`,
+  /// `is_youtube`, `position`, `at` (unix ms), `listened`, `finished` and
+  /// optionally `duration`.
+  ///
+  /// Returns the server's state for each update. Throws
+  /// [ProgressUnsupportedException] when the server predates this endpoint,
+  /// and an [Exception] when the report didn't get through.
+  Future<List<Map<String, dynamic>>> sendProgress(List<Map<String, dynamic>> updates) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/progress');
+    final response = await _post(
+      url,
+      headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+      body: jsonEncode({'sent_at': DateTime.now().millisecondsSinceEpoch, 'updates': updates}),
+    );
+    if (response.statusCode == 404 || response.statusCode == 405) {
+      throw ProgressUnsupportedException();
+    }
+    if (response.statusCode != 200) {
+      throw Exception('Progress report failed: ${response.statusCode}');
+    }
+    final results = (jsonDecode(response.body) as Map<String, dynamic>)['results'] as List? ?? const [];
+    return results.whereType<Map>().map((r) => r.cast<String, dynamic>()).toList();
+  }
+
   // Record listen duration for episode
   Future<bool> recordListenDuration(
     int episodeId,
@@ -4052,4 +4082,10 @@ class DownloadTask {
   bool get isCompleted => status == 'SUCCESS';
   bool get isFailed => status == 'FAILED';
   bool get isActive => status == 'PENDING' || status == 'DOWNLOADING';
+}
+
+/// The server is older than `POST /api/data/progress`.
+class ProgressUnsupportedException implements Exception {
+  @override
+  String toString() => 'The server does not support progress reports';
 }
