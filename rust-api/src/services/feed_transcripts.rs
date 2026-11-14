@@ -33,6 +33,9 @@ pub struct Segment {
     pub start: f64,
     pub end: f64,
     pub text: String,
+    /// Publisher-supplied speaker label, when one unambiguous label covers the segment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -104,6 +107,7 @@ pub fn parse(mime: Option<&str>, body: &str) -> Option<Parsed> {
     (!parsed.text.trim().is_empty()).then_some(parsed)
 }
 
+static VOICE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<v(?:\.[^\s>]+)*\s+([^>]+)>").unwrap());
 static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]*>").unwrap());
 static BLOCK_TAG: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)</?(p|div|br|li|h[1-6]|tr|section|article)\b[^>]*>").unwrap());
@@ -127,6 +131,16 @@ fn html_text(body: &str) -> String {
     let no_script = SCRIPT.replace_all(body, " ");
     let breaks = BLOCK_TAG.replace_all(&no_script, "\n");
     clean_text(&decode_entities(&TAG.replace_all(&breaks, " ")))
+}
+
+/// A cue may repeat a voice label, but different voices cannot be represented by
+/// one segment-level speaker. Keep those cues unlabelled rather than guessing.
+fn cue_speaker(cue: &str) -> Option<String> {
+    let mut voices = VOICE.captures_iter(cue)
+        .map(|c| decode_entities(&c[1]).trim().to_string())
+        .filter(|s| !s.is_empty());
+    let first = voices.next()?;
+    voices.all(|v| v == first).then_some(first)
 }
 
 /// `HH:MM:SS,mmm`, `HH:MM:SS.mmm` or `MM:SS.mmm` -> seconds.
@@ -156,9 +170,11 @@ fn parse_cues(body: &str) -> Parsed {
             .and_then(|s| s.split_whitespace().next())
             .and_then(timestamp)
             .unwrap_or(start);
-        let text = lines.map(|l| decode_entities(&TAG.replace_all(l, "")).trim().to_string()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+        let cue = lines.collect::<Vec<_>>().join("\n");
+        let speaker = cue_speaker(&cue);
+        let text = cue.lines().map(|l| decode_entities(&TAG.replace_all(l, "")).trim().to_string()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
         if !text.is_empty() {
-            segments.push(Segment { start, end, text });
+            segments.push(Segment { start, end, text, speaker });
         }
     }
     let text = segments.iter().map(|s| s.text.as_str()).collect::<Vec<_>>().join("\n");
@@ -189,7 +205,7 @@ fn parse_json(body: &str) -> Option<Parsed> {
                 if let Some((seg, _)) = current.take() {
                     segments.push(seg);
                 }
-                current = Some((Segment { start, end, text }, speaker));
+                current = Some((Segment { start, end, text, speaker: speaker.clone() }, speaker));
             }
         }
     }
@@ -374,8 +390,8 @@ mod tests {
         let srt = "1\r\n00:00:01,000 --> 00:00:04,500\r\nHello <i>there</i>\r\nfriend\r\n\r\n2\r\n01:02:03,250 --> 01:02:05,000\r\nSecond &amp; last\r\n";
         let p = parse(Some("application/srt"), srt).unwrap();
         assert_eq!(p.segments, vec![
-            Segment { start: 1.0, end: 4.5, text: "Hello there friend".into() },
-            Segment { start: 3723.25, end: 3725.0, text: "Second & last".into() },
+            Segment { start: 1.0, end: 4.5, text: "Hello there friend".into(), speaker: None },
+            Segment { start: 3723.25, end: 3725.0, text: "Second & last".into(), speaker: None },
         ]);
         assert_eq!(p.text, "Hello there friend\nSecond & last");
     }
@@ -385,7 +401,7 @@ mod tests {
         let vtt = "\u{feff}WEBVTT\n\nNOTE made by hand\n\nintro\n00:05.000 --> 00:07.000 align:start\n<v Ann>Hi all</v>\n\n00:01:00.000 --> 00:01:02.000\nBye\n";
         let p = parse(Some("text/vtt"), vtt).unwrap();
         assert_eq!(p.segments.len(), 2);
-        assert_eq!(p.segments[0], Segment { start: 5.0, end: 7.0, text: "Hi all".into() });
+        assert_eq!(p.segments[0], Segment { start: 5.0, end: 7.0, text: "Hi all".into(), speaker: Some("Ann".into()) });
         assert_eq!(p.segments[1].start, 60.0);
     }
 
@@ -401,6 +417,25 @@ mod tests {
         let texts: Vec<&str> = p.segments.iter().map(|s| s.text.as_str()).collect();
         assert_eq!(texts, vec!["Hello world.", "Next", "Other"]);
         assert_eq!(p.segments[0].end, 0.9);
+        assert_eq!(p.segments.iter().map(|s| s.speaker.as_deref()).collect::<Vec<_>>(), vec![Some("A"), Some("A"), Some("B")]);
+    }
+
+    #[test]
+    fn speaker_is_optional_in_stored_segment_json() {
+        let p = parse(Some("application/json"), r#"{"segments":[{"startTime":0,"endTime":1,"body":"Unlabelled"}]}"#).unwrap();
+        let json = serde_json::to_value(&p.segments[0]).unwrap();
+        assert_eq!(json, serde_json::json!({"start":0.0,"end":1.0,"text":"Unlabelled"}));
+    }
+
+    #[test]
+    fn reads_voice_classes_and_does_not_assign_a_multi_voice_cue_to_one_speaker() {
+        let vtt = "WEBVTT\n\n00:00.000 --> 00:02.000\n<v.interview Ann &amp; Bob>Hello</v>\n\n00:02.000 --> 00:04.000\n<v Ann>First</v>\n<v Bob>Second</v>\n";
+        let p = parse(Some("text/vtt"), vtt).unwrap();
+        assert_eq!(p.segments[0].speaker.as_deref(), Some("Ann & Bob"));
+        assert_eq!(p.segments[1].speaker, None);
+        assert_eq!(p.segments[1].text, "First Second");
+        let json = serde_json::to_value(&p.segments[0]).unwrap();
+        assert_eq!(json["speaker"], "Ann & Bob");
     }
 
     #[test]
