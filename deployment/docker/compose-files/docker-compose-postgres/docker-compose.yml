@@ -33,6 +33,8 @@ services:
       DB_USER: postgres
       DB_PASSWORD: myS3curepass
       DB_NAME: pinepods_database
+      # For an externally pre-provisioned database, set DB_CREATE_DATABASE=false.
+      # Startup then probes only DB_NAME and does not connect to postgres or create a DB.
       # Valkey Settings
       VALKEY_HOST: valkey
       VALKEY_PORT: 6379
