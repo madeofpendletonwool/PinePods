@@ -76,7 +76,7 @@ def wait_for_database(label, db_host, db_port, probe):
             attempt += 1
 
 
-def wait_for_postgresql_ready():
+def wait_for_postgresql_ready(database="postgres"):
     """Wait for PostgreSQL to be ready to accept queries (not just port open)"""
     import psycopg
 
@@ -91,7 +91,7 @@ def wait_for_postgresql_ready():
             port=db_port,
             user=db_user,
             password=db_password,
-            dbname='postgres',
+            dbname=database,
             connect_timeout=3
         ) as conn:
             with conn.cursor() as cur:
@@ -141,9 +141,21 @@ def create_database_if_not_exists():
         return  # the migration runner creates the file
 
     if db_type in ['postgresql', 'postgres']:
-        # First, wait for PostgreSQL to be ready
-        if not wait_for_postgresql_ready():
+        # Shared PostgreSQL installations can pre-provision DB_NAME and grant the
+        # app no access to the maintenance database. Keep automatic creation as
+        # the default for existing installations.
+        raw_create = os.environ.get("DB_CREATE_DATABASE", "true").strip().lower()
+        if raw_create not in ("true", "false"):
+            raise ValueError("DB_CREATE_DATABASE must be true or false")
+        create_database = raw_create == "true"
+        database = "postgres" if create_database else os.environ.get("DB_NAME", "pinepods_database")
+        if not database.strip():
+            raise ValueError("DB_NAME must be set when DB_CREATE_DATABASE=false")
+        if not wait_for_postgresql_ready(database):
             raise Exception("PostgreSQL did not become ready in time")
+        if not create_database:
+            logger.info("Using pre-provisioned PostgreSQL database; skipping database creation")
+            return
     else:
         # Wait for MySQL/MariaDB to be ready
         if not wait_for_mysql_ready():
