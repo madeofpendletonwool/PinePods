@@ -1191,6 +1191,16 @@ fn create_oidc_redirect_url(frontend_base: &str, params: &str) -> String {
     redirect_url
 }
 
+// Exact membership for an OIDC role selector. Providers may return a single
+// string (for example `sub`) or an array of role strings.
+fn oidc_claim_has_role(claim: Option<&serde_json::Value>, role: &str) -> bool {
+    match claim {
+        Some(serde_json::Value::String(value)) => value == role,
+        Some(serde_json::Value::Array(values)) => values.iter().any(|value| value.as_str() == Some(role)),
+        _ => false,
+    }
+}
+
 // Helper function to create appropriate response for mobile vs web
 fn create_oidc_response(frontend_base: &str, params: &str) -> axum::response::Response {
     let redirect_url = create_oidc_redirect_url(frontend_base, params);
@@ -1473,17 +1483,14 @@ pub async fn oidc_callback(
 
     // Role verification - EXACT match to Python
     if let (Some(roles_claim), Some(user_role)) = (roles_claim.as_ref().filter(|s| !s.is_empty()), user_role.as_ref().filter(|s| !s.is_empty())) {
-        if let Some(roles) = userinfo_response.get(roles_claim).and_then(|v| v.as_array()) {
-            let has_user_role = roles.iter().any(|r| r.as_str() == Some(user_role));
-            let has_admin_role = admin_role.as_ref().map_or(false, |admin_role| {
-                roles.iter().any(|r| r.as_str() == Some(admin_role))
-            });
-            
-            if !has_user_role && !has_admin_role {
-                return Ok(create_oidc_response(&frontend_base, "error=no_access"));
-            }
-        } else {
+        let claim = userinfo_response.get(roles_claim);
+        if !matches!(claim, Some(serde_json::Value::String(_)) | Some(serde_json::Value::Array(_))) {
             return Ok(create_oidc_response(&frontend_base, "error=no_access&details=invalid_roles"));
+        }
+        let has_user_role = oidc_claim_has_role(claim, user_role);
+        let has_admin_role = admin_role.as_ref().is_some_and(|role| oidc_claim_has_role(claim, role));
+        if !has_user_role && !has_admin_role {
+            return Ok(create_oidc_response(&frontend_base, "error=no_access"));
         }
     }
 
@@ -1573,8 +1580,8 @@ pub async fn oidc_callback(
 
         // Update admin role - EXACT match to Python
         if let (Some(roles_claim), Some(admin_role)) = (roles_claim.as_ref().filter(|s| !s.is_empty()), admin_role.as_ref().filter(|s| !s.is_empty())) {
-            if let Some(roles) = userinfo_response.get(roles_claim).and_then(|v| v.as_array()) {
-                let is_admin = roles.iter().any(|r| r.as_str() == Some(admin_role));
+            if let Some(roles) = userinfo_response.get(roles_claim) {
+                let is_admin = oidc_claim_has_role(Some(roles), admin_role);
                 state.db_pool.set_isadmin(user_id, is_admin).await?;
             }
         }
@@ -1625,8 +1632,8 @@ pub async fn oidc_callback(
                 
                 // Set admin role for new user - EXACT match to Python
                 if let (Some(roles_claim), Some(admin_role)) = (roles_claim.as_ref().filter(|s| !s.is_empty()), admin_role.as_ref().filter(|s| !s.is_empty())) {
-                    if let Some(roles) = userinfo_response.get(roles_claim).and_then(|v| v.as_array()) {
-                        let is_admin = roles.iter().any(|r| r.as_str() == Some(admin_role));
+                    if let Some(roles) = userinfo_response.get(roles_claim) {
+                        let is_admin = oidc_claim_has_role(Some(roles), admin_role);
                         state.db_pool.set_isadmin(user_id, is_admin).await?;
                     }
                 }
@@ -2070,6 +2077,32 @@ fn construct_base_url_from_request(headers: &HeaderMap) -> Result<String, AppErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oidc_scalar_role_claims_require_exact_matching() {
+        let subject = serde_json::json!("owner-subject");
+        assert!(oidc_claim_has_role(Some(&subject), "owner-subject"));
+        for role in ["owner", "Owner-subject", "owner-subject ", "other-subject"] {
+            assert!(!oidc_claim_has_role(Some(&subject), role));
+        }
+    }
+
+    #[test]
+    fn oidc_array_role_claims_keep_exact_membership() {
+        let roles = serde_json::json!(["listener", "admin", 123, null]);
+        assert!(oidc_claim_has_role(Some(&roles), "listener"));
+        assert!(oidc_claim_has_role(Some(&roles), "admin"));
+        assert!(!oidc_claim_has_role(Some(&roles), "123"));
+        assert!(!oidc_claim_has_role(Some(&roles), "missing"));
+    }
+
+    #[test]
+    fn oidc_missing_or_malformed_role_claims_deny_access() {
+        assert!(!oidc_claim_has_role(None, "admin"));
+        for claim in [serde_json::json!(null), serde_json::json!(true), serde_json::json!(123), serde_json::json!({"admin": true}), serde_json::json!([])] {
+            assert!(!oidc_claim_has_role(Some(&claim), "admin"));
+        }
+    }
 
     fn hosts(h: &[&str]) -> Vec<String> {
         h.iter().map(|s| s.to_string()).collect()
