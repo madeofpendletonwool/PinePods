@@ -9,7 +9,7 @@ Column names are lowercase, as PostgreSQL stores them, so queries written for Po
 the same column names on SQLite.
 
 Regenerate after a schema change (the integration suite fails until you do):
-    python -m database_functions.sqlite_baseline "postgresql://user:pw@host:port/freshly_migrated_db"
+    uv run -m database_functions.sqlite_baseline "postgresql://user:pw@host:port/freshly_migrated_db"
 Check without writing: add --check.
 """
 
@@ -282,7 +282,7 @@ if __name__ == "__main__":
     check = "--check" in args
     args = [a for a in args if a != "--check"]
     if len(args) != 1:
-        sys.exit("usage: python -m database_functions.sqlite_baseline [--check] <postgresql dsn>")
+        sys.exit("usage: uv run -m database_functions.sqlite_baseline [--check] <postgresql dsn>")
     sql = generate(args[0])
     if check:
         with open(BASELINE_PATH) as f:
@@ -290,7 +290,7 @@ if __name__ == "__main__":
                 sys.exit(
                     "sqlite_baseline.sql doesn't match the migrations. Regenerate it from a freshly "
                     "migrated PostgreSQL database:\n"
-                    "    python -m database_functions.sqlite_baseline <postgresql dsn>\n"
+                    "    uv run -m database_functions.sqlite_baseline <postgresql dsn>\n"
                     "and give any migration newer than the old baseline a SQLite branch (sqlite=True)."
                 )
         print("sqlite_baseline.sql is up to date")

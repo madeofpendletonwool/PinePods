@@ -1,4 +1,6 @@
-FROM python:3.14-slim
+FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
+
+FROM debian:trixie-slim
 
 # Install PostgreSQL dev libraries and required packages
 RUN apt-get update && apt-get install -y \
@@ -6,15 +8,23 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Set working directory
+WORKDIR /app
+ENV UV_PYTHON_INSTALL_DIR=/python UV_PYTHON_PREFERENCE=only-managed
+
+# Install Python
+COPY .python-version ./
+RUN --mount=from=uv,source=/uv,target=/bin/uv uv python install
+
 # Install required packages
-RUN pip install psycopg[binary] mysql-connector-python cryptography argon2-cffi
+COPY pyproject.toml uv.lock ./
+RUN --mount=from=uv,source=/uv,target=/bin/uv \
+    uv sync --locked --no-cache --extra mysql
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Copy validation scripts
 COPY database_functions/ /app/database_functions/
 COPY validate_db.py /app/
-
-# Set working directory
-WORKDIR /app
 
 # Non-secret defaults for the throwaway CI test database. Overridable at build time
 # (--build-arg) or runtime (-e); never used by the production image.
