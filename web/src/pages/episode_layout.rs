@@ -393,6 +393,10 @@ pub fn episode_layout() -> Html {
     let (podcast_state, _podcast_dispatch) = use_store::<PodcastFeedState>();
     let podcast_feed_results = search_data.podcast_feed_results.clone();
     let clicked_podcast_info = podcast_state.clicked_podcast_info.clone();
+    // Artwork colour for the whole page (buttons, tabs, progress follow it).
+    let page_accent = crate::components::art_accent::use_art_accent(
+        &clicked_podcast_info.as_ref().map(|i| i.artworkurl.clone()).unwrap_or_default(),
+    );
 
     // Capture i18n strings before they get moved - this is a large component with many strings
     let i18n_youtube_channel_successfully_removed = i18n
@@ -4868,7 +4872,10 @@ pub fn episode_layout() -> Html {
     };
 
     html! {
-            <div class="main-container">
+            <div
+                class={classes!("main-container", page_accent.is_some().then_some("art-scope"))}
+                style={crate::components::art_accent::accent_style(&page_accent)}
+            >
                 <Search_nav />
                 <UseScrollToTop />
                 {

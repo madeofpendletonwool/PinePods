@@ -267,3 +267,13 @@ pub fn use_art_accent(art_url: &str) -> Option<String> {
 pub fn accent_style(accent: &Option<String>) -> String {
     accent.as_ref().map(|c| format!("--art-rgb: {c};")).unwrap_or_default()
 }
+
+/// Make a URL safe inside a quoted CSS `url('...')`.
+pub fn css_url_escape(url: &str) -> String {
+    url.replace('\\', "%5C")
+        .replace('\'', "%27")
+        .replace('"', "%22")
+        .replace('(', "%28")
+        .replace(')', "%29")
+        .replace('\n', "")
+}

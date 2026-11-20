@@ -11598,3 +11598,55 @@ button.ep-modal-podcast:hover { text-decoration: underline; }
 @media (prefers-reduced-motion: reduce) {
     .ep-modal, .ep-modal-overlay { animation: none; }
 }
+
+/* ============================================================
+   ARTWORK-COLOURED PAGES (/episode, podcast page)
+   `art-scope` re-points the theme accent at the artwork colour for
+   everything inside the page: play pill, active chips, tabs,
+   chapters, progress, the podcast banner's subscribe button.
+   ============================================================ */
+.art-scope {
+    --art-accent: color-mix(in oklab, rgb(var(--art-rgb)) 72%, var(--text-color));
+    --accent-color: var(--art-accent);
+    --prog-bar-color: var(--art-accent);
+    --hover-color: color-mix(in srgb, var(--art-accent) 16%, var(--container-background));
+}
+.art-scope .ep-hero-play:hover,
+.art-scope .pd-btn-primary:not(.is-subscribed):hover {
+    background: var(--art-accent);
+    filter: brightness(1.08);
+}
+.art-scope .ep-tab.is-active,
+.art-scope .ep-hero-show,
+.art-scope .pd-eyebrow { color: var(--art-accent); }
+
+/* Episode hero: blurred artwork behind, like the podcast banner */
+.ep-hero {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+}
+.ep-hero-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    background-size: cover;
+    background-position: center;
+    transform: scale(1.3);
+    filter: blur(54px) saturate(1.35) brightness(.75);
+    opacity: .85;
+    pointer-events: none;
+}
+.ep-hero-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--bonus-color) 25%, transparent) 0%,
+        color-mix(in srgb, var(--bonus-color) 60%, transparent) 60%,
+        color-mix(in srgb, var(--bonus-color) 88%, transparent) 100%);
+    pointer-events: none;
+}
+.ep-hero .ep-action { background: color-mix(in srgb, var(--bonus-color) 35%, transparent); }
+.ep-hero .ep-action.is-active { background: color-mix(in srgb, var(--accent-color) 18%, transparent); }
+.ep-hero .ep-action:hover { background: var(--hover-color); }
