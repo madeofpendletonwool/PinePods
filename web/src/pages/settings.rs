@@ -245,6 +245,7 @@ pub fn settings() -> Html {
                                 </div>
                                 <div class="settings-section-body">
                                     <setting_components::theme_options::ThemeOptions refresh_trigger={*custom_themes_trigger} />
+                                    <div class="px-6 pb-4"><setting_components::theme_options::ArtAccentOption /></div>
                                 </div>
                             </div>
                             <div class="settings-section">

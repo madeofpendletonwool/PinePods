@@ -3059,6 +3059,10 @@ pub fn logout() -> Html {
     let selected_theme = local_storage
         .get_item("selected_theme")
         .expect("failed to get 'selected_theme'");
+    let art_accents = local_storage
+        .get_item(crate::components::art_accent::CardAppearance::STORAGE_KEY)
+        .ok()
+        .flatten();
     // Preserve the restore-in-progress flags. A server restore signs the admin out
     // (it truncates the Sessions table), but RestoreOverlay needs these to survive the
     // sign-out so it can show the overlay and poll after the reload below.
@@ -3077,6 +3081,12 @@ pub fn logout() -> Html {
             .set_item("selected_theme", &theme)
             .expect("failed to set 'selected_theme'");
     }
+    if let Some(value) = art_accents {
+        let _ = local_storage
+            .set_item(crate::components::art_accent::CardAppearance::STORAGE_KEY, &value);
+    }
+    // Cached page data belongs to the user signing out.
+    wasm_bindgen_futures::spawn_local(crate::components::page_cache::clear());
     // Restore the restore-in-progress flags.
     if let (Some(active), Some(server)) = (restore_active, restore_server) {
         let _ = local_storage.set_item("pinepods_restore_active", &active);

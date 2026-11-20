@@ -5859,6 +5859,7 @@ pub fn episode_layout() -> Html {
                                                     on_select_above={on_select_newer.clone()}
                                                     on_select_below={on_select_older.clone()}
                                                     selected_episodes={selected_eps_rc}
+                                                    show_podcast={false}
                                                 />
                                             </div>
                                         }

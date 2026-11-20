@@ -1,4 +1,6 @@
+use crate::components::art_accent::{accent_style, use_art_accent};
 use crate::components::audio::on_play_click;
+use crate::components::click_events::open_podcast_by_id;
 use crate::components::context::{AppState, EpisodeStatusState, PodcastFeedState, UIState, UserPreferencesState};
 use crate::components::gen_components::{on_shownotes_click, EpisodeModal, FallbackImage};
 
@@ -11,7 +13,6 @@ use crate::components::safehtml::RawHtml;
 use crate::requests::episode::Episode;
 use i18nrs::yew::use_translation;
 use yew_router::history::BrowserHistory;
-use wasm_bindgen::prelude::*;
 use web_sys::{DragEvent, MouseEvent};
 use yew::prelude::*;
 use yew::Callback;
@@ -68,6 +69,9 @@ pub struct EpisodeListItemProps {
     /// Forwarded to [`ContextMenuButton`]: whether the active collection is the default Saved bucket.
     #[prop_or(false)]
     pub active_collection_is_default: bool,
+    /// Show the podcast name above the title. Off on a podcast's own page.
+    #[prop_or(true)]
+    pub show_podcast: bool,
 }
 
 #[function_component(EpisodeListItem)]
@@ -85,9 +89,15 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
             state.completed_episodes.contains(&episode_id),
             state.downloaded_episodes.is_server_download(episode_id),
             state.downloaded_episodes.is_local_download(episode_id),
+            state.saved_episodes.iter().any(|e| e.episodeid == episode_id),
+            state
+                .queued_episode_ids
+                .as_ref()
+                .map_or(false, |ids| ids.contains(&episode_id)),
         )
     });
-    let (is_completed, is_downloaded_server, is_downloaded_local) = *episode_status;
+    let (is_completed, is_downloaded_server, is_downloaded_local, is_saved, is_queued) =
+        *episode_status;
 
     let user_prefs = use_selector(|state: &UserPreferencesState| {
         (
@@ -288,6 +298,37 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     };
 
     let episode_duration_str = format_time(props.episode.episodeduration);
+    let remaining_str = (props.episode.listenduration > 0
+        && props.episode.episodeduration > props.episode.listenduration)
+        .then(|| {
+            i18n.t("episode_list_item.time_left")
+                .replace("{time}", &format_time(props.episode.episodeduration - props.episode.listenduration))
+        });
+
+    let art_src = if props.episode.episodeartwork.is_empty() {
+        props.episode.artworkurl.clone()
+    } else {
+        props.episode.episodeartwork.clone()
+    };
+    let accent = use_art_accent(&art_src);
+
+    let show_podcast = props.show_podcast && !props.episode.podcastname.is_empty();
+    let on_podcast_click = {
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let podcast_id = props.episode.podcastid;
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            open_podcast_by_id(
+                server_name.clone(),
+                api_key.clone(),
+                user_id,
+                podcast_id,
+                BrowserHistory::new(),
+                e,
+            );
+        })
+    };
 
     // is_completed is already defined via use_selector above
 
@@ -417,23 +458,32 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
         })
     };
 
-    #[wasm_bindgen]
-    extern "C" {
-        #[wasm_bindgen(js_namespace = window)]
-        fn toggleDescription(guid: &str, expanded: bool);
-    }
+    let pct = if is_completed { 100 } else { listen_duration_percentage };
+    let row_style = format!(
+        "user-select: {};{}",
+        if *is_pressing_state { "none" } else { "auto" },
+        accent_style(&accent),
+    );
+    let play_title = if is_active_and_playing {
+        i18n.t("episode_list_item.pause").to_string()
+    } else if props.episode.listenduration > 0 && !is_completed {
+        i18n.t("episode_list_item.resume").to_string()
+    } else {
+        i18n.t("episode_list_item.play").to_string()
+    };
+    let has_media = !props.episode.episodeurl.is_empty();
 
     html! {
         <div>
             <div
                 class={classes!(
                     "ep-row",
+                    accent.is_some().then_some("ep-row--art"),
+                    _is_current_episode.then_some("ep-row--current"),
                     if *is_pressing_state { "ep-row--pressing" } else { "" },
                     if props.is_delete_mode { "ep-row--select" } else { "" }
                 )}
-                style={format!("user-select: {};",
-                    if *is_pressing_state { "none" } else { "auto" }
-                )}
+                style={row_style}
                 ontouchstart={ on_touch_start.clone() }
                 ontouchend={ on_touch_end.clone() }
                 ontouchmove={ on_touch_move.clone() }
@@ -487,27 +537,51 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     }
                 }
 
-                <div class="ep-art-wrap">
+                <div
+                    class={classes!("ep-art-wrap", has_media.then_some("ep-art-wrap--playable"))}
+                    onclick={has_media.then(|| on_play_pause.clone())}
+                    title={has_media.then(|| play_title.clone())}
+                >
                     <FallbackImage
-                        src={if props.episode.episodeartwork.is_empty() {
-                            props.episode.artworkurl.clone()
-                        } else {
-                            props.episode.episodeartwork.clone()
-                        }}
+                        src={art_src.clone()}
                         fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                         alt={format!("Cover for {}", props.episode.episodetitle)}
                         class="ep-art-img"
                     />
-                    if is_completed {
+                    if _is_current_episode {
+                        <div class="ep-art-overlay ep-art-overlay--current">
+                            if is_active_and_playing {
+                                <span class="ep-eq" aria-hidden="true"><span></span><span></span><span></span></span>
+                            } else {
+                                <i class="ph ph-pause"></i>
+                            }
+                        </div>
+                    } else if has_media {
+                        <div class="ep-art-overlay ep-art-overlay--hover">
+                            <i class="ph ph-play"></i>
+                        </div>
+                    }
+                    if is_completed && !_is_current_episode {
                         <div class="ep-art-badge"><i class="ph ph-check-circle"></i></div>
                     }
                 </div>
 
                 <div class="ep-body">
+                    if show_podcast {
+                        if props.episode.podcastid > 0 {
+                            <button class="ep-podcast" onclick={on_podcast_click.clone()}>
+                                { props.episode.podcastname.clone() }
+                            </button>
+                        } else {
+                            <span class="ep-podcast">{ props.episode.podcastname.clone() }</span>
+                        }
+                    }
                     <a class="ep-title cursor-pointer" href={episode_href} onclick={on_title_click}>
                         { props.episode.episodetitle.clone() }
                     </a>
-                    <hr class="ep-divider" />
+                    if !show_podcast {
+                        <hr class="ep-divider" />
+                    }
                     <div class="ep-desc cursor-pointer"
                         onclick={
                             let episode_id = props.episode.episodeid;
@@ -522,41 +596,64 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     </div>
                     <div class="ep-meta">
                         <span>{ (*formatted_pub_date).clone() }</span>
+                        <span class="ep-meta-sep">{ "\u{00B7}" }</span>
                         {
                             if is_completed {
                                 if is_narrow_viewport {
-                                    html! { <span>{ &i18n_completed }</span> }
+                                    html! { <span class="ep-meta-played"><i class="ph ph-check"></i>{ " " }{ &i18n_completed }</span> }
                                 } else {
-                                    html! { <span>{ format!("{} \u{2014} {}", episode_duration_str, &i18n_completed) }</span> }
+                                    html! {
+                                        <>
+                                            <span>{ episode_duration_str.clone() }</span>
+                                            <span class="ep-meta-played"><i class="ph ph-check"></i>{ " " }{ &i18n_completed }</span>
+                                        </>
+                                    }
                                 }
-                            } else if props.episode.listenduration > 0 {
-                                html! {
-                                    <>
-                                        <div class="ep-progress">
-                                            <div class="ep-progress-fill" style={ format!("width: {}%;", listen_duration_percentage) }></div>
-                                        </div>
-                                        <span>{ episode_duration_str }</span>
-                                    </>
-                                }
+                            } else if let Some(left) = remaining_str.clone() {
+                                html! { <span class="ep-meta-left">{ left }</span> }
                             } else {
-                                html! { <span>{ episode_duration_str }</span> }
+                                html! { <span>{ episode_duration_str.clone() }</span> }
                             }
                         }
+                        <span class="ep-meta-icons">
+                            if is_saved {
+                                <i class="ph ph-star" title={i18n.t("episode_list_item.saved").to_string()}></i>
+                            }
+                            if is_queued {
+                                <i class="ph ph-queue" title={i18n.t("episode_list_item.queued").to_string()}></i>
+                            }
+                            if is_downloaded_server || is_downloaded_local {
+                                <i class="ph ph-download-simple" title={i18n.t("episode_list_item.downloaded").to_string()}></i>
+                            }
+                        </span>
                     </div>
                 </div>
 
-                if !props.episode.episodeurl.is_empty() {
+                if has_media {
                     <div class="ep-actions">
                         <button
-                            class="ico"
+                            class={classes!(
+                                "ep-play",
+                                is_active_and_playing.then_some("ep-play--playing"),
+                                (is_completed && !_is_current_episode).then_some("ep-play--done"),
+                            )}
+                            style={format!("--p: {};", pct)}
                             onclick={on_play_pause.clone()}
-                            title="Play / Pause"
+                            title={play_title.clone()}
+                            aria-label={play_title.clone()}
                         >
                             {
                                 if is_loading {
                                     html! { <i class="ph ph-spinner" style="animation: spin 1s linear infinite;"></i> }
                                 } else if is_active_and_playing {
                                     html! { <i class="ph ph-pause"></i> }
+                                } else if is_completed && !_is_current_episode {
+                                    html! {
+                                        <>
+                                            <i class="ph ph-check ep-play-done"></i>
+                                            <i class="ph ph-play ep-play-replay"></i>
+                                        </>
+                                    }
                                 } else {
                                     html! { <i class="ph ph-play"></i> }
                                 }
@@ -600,7 +697,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                 <EpisodeModal
                     episode_id={props.episode.episodeid}
                     episode_url={props.episode.episodeurl.clone()}
-                    episode_artwork={props.episode.episodeartwork.clone()}
+                    episode_artwork={art_src.clone()}
                     episode_title={props.episode.episodetitle.clone()}
                     description={(*episode_description).clone()}
                     format_release={(*formatted_pub_date).clone()}
@@ -610,6 +707,17 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     listen_duration_percentage={listen_duration_percentage}
                     is_youtube={props.episode.is_youtube}
                     is_video={props.episode.is_video}
+                    podcast_name={(!props.episode.podcastname.is_empty()).then(|| props.episode.podcastname.clone())}
+                    on_podcast_click={(props.episode.podcastid > 0).then(|| on_podcast_click.clone())}
+                    on_play={has_media.then(|| on_play_pause.clone())}
+                    is_playing={is_active_and_playing}
+                    is_loading={is_loading}
+                    remaining={remaining_str.clone()}
+                    is_completed={is_completed}
+                    accent={accent.clone()}
+                    episode={can_use_context_menu.then(|| props.episode.clone())}
+                    page_type={props.page_type.clone()}
+                    on_episode_removed={props.on_episode_removed.clone()}
                 />
             }
         </div>
