@@ -4087,5 +4087,5 @@ class DownloadTask {
 /// The server is older than `POST /api/data/progress`.
 class ProgressUnsupportedException implements Exception {
   @override
-  String toString() => 'The server does not support progress reports';
+  String toString() => 'The server does not support progress reports'; // i18n-ignore
 }
