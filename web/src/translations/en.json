@@ -1361,6 +1361,9 @@
     "delete_confirmation_text": "Are you sure you want to delete the podcast from the database? This will remove it from every aspect of the app. Meaning this will remove any saved, downloaded, or queued episodes for this podcast. It will also remove any history that includes it.",
     "delete_podcast": "Delete Podcast",
     "episode_count": "Episode Count: ",
+    "unplayed_count": "Unplayed: ",
+    "unplayed_episodes": "Unplayed episodes",
+    "total_episodes": "Episodes",
     "error_removing_content": "Error removing content: ",
     "failed_to_add_podcast": "Failed to add podcast: ",
     "feed_url_placeholder": "https://bestpodcast.com/feed.xml",
@@ -1638,7 +1641,12 @@
     "podcast_cover_display": "Podcast Cover Display",
     "always_use_podcast_covers": "Always use podcast covers instead of episode covers",
     "avatar": "Avatar",
-    "use_gravatar": "Show my Gravatar (loads an image from gravatar.com using a hash of your email)"
+    "use_gravatar": "Show my Gravatar (loads an image from gravatar.com using a hash of your email)",
+    "podcast_count": "Podcast episode count",
+    "podcast_count_description": "The number shown on each podcast on the Podcasts page.",
+    "podcast_count_total": "All episodes",
+    "podcast_count_unplayed": "Unplayed episodes",
+    "failed_to_update_podcast_count": "Couldn't save the episode count setting: "
   },
   "time_formats": {
     "12_hour": "12 Hour",

@@ -609,6 +609,17 @@ pub struct PodcastExtra {
     pub is_video: bool,
     #[serde(default)]
     pub is_favorite: bool,
+    /// Episodes the user hasn't finished; None from servers that don't report it.
+    #[serde(default)]
+    pub unplayed_count: Option<i32>,
+}
+
+impl PodcastExtra {
+    /// The count the Podcasts page shows: unplayed when asked and known, else the total.
+    pub fn shown_count(&self, unplayed: bool) -> i32 {
+        let unplayed_count = if unplayed { self.unplayed_count } else { None };
+        unplayed_count.or(self.episodecount).unwrap_or(0)
+    }
 }
 
 impl From<Podcast> for PodcastExtra {
@@ -634,6 +645,7 @@ impl From<Podcast> for PodcastExtra {
             is_youtube,
             is_video: podcast.is_video,
             is_favorite: podcast.is_favorite,
+            unplayed_count: None,
         }
     }
 }
@@ -2350,6 +2362,8 @@ pub async fn call_mark_episode_completed(
         .await?;
 
     if response.ok() {
+        // The podcast list's unplayed counts change with completion.
+        cache::invalidate_prefix(&format!("{}/api/data/return_pods", server_name));
         let response_body: MarkEpisodeCompletedResponse =
             response.json().await.map_err(|e| anyhow::Error::new(e))?;
         Ok(response_body.detail)
@@ -2387,6 +2401,8 @@ pub async fn call_mark_episode_uncompleted(
         .await?;
 
     if response.ok() {
+        // The podcast list's unplayed counts change with completion.
+        cache::invalidate_prefix(&format!("{}/api/data/return_pods", server_name));
         let response_body: MarkEpisodeCompletedResponse =
             response.json().await.map_err(|e| anyhow::Error::new(e))?;
         Ok(response_body.detail)
@@ -2444,6 +2460,8 @@ pub async fn call_bulk_mark_episodes_completed(
         .await?;
 
     if response.ok() {
+        // The podcast list's unplayed counts change with completion.
+        cache::invalidate_prefix(&format!("{}/api/data/return_pods", server_name));
         let response_body: BulkEpisodeActionResponse =
             response.json().await.map_err(|e| anyhow::Error::new(e))?;
         Ok(response_body.message)

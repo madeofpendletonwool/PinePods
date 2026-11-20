@@ -2365,6 +2365,52 @@ pub async fn call_update_queue_add_position(
     Ok(())
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PodcastCountDisplaySetting {
+    pub user_id: i32,
+    pub display: String,
+}
+
+/// Which episode count the Podcasts page shows: "total" or "unplayed".
+pub async fn call_get_podcast_count_display(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/get_podcast_count_display/{}", server_name, user_id);
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+    if !response.ok() {
+        return Err(Error::msg(format!("Error getting podcast count setting: {}", response.status_text())));
+    }
+    let setting: PodcastCountDisplaySetting = response.json().await?;
+    Ok(setting.display)
+}
+
+pub async fn call_update_podcast_count_display(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    display: String,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/update_podcast_count_display", server_name);
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&PodcastCountDisplaySetting { user_id, display })
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+    if !response.ok() {
+        return Err(Error::msg(format!("Error updating podcast count setting: {}", response.status_text())));
+    }
+    Ok(())
+}
+
 pub async fn call_get_default_volume(
     server_name: String,
     api_key: String,
