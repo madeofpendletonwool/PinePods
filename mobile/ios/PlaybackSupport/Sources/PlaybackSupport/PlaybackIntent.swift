@@ -52,4 +52,15 @@ struct PlaybackIntent {
     func canStart(generation: UInt64) -> Bool {
         self.generation == generation && canPlay
     }
+
+    /// Whether a play/pause toggle (a headset's single button) should pause.
+    ///
+    /// Goes by what the user asked for, not by what AVPlayer reports at that
+    /// instant: while a stream buffers or stalls AVPlayer says it is waiting, not
+    /// playing, and a toggle that went by that resumed instead of pausing.
+    /// `transportActive` is AVPlayer playing or waiting to play. An unusable item
+    /// (none loaded, or failed) always plays, which reloads it.
+    func toggleShouldPause(transportActive: Bool, itemUsable: Bool) -> Bool {
+        itemUsable && (canPlay || transportActive)
+    }
 }

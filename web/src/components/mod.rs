@@ -8,6 +8,8 @@ pub(crate) mod episode_list_view;
 pub(crate) mod transcript_hits;
 pub(crate) mod people;
 pub(crate) mod player_ui;
+pub(crate) mod media_session;
+pub(crate) mod progress;
 pub(crate) mod loading;
 pub mod misc_func;
 pub(crate) mod navigation;

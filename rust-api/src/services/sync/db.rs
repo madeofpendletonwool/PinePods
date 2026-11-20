@@ -48,9 +48,10 @@ pub struct EpisodeForEvent {
 /// An episode-level log event.
 #[derive(Debug, Clone, Copy)]
 pub enum EpisodeEvent {
-    /// Playback position in seconds.
-    Progress(i32),
-    Completed,
+    /// Playback position in seconds, observed `age` seconds ago.
+    Progress { position: i32, age: i64 },
+    /// Finished `age` seconds ago.
+    Completed { age: i64 },
     New,
 }
 
@@ -290,11 +291,20 @@ pub async fn mysql_episode_for_event(conn: &mut MySqlConnection, user_id: i32, e
 fn play_values(ep: &EpisodeForEvent, event: EpisodeEvent) -> Option<(i32, i32)> {
     let duration = ep.duration.filter(|d| *d > 0);
     let position = match event {
-        EpisodeEvent::Progress(p) => p,
-        EpisodeEvent::Completed => duration?,
+        EpisodeEvent::Progress { position, .. } => position,
+        EpisodeEvent::Completed { .. } => duration?,
         EpisodeEvent::New => return None,
     };
     (position > 0).then(|| (position, duration.unwrap_or(position).max(position)))
+}
+
+/// How long ago the event happened. Its action time is set back by this much, so a position
+/// saved offline and reported late isn't taken for a newer one; `ServerTs` stays the write time.
+fn event_age(event: EpisodeEvent) -> i64 {
+    match event {
+        EpisodeEvent::Progress { age, .. } | EpisodeEvent::Completed { age } => age.max(0),
+        EpisodeEvent::New => 0,
+    }
 }
 
 // Write one episode event. Progress and completion update the latest unpushed `pinepods` play
@@ -323,6 +333,7 @@ dialect_fn!([pg_log_episode, lite_log_episode]
         return Ok(targets.any_enabled);
     }
     let Some((position, total)) = play_values(ep, event) else { return Ok(false) };
+    let age = event_age(event);
     let latest = q::query(
         r#"SELECT a.actionid, a.action FROM "GpodderSyncEpisodeActions" a
            WHERE a.episodeid = $1 AND a.userid = $2 AND a.origin = 'pinepods' AND a.actionid > $3
@@ -339,7 +350,7 @@ dialect_fn!([pg_log_episode, lite_log_episode]
             let action_id: i32 = row.try_get("actionid")?;
             q::query(sqlx::AssertSqlSafe(format!(
                 r#"UPDATE "GpodderSyncEpisodeActions" a
-                   SET started = 0, position = $1, total = $2, timestamp = n.t, serverts = n.t,
+                   SET started = 0, position = $1, total = $2, timestamp = n.t - $8, serverts = n.t,
                        deviceid = $3, podcasturl = $4, episodeurl = $5, guid = $6
                    FROM {PG_NOW} WHERE a.actionid = $7"#
             )))
@@ -350,6 +361,7 @@ dialect_fn!([pg_log_episode, lite_log_episode]
             .bind(&ep.episode_url)
             .bind(&ep.guid)
             .bind(action_id)
+            .bind(age)
             .execute(&mut *conn)
             .await?;
             return Ok(targets.any_enabled);
@@ -358,7 +370,7 @@ dialect_fn!([pg_log_episode, lite_log_episode]
     q::query(sqlx::AssertSqlSafe(format!(
         r#"INSERT INTO "GpodderSyncEpisodeActions"
              (userid, deviceid, podcasturl, episodeurl, action, timestamp, serverts, started, position, total, guid, episodeid, origin)
-           SELECT $1, $2, $3, $4, 'play', n.t, n.t, 0, $5, $6, $7, $8, 'pinepods' FROM {PG_NOW}"#
+           SELECT $1, $2, $3, $4, 'play', n.t - $9, n.t, 0, $5, $6, $7, $8, 'pinepods' FROM {PG_NOW}"#
     )))
     .bind(user_id)
     .bind(device_id)
@@ -368,6 +380,7 @@ dialect_fn!([pg_log_episode, lite_log_episode]
     .bind(total)
     .bind(&ep.guid)
     .bind(episode_id)
+    .bind(age)
     .execute(&mut *conn)
     .await?;
     Ok(targets.any_enabled)
@@ -394,6 +407,7 @@ pub async fn mysql_log_episode(conn: &mut MySqlConnection, user_id: i32, episode
         return Ok(targets.any_enabled);
     }
     let Some((position, total)) = play_values(ep, event) else { return Ok(false) };
+    let age = event_age(event);
     let latest = sqlx::query(
         "SELECT a.ActionID, a.Action FROM GpodderSyncEpisodeActions a
          WHERE a.EpisodeID = ? AND a.UserID = ? AND a.Origin = 'pinepods' AND a.ActionID > ?
@@ -410,12 +424,13 @@ pub async fn mysql_log_episode(conn: &mut MySqlConnection, user_id: i32, episode
             let action_id: i32 = row.try_get("ActionID")?;
             sqlx::query(
                 "UPDATE GpodderSyncEpisodeActions
-                 SET Started = 0, Position = ?, Total = ?, Timestamp = UNIX_TIMESTAMP(), ServerTs = UNIX_TIMESTAMP(),
+                 SET Started = 0, Position = ?, Total = ?, Timestamp = UNIX_TIMESTAMP() - ?, ServerTs = UNIX_TIMESTAMP(),
                      DeviceID = ?, PodcastURL = ?, EpisodeURL = ?, Guid = ?
                  WHERE ActionID = ?",
             )
             .bind(position)
             .bind(total)
+            .bind(age)
             .bind(device_id)
             .bind(&ep.feed_url)
             .bind(&ep.episode_url)
@@ -429,12 +444,13 @@ pub async fn mysql_log_episode(conn: &mut MySqlConnection, user_id: i32, episode
     sqlx::query(
         "INSERT INTO GpodderSyncEpisodeActions
            (UserID, DeviceID, PodcastURL, EpisodeURL, Action, Timestamp, ServerTs, Started, Position, Total, Guid, EpisodeID, Origin)
-         VALUES (?, ?, ?, ?, 'play', UNIX_TIMESTAMP(), UNIX_TIMESTAMP(), 0, ?, ?, ?, ?, 'pinepods')",
+         VALUES (?, ?, ?, ?, 'play', UNIX_TIMESTAMP() - ?, UNIX_TIMESTAMP(), 0, ?, ?, ?, ?, 'pinepods')",
     )
     .bind(user_id)
     .bind(device_id)
     .bind(&ep.feed_url)
     .bind(&ep.episode_url)
+    .bind(age)
     .bind(position)
     .bind(total)
     .bind(&ep.guid)
@@ -616,52 +632,6 @@ impl DatabasePool {
             },
         });
         Ok(out)
-    }
-
-    /// Set the listen position, backwards too (unlike `record_listen_duration`, which only moves
-    /// forward). Used by apply after last-write-wins has decided the remote position is newer.
-    pub async fn set_listen_position(&self, user_id: i32, episode_id: i32, position: i32, at: DateTime<Utc>, origin: super::SyncOrigin) -> AppResult<()> {
-        let log = super::events::should_log(self, user_id, origin).await;
-        let at = at.naive_utc();
-        dialect_match!(self, {
-            pg(pool) => {
-                let mut tx = q::begin(pool).await?;
-                q::query(
-                    r#"INSERT INTO "UserEpisodeHistory" (userid, episodeid, listendate, listenduration)
-                       VALUES ($1, $2, $3, $4)
-                       ON CONFLICT (userid, episodeid) DO UPDATE SET listenduration = $4, listendate = $3"#,
-                )
-                .bind(user_id)
-                .bind(episode_id)
-                .bind(at)
-                .bind(position)
-                .execute(&mut *tx)
-                .await?;
-                if log {
-                    q::pick(super::events::episode_pg, super::events::episode_lite)(self, &mut tx, user_id, episode_id, EpisodeEvent::Progress(position)).await;
-                }
-                tx.commit().await?;
-            },
-            mysql(pool) => {
-                let mut tx = super::events::begin_mysql(pool, user_id, log).await?;
-                sqlx::query(
-                    "INSERT INTO UserEpisodeHistory (UserID, EpisodeID, ListenDate, ListenDuration)
-                     VALUES (?, ?, ?, ?)
-                     ON DUPLICATE KEY UPDATE ListenDuration = VALUES(ListenDuration), ListenDate = VALUES(ListenDate)",
-                )
-                .bind(user_id)
-                .bind(episode_id)
-                .bind(at)
-                .bind(position)
-                .execute(&mut *tx)
-                .await?;
-                if log {
-                    super::events::episode_mysql(self, &mut tx, user_id, episode_id, EpisodeEvent::Progress(position)).await;
-                }
-                tx.commit().await?;
-            },
-        });
-        Ok(())
     }
 
     /// Set `UserEpisodeHistory.ListenDate` to the time of the change that was applied, so the

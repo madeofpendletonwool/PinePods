@@ -268,5 +268,7 @@ fn main() {
     wasm_bindgen_futures::spawn_local(async {
         crate::components::context::AppState::load_tauri_credentials().await;
         yew::Renderer::<Main>::new().render();
+        // Follows the player for the whole visit and sends progress saved by an earlier one.
+        crate::components::progress::start();
     });
 }

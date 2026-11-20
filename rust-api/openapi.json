@@ -7801,6 +7801,48 @@
         ]
       }
     },
+    "/api/data/progress": {
+      "post": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Record listening progress",
+        "operationId": "record_progress",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgressRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The stored state of each episode after its update",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Too many updates in one request"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/proxy_categories": {
       "get": {
         "tags": [
@@ -17555,6 +17597,132 @@
           },
           "client": {
             "$ref": "#/components/schemas/ClientStatus"
+          }
+        }
+      },
+      "ProgressRequest": {
+        "type": "object",
+        "required": [
+          "updates"
+        ],
+        "properties": {
+          "sent_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The client's clock when it sent this request, in unix milliseconds. Only its difference\nfrom each update's `at` is used, so the client's clock doesn't have to be right."
+          },
+          "updates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgressUpdate"
+            }
+          }
+        }
+      },
+      "ProgressResponse": {
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgressResult"
+            }
+          }
+        }
+      },
+      "ProgressResult": {
+        "type": "object",
+        "description": "The stored state of the episode after the update.",
+        "required": [
+          "episode_id",
+          "is_youtube",
+          "found",
+          "applied",
+          "position",
+          "completed"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_youtube": {
+            "type": "boolean"
+          },
+          "found": {
+            "type": "boolean",
+            "description": "False when the episode isn't in the user's library (any more)."
+          },
+          "applied": {
+            "type": "boolean",
+            "description": "Whether this update's position became the stored one. False when a newer one was\nalready stored; `position` is then that newer one."
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "completed": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the stored position was observed, in unix seconds on the server's clock."
+          }
+        }
+      },
+      "ProgressUpdate": {
+        "type": "object",
+        "required": [
+          "episode_id",
+          "position"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_youtube": {
+            "type": "boolean"
+          },
+          "position": {
+            "type": "number",
+            "format": "double",
+            "description": "Seconds into the episode."
+          },
+          "at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The client's clock when it observed this position, in unix milliseconds. Now if absent."
+          },
+          "listened": {
+            "type": "number",
+            "format": "double",
+            "description": "Seconds actually played since this client's previous report for the episode."
+          },
+          "duration": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "The player's length for the episode in seconds, if it knows it."
+          },
+          "finished": {
+            "type": "boolean",
+            "description": "The episode was played to the end."
           }
         }
       },

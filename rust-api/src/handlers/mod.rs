@@ -2,6 +2,7 @@ mod media_stream;
 pub mod auth;
 pub mod health;
 pub mod podcasts;
+pub mod progress;
 pub mod episodes;
 pub mod playlists;
 pub mod collections;

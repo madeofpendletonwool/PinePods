@@ -1078,16 +1078,8 @@ pub async fn add_history(
     if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only add history for yourself!"));
     }
-    require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube).await?;
+    super::progress::record_play_start(&state, request.user_id, request.episode_id, request.is_youtube, request.episode_pos as f64).await?;
 
-    // Record the history
-    state.db_pool.record_podcast_history(
-        request.episode_id, 
-        request.user_id, 
-        request.episode_pos, 
-        request.is_youtube
-    ).await?;
-    
     Ok(Json(crate::models::HistoryResponse {
         detail: "History recorded successfully.".to_string(),
     }))
@@ -2854,7 +2846,7 @@ pub struct RecordListenDurationRequest {
     pub episode_duration: Option<f64>,
 }
 
-// Record listen duration - matches Python api record_listen_duration function exactly
+// The position report of apps older than `POST /progress`.
 #[utoipa::path(
     post,
     path = "/record_listen_duration",
@@ -2887,38 +2879,16 @@ pub async fn record_listen_duration(
     if key_id != data.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only record your own listen duration"));
     }
-    require_episode_owner(&state, data.user_id, data.episode_id, data.is_youtube).await?;
-
-    if data.is_youtube {
-        state.db_pool.record_youtube_listen_duration(data.episode_id, data.user_id, data.listen_duration).await?;
-    } else {
-        state.db_pool.record_listen_duration(data.episode_id, data.user_id, data.listen_duration, crate::services::sync::SyncOrigin::Pinepods).await?;
-        if let Some(d) = data.episode_duration.filter(|d| d.is_finite() && *d >= 1.0) {
-            state.db_pool.set_episode_duration_if_missing(data.episode_id, d.round() as i32).await?;
-        }
-    }
-
-    // Check if episode should be auto-completed based on user's setting
-    let auto_complete_seconds = state.db_pool.get_user_auto_complete_seconds(data.user_id).await.unwrap_or(0);
-    
-    if auto_complete_seconds > 0 {
-        // Get episode duration
-        let episode_duration = if data.is_youtube {
-            state.db_pool.get_youtube_episode_duration(data.episode_id).await.unwrap_or(0)
-        } else {
-            state.db_pool.get_episode_duration(data.episode_id).await.unwrap_or(0)
-        };
-        
-        if episode_duration > 0 {
-            let remaining_time = episode_duration as f64 - data.listen_duration;
-            
-            // Auto-complete if remaining time <= auto_complete_seconds
-            // Also handle cases where listen_duration exceeds episode_duration (dynamic ads, etc.)
-            if remaining_time <= auto_complete_seconds as f64 || data.listen_duration >= episode_duration as f64 {
-                let _ = state.db_pool.mark_episode_completed(data.episode_id, data.user_id, data.is_youtube, crate::services::sync::SyncOrigin::Pinepods).await;
-            }
-        }
-    }
+    super::progress::record_untimed_position(
+        &state,
+        &api_key,
+        data.user_id,
+        data.episode_id,
+        data.is_youtube,
+        data.listen_duration,
+        data.episode_duration,
+    )
+    .await?;
 
     Ok(Json(serde_json::json!({ "detail": "Listen duration recorded." })))
 }
@@ -2992,7 +2962,7 @@ pub async fn increment_listen_time(
         return Err(AppError::forbidden("You can only increment your own listen time."));
     }
 
-    state.db_pool.increment_listen_time(user_id).await?;
+    super::progress::record_untimed_minute(&state, &api_key, user_id).await?;
     Ok(Json(serde_json::json!({ "detail": "Listen time incremented." })))
 }
 

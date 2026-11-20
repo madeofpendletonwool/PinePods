@@ -8000,6 +8000,62 @@ def migration_090_user_queue_add_position(conn, db_type: str) -> None:
         cursor.close()
 
 
+@register_migration("092", "listened_seconds", "ListenedSeconds on the history tables and UserStats.ListenSecondsCarry: time actually played, kept apart from the position", requires=["001"], sqlite=True)
+def migration_092_listened_seconds(conn, db_type: str) -> None:
+    """ListenDuration is where the user is in an episode and can move back. ListenedSeconds is how
+    long they have played it and only grows; it starts as the position, capped at the length.
+    ListenSecondsCarry holds the seconds that don't yet make a minute of TimeListened."""
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    lite = db_type == "sqlite"
+
+    def has(table: str, column: str) -> bool:
+        if lite:
+            cursor.execute(f'PRAGMA table_info("{table}")')
+            return any(row[1].lower() == column.lower() for row in cursor.fetchall())
+        return _column_exists(cursor, db_type, table, column)
+
+    def name(table: str) -> str:
+        return f'"{table}"' if pg or lite else table
+
+    try:
+        added = []
+        for table, column in (
+            ("UserEpisodeHistory", "ListenedSeconds"),
+            ("UserVideoHistory", "ListenedSeconds"),
+            ("UserStats", "ListenSecondsCarry"),
+        ):
+            if not has(table, column):
+                col = column.lower() if lite else column
+                cursor.execute(f"ALTER TABLE {name(table)} ADD COLUMN {col} INT NOT NULL DEFAULT 0")
+                added.append(table)
+        least = "MIN" if lite else "LEAST"
+        if "UserEpisodeHistory" in added:
+            cursor.execute(f"""
+                UPDATE {name('UserEpisodeHistory')} SET ListenedSeconds = COALESCE((
+                    SELECT CASE WHEN COALESCE(e.EpisodeDuration, 0) > 0
+                                THEN {least}(COALESCE({name('UserEpisodeHistory')}.ListenDuration, 0), e.EpisodeDuration)
+                                ELSE COALESCE({name('UserEpisodeHistory')}.ListenDuration, 0) END
+                    FROM {name('Episodes')} e WHERE e.EpisodeID = {name('UserEpisodeHistory')}.EpisodeID), 0)
+                WHERE COALESCE(ListenDuration, 0) > 0
+            """)
+        if "UserVideoHistory" in added:
+            cursor.execute(f"""
+                UPDATE {name('UserVideoHistory')} SET ListenedSeconds = COALESCE((
+                    SELECT CASE WHEN COALESCE(v.Duration, 0) > 0
+                                THEN {least}(COALESCE({name('UserVideoHistory')}.ListenDuration, 0), v.Duration)
+                                ELSE COALESCE({name('UserVideoHistory')}.ListenDuration, 0) END
+                    FROM {name('YouTubeVideos')} v WHERE v.VideoID = {name('UserVideoHistory')}.VideoID), 0)
+                WHERE COALESCE(ListenDuration, 0) > 0
+            """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("118", "gpodder_actions_follow_merged_episodes", "Episode actions point at the shared episode their merged copy became; the copies are deleted", requires=["082", "111"])
 def migration_118_gpodder_actions_follow_merged_episodes(conn, db_type: str) -> None:
     """GpodderSyncEpisodeActions.EpisodeID of actions on an episode copy merged by 082 now points

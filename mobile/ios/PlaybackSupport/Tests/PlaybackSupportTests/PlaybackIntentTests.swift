@@ -106,6 +106,40 @@ final class PlaybackIntentTests: XCTestCase {
         XCTAssertFalse(intent.canStart(generation: second))
     }
 
+    func testTogglePausesWhileBufferingAfterPlayWasRequested() {
+        var intent = PlaybackIntent()
+        let generation = intent.beginEpisode()
+        intent.completeLoad(generation: generation)
+        // Stalled stream: AVPlayer is waiting, which still counts as active.
+        XCTAssertTrue(intent.toggleShouldPause(transportActive: true, itemUsable: true))
+        // Requested but AVPlayer momentarily reports paused (e.g. mid-seek).
+        XCTAssertTrue(intent.toggleShouldPause(transportActive: false, itemUsable: true))
+    }
+
+    func testToggleResumesWhenPausedOrInterrupted() {
+        var intent = PlaybackIntent()
+        let generation = intent.beginEpisode()
+        intent.completeLoad(generation: generation)
+        intent.pause()
+        XCTAssertFalse(intent.toggleShouldPause(transportActive: false, itemUsable: true))
+        intent.play()
+        intent.interruptionBegan()
+        // iOS often never sends interruption-ended; the button must still resume.
+        XCTAssertFalse(intent.toggleShouldPause(transportActive: false, itemUsable: true))
+    }
+
+    func testTogglePausesAudioThePlayerIsPlayingEvenWithoutARequest() {
+        let intent = PlaybackIntent()
+        XCTAssertTrue(intent.toggleShouldPause(transportActive: true, itemUsable: true))
+    }
+
+    func testToggleOnAnUnusableItemPlaysSoItReloads() {
+        var intent = PlaybackIntent()
+        _ = intent.beginEpisode()
+        XCTAssertFalse(intent.toggleShouldPause(transportActive: true, itemUsable: false))
+        XCTAssertFalse(intent.toggleShouldPause(transportActive: false, itemUsable: false))
+    }
+
     func testInvalidRatesDoNotReplaceUserPreference() {
         var intent = PlaybackIntent()
         intent.setRate(2)

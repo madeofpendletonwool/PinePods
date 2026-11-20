@@ -794,6 +794,13 @@ class NativeAudioPlayerService extends AudioPlayerService {
     log.info('suspend');
     await _saveLocalPosition();
     _stopLocalPositionSaver();
+    // The app may not run again before it is killed: queue the position for
+    // the server now rather than at the next report.
+    try {
+      await _pinepodsAudioService?.syncCurrentPositionToServer();
+    } catch (e) {
+      log.fine('Could not queue the position on suspend: $e');
+    }
   }
 
   /// How long a timed sleep fades the volume out before pausing.
