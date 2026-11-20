@@ -273,6 +273,17 @@ class _SettingsState extends State<Settings> {
                   ),
                 ),
               ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(PhosphorIconsRegular.skipForward),
+                  title: Text(L.of(context)!.auto_play_queue),
+                  subtitle: Text(L.of(context)!.auto_play_queue_description),
+                  trailing: Switch.adaptive(
+                    value: snapshot.data!.autoPlayQueue,
+                    onChanged: (value) => settingsBloc.setAutoPlayQueue(value),
+                  ),
+                ),
+              ),
               const QueuePositionSetting(),
               const SearchProviderWidget(),
               SettingsDividerLabel(label: L.of(context)!.download_management),

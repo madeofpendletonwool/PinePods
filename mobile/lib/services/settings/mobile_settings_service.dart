@@ -364,6 +364,15 @@ class MobileSettingsService extends SettingsService {
   }
 
   @override
+  bool get autoPlayQueue => _sharedPreferences.getBool('autoPlayQueue') ?? true;
+
+  @override
+  set autoPlayQueue(bool value) {
+    _sharedPreferences.setBool('autoPlayQueue', value);
+    settingsNotifier.sink.add('autoPlayQueue');
+  }
+
+  @override
   String get language => _sharedPreferences.getString('language') ?? '';
 
   @override

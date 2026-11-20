@@ -109,6 +109,10 @@ abstract class SettingsService {
   bool get artworkAccentColors;
   set artworkAccentColors(bool value);
 
+  /// When an episode ends, start the next one in the queue.
+  bool get autoPlayQueue;
+  set autoPlayQueue(bool value);
+
   /// UI language code (e.g. en, pt-BR, zh-Hans); empty follows the device.
   String get language;
   set language(String value);

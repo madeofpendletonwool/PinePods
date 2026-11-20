@@ -434,7 +434,8 @@ class PinepodsAudioPlayer: NSObject {
         playerItem = AVPlayerItem(asset: asset)
 
         // Configure buffering for streaming
-        playerItem?.preferredForwardBufferDuration = 180  // 3 min forward buffer
+        // About ten minutes ahead, so playback rides out a dead zone (~10 MB of audio).
+        playerItem?.preferredForwardBufferDuration = 600
         playerItem?.canUseNetworkResourcesForLiveStreamingWhilePaused = true
 
         // Observe player item status
