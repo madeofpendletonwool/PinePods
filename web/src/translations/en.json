@@ -965,6 +965,7 @@
     "all_tasks": "All Tasks",
     "clear": "Clear",
     "clear_all_notifications": "Clear all notifications",
+    "cancel_queued_task": "Cancel",
     "clear_completed": "Clear completed",
     "dismiss_all_completed_tasks": "Dismiss all completed tasks",
     "dismiss_completed": "Dismiss Completed",

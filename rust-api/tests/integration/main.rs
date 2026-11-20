@@ -19,6 +19,7 @@ mod foreign_resources;
 mod gpodder;
 mod gpodder_server;
 mod in_app_notifications;
+mod task_list;
 mod library;
 mod local_media;
 mod mobile_contract;

@@ -397,6 +397,26 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
         )
     };
 
+    // A real link, so ctrl/cmd/middle-click opens the episode in a new tab; a plain click
+    // stays in the app.
+    let episode_href = (props.episode.episodeid > 0).then(|| {
+        if props.episode.is_youtube {
+            format!("/episode?episode_id={}&youtube=true", props.episode.episodeid)
+        } else {
+            format!("/episode?episode_id={}", props.episode.episodeid)
+        }
+    });
+    let on_title_click = {
+        let open = on_shownotes_click.clone();
+        Callback::from(move |e: MouseEvent| {
+            if e.ctrl_key() || e.meta_key() || e.shift_key() || e.alt_key() || e.button() != 0 {
+                return;
+            }
+            e.prevent_default();
+            open.emit(e);
+        })
+    };
+
     #[wasm_bindgen]
     extern "C" {
         #[wasm_bindgen(js_namespace = window)]
@@ -484,9 +504,9 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                 </div>
 
                 <div class="ep-body">
-                    <div class="ep-title cursor-pointer" onclick={on_shownotes_click.clone()}>
+                    <a class="ep-title cursor-pointer" href={episode_href} onclick={on_title_click}>
                         { props.episode.episodetitle.clone() }
-                    </div>
+                    </a>
                     <hr class="ep-divider" />
                     <div class="ep-desc cursor-pointer"
                         onclick={

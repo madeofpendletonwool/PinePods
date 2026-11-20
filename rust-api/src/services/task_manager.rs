@@ -97,6 +97,10 @@ pub struct TaskInfo {
     /// Total item count a grouped run is working through (for "x of N").
     #[serde(default)]
     pub total: Option<i32>,
+    /// API process running the task. A pending/running task whose process is gone
+    /// (restart, crash) is failed on the next read instead of sitting there for days.
+    #[serde(default)]
+    pub owner: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,6 +204,16 @@ pub const TASK_EVENTS_CHANNEL: &str = "pinepods:events";
 const NOTIF_TTL_TRANSIENT_SECS: i64 = 24 * 60 * 60; // info / success
 const NOTIF_TTL_STICKY_SECS: i64 = 30 * 24 * 60 * 60; // warning / error
 
+/// Each API process refreshes its liveness key this often; the key outlives a few misses.
+const INSTANCE_ALIVE_REFRESH_SECS: u64 = 20;
+const INSTANCE_ALIVE_TTL_SECS: u64 = 90;
+
+/// Task types whose queued items check for cancellation before they start.
+const CANCELLABLE_TASK_TYPES: &[&str] = &["transcribe_episode"];
+
+const INTERRUPTED_MESSAGE: &str = "Interrupted when the server restarted";
+const CANCELLED_MESSAGE: &str = "Cancelled";
+
 pub type TaskProgressSender = broadcast::Sender<TaskUpdate>;
 pub type TaskProgressReceiver = broadcast::Receiver<TaskUpdate>;
 
@@ -225,6 +239,36 @@ impl TaskManager {
             progress_sender,
             notification_sender,
             instance_id,
+        }
+    }
+
+    fn instance_alive_key(instance_id: &str) -> String {
+        format!("instance:alive:{}", instance_id)
+    }
+
+    /// Keep this process's liveness key fresh so other replicas (and this one after a
+    /// restart, under a new id) can tell which tasks still have a worker behind them.
+    pub fn spawn_liveness(self: &Arc<Self>) {
+        let this = self.clone();
+        tokio::spawn(async move {
+            let key = Self::instance_alive_key(&this.instance_id);
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(INSTANCE_ALIVE_REFRESH_SECS));
+            loop {
+                tick.tick().await;
+                if let Err(e) = this.redis.set_ex(&key, "1", INSTANCE_ALIVE_TTL_SECS).await {
+                    tracing::debug!("Refreshing instance liveness failed: {}", e);
+                }
+            }
+        });
+    }
+
+    /// Whether the process that owns a task is still running. Tasks written before
+    /// owners were recorded have no owner and count as orphaned.
+    async fn owner_alive(&self, owner: Option<&str>) -> bool {
+        match owner {
+            None => false,
+            Some(id) if id == &*self.instance_id => true,
+            Some(id) => self.redis.exists(&Self::instance_alive_key(id)).await.unwrap_or(true),
         }
     }
 
@@ -296,6 +340,7 @@ impl TaskManager {
             group: None,
             group_label: None,
             total: None,
+            owner: Some(self.instance_id.to_string()),
         };
 
         self.save_task(&task).await?;
@@ -334,6 +379,7 @@ impl TaskManager {
             group: None,
             group_label: None,
             total: None,
+            owner: Some(self.instance_id.to_string()),
         };
 
         self.save_task(&task).await?;
@@ -547,17 +593,39 @@ impl TaskManager {
     }
 
     /// List a user's tasks via their per-user index SET (no global `KEYS` scan),
-    /// pruning any index members whose task key has expired. Most-recent first.
+    /// pruning any index members whose task key has expired, and failing unfinished
+    /// tasks whose process is gone. Most-recent first.
     pub async fn get_user_tasks(&self, user_id: i32) -> AppResult<Vec<TaskInfo>> {
         let index = Self::task_index_key(user_id);
         let ids = self.redis.smembers(&index).await?;
 
+        let mut alive: std::collections::HashMap<Option<String>, bool> = std::collections::HashMap::new();
         let mut user_tasks = Vec::with_capacity(ids.len());
         for id in ids {
             let key = Self::task_key(&id);
             match self.redis.get::<String>(&key).await {
                 Ok(Some(json)) => match serde_json::from_str::<TaskInfo>(&json) {
-                    Ok(task) => user_tasks.push(task),
+                    Ok(mut task) => {
+                        if is_unfinished(&task.status) {
+                            let owner_alive = match alive.get(&task.owner) {
+                                Some(v) => *v,
+                                None => {
+                                    let v = self.owner_alive(task.owner.as_deref()).await;
+                                    alive.insert(task.owner.clone(), v);
+                                    v
+                                }
+                            };
+                            if !owner_alive {
+                                if let Err(e) = self.fail_task(&task.id, INTERRUPTED_MESSAGE.to_string()).await {
+                                    tracing::warn!("Failing orphaned task {} failed: {}", task.id, e);
+                                }
+                                if let Ok(updated) = self.get_task(&task.id).await {
+                                    task = updated;
+                                }
+                            }
+                        }
+                        user_tasks.push(task)
+                    }
                     Err(_) => self.redis.srem(&index, &id).await?,
                 },
                 // Task key expired: drop the stale index member.
@@ -568,6 +636,56 @@ impl TaskManager {
 
         user_tasks.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         Ok(user_tasks)
+    }
+
+    /// Remove a finished task from the user's activity list.
+    pub async fn dismiss_task(&self, user_id: i32, task_id: &str) -> AppResult<()> {
+        let task = self.get_task(task_id).await?;
+        if task.user_id != user_id {
+            return Err(crate::error::AppError::not_found("Task not found"));
+        }
+        if is_unfinished(&task.status) {
+            return Err(crate::error::AppError::bad_request("Only finished tasks can be dismissed"));
+        }
+        self.remove_task(&task).await
+    }
+
+    /// Remove every finished task from the user's activity list. Returns how many went.
+    pub async fn clear_finished_tasks(&self, user_id: i32) -> AppResult<usize> {
+        let mut removed = 0;
+        for task in self.get_user_tasks(user_id).await? {
+            if !is_unfinished(&task.status) {
+                self.remove_task(&task).await?;
+                removed += 1;
+            }
+        }
+        Ok(removed)
+    }
+
+    /// Cancel a task that is still waiting its turn. Running tasks can't be cancelled.
+    pub async fn cancel_task(&self, user_id: i32, task_id: &str) -> AppResult<()> {
+        let task = self.get_task(task_id).await?;
+        if task.user_id != user_id {
+            return Err(crate::error::AppError::not_found("Task not found"));
+        }
+        if !matches!(task.status, TaskStatus::Pending) || !CANCELLABLE_TASK_TYPES.contains(&task.task_type.as_str()) {
+            return Err(crate::error::AppError::bad_request("Only queued tasks can be cancelled"));
+        }
+        self.fail_task(task_id, CANCELLED_MESSAGE.to_string()).await
+    }
+
+    /// Whether a queued task should still run: false once it was cancelled or removed.
+    pub async fn still_queued(&self, task_id: &str) -> bool {
+        match self.get_task(task_id).await {
+            Ok(task) => matches!(task.status, TaskStatus::Pending),
+            Err(_) => false,
+        }
+    }
+
+    async fn remove_task(&self, task: &TaskInfo) -> AppResult<()> {
+        self.redis.delete(&Self::task_key(&task.id)).await?;
+        self.redis.srem(&Self::task_index_key(task.user_id), &task.id).await?;
+        Ok(())
     }
 
     async fn save_task(&self, task: &TaskInfo) -> AppResult<()> {
@@ -683,4 +801,8 @@ impl TaskManager {
     pub async fn clear_notifications(&self, user_id: i32, read_only: bool) -> AppResult<()> {
         self.db.clear_in_app_notifications(user_id, read_only).await
     }
+}
+
+fn is_unfinished(status: &TaskStatus) -> bool {
+    matches!(status, TaskStatus::Pending | TaskStatus::Running)
 }

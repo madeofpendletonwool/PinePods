@@ -302,6 +302,7 @@ pub fn notification_center() -> Html {
     let l_activity = i18n.t("notification_center.activity").to_string();
     let l_clear = i18n.t("notification_center.clear").to_string();
     let l_clear_completed = i18n.t("notification_center.clear_completed").to_string();
+    let l_cancel_queued = i18n.t("notification_center.cancel_queued_task").to_string();
     let l_settings = i18n.t("notification_center.settings").to_string();
 
     let type_label = {
@@ -443,23 +444,49 @@ pub fn notification_center() -> Html {
 
     let dismiss_task = {
         let dispatch = dispatch.clone();
+        let creds = creds.clone();
         Callback::from(move |id: String| {
-            dispatch.reduce_mut(move |state| {
-                if let Some(tasks) = &mut state.active_tasks {
-                    tasks.retain(|t| t.task_id != id);
-                }
-            });
+            {
+                let id = id.clone();
+                dispatch.reduce_mut(move |state| {
+                    if let Some(tasks) = &mut state.active_tasks {
+                        tasks.retain(|t| t.task_id != id);
+                    }
+                });
+            }
+            if let Some((_, api_key, server_name)) = creds.clone() {
+                spawn_local(async move {
+                    let _ = crate::requests::notify::dismiss_task(&server_name, &api_key, &id).await;
+                });
+            }
+        })
+    };
+
+    let cancel_task = {
+        let creds = creds.clone();
+        Callback::from(move |id: String| {
+            if let Some((_, api_key, server_name)) = creds.clone() {
+                spawn_local(async move {
+                    let _ = crate::requests::notify::cancel_task(&server_name, &api_key, &id).await;
+                });
+            }
         })
     };
 
     let clear_done = {
         let dispatch = dispatch.clone();
+        let creds = creds.clone();
         Callback::from(move |_| {
             dispatch.reduce_mut(|state| {
                 if let Some(tasks) = &mut state.active_tasks {
                     tasks.retain(|t| !is_done(&t.status));
                 }
             });
+            if let Some((_, api_key, server_name)) = creds.clone() {
+                spawn_local(async move {
+                    let _ = crate::requests::notify::clear_finished_tasks(&server_name, &api_key).await;
+                });
+            }
         })
     };
 
@@ -557,6 +584,8 @@ pub fn notification_center() -> Html {
         let sub = task.sub_line();
         let id = task.task_id.clone();
         let on_dismiss = dismiss_task.clone();
+        let on_cancel = cancel_task.clone();
+        let cancellable = task.status == "PENDING" && task.r#type == "transcribe_episode";
         html! {
             <div class={classes!("nc-card", format!("k-{kind}"))}>
                 <span class={classes!("nc-thumb", format!("k-{kind}"))}>
@@ -588,6 +617,13 @@ pub fn notification_center() -> Html {
                             html! {
                                 <button class="nc-x" title="Dismiss"
                                     onclick={Callback::from(move |_| on_dismiss.emit(id.clone()))}>
+                                    <i class="ph ph-x"></i>
+                                </button>
+                            }
+                        } else if cancellable {
+                            html! {
+                                <button class="nc-x" title={l_cancel_queued.clone()}
+                                    onclick={Callback::from(move |_| on_cancel.emit(id.clone()))}>
                                     <i class="ph ph-x"></i>
                                 </button>
                             }

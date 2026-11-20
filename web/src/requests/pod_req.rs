@@ -5223,12 +5223,31 @@ pub async fn call_subscribe_to_channel(
             .context("Response Parsing Error")
     } else {
         let status = resp.status();
-        let error_text = resp.text().await.unwrap_or_default();
-        Err(anyhow::anyhow!(
-            "Error subscribing to channel. Status: {}, Error: {}",
-            status,
-            error_text
-        ))
+        let body = resp.text().await.unwrap_or_default();
+        Err(anyhow::anyhow!(server_error_text(status, &body)))
+    }
+}
+
+/// The readable part of an API error body (`{"error": "Service unavailable", "message":
+/// "Service unavailable: <reason>"}` gives `<reason>`), falling back to the HTTP status.
+pub fn server_error_text(status: u16, body: &str) -> String {
+    let parsed: Option<serde_json::Value> = serde_json::from_str(body).ok();
+    let field = |key: &str| {
+        parsed
+            .as_ref()
+            .and_then(|v| v.get(key))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    };
+    match (field("message").or_else(|| field("detail")), field("error")) {
+        (Some(message), Some(kind)) => message
+            .strip_prefix(&format!("{kind}: "))
+            .map(str::to_string)
+            .unwrap_or(message),
+        (Some(message), None) => message,
+        (None, Some(kind)) => kind,
+        (None, None) if !body.trim().is_empty() && body.len() < 300 => body.trim().to_string(),
+        (None, None) => format!("HTTP {status}"),
     }
 }
 

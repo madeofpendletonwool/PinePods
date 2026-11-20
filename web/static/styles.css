@@ -7349,6 +7349,7 @@ body.audio-player-active .sb-bottom {
     color: var(--text-color);
     margin-bottom: 6px;
 }
+a.ep-title { text-decoration: none; }
 .ep-title:hover { color: var(--link-color); }
 
 .ep-divider {
