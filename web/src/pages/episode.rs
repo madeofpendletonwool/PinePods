@@ -27,7 +27,7 @@ use crate::requests::pod_req::{
     AdSegmentReviewRequest,
 };
 use crate::requests::search_pods::{call_get_podcast_details_dynamic, call_parse_podcast_url};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use regex::Regex;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;

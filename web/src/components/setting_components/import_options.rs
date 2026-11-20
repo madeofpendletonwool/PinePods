@@ -6,7 +6,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{FileReader, HtmlInputElement};
 use yew::prelude::*;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 // use wasm_bindgen::JsValue;
 use crate::requests::setting_reqs::{call_podcast_opml_import, fetch_import_progress};
 use std::cell::RefCell;

@@ -3,7 +3,7 @@ use crate::components::queue_panel::QueuePanel;
 use crate::components::navigation::use_back_button;
 use crate::pages::routes::Route;
 use crate::requests::pod_req::{call_get_pinepods_version, connect_to_episode_websocket};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use yew::prelude::*;

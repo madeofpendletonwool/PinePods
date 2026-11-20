@@ -5,7 +5,7 @@ use crate::components::gen_funcs::{format_date, format_time, format_time_mins};
 use crate::requests::pod_req::call_get_pinepods_version;
 use crate::requests::stat_reqs::{self, TopPodcastStat, CategoryStat};
 use crate::components::app_drawer::App_drawer;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yewdux::prelude::*;

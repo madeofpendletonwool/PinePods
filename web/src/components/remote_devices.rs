@@ -21,7 +21,7 @@ use crate::requests::now_playing::{
 use crate::requests::notify::toast_info;
 use crate::components::context::NotificationState;
 use crate::requests::pod_req::{call_get_episode_metadata, EpisodeRequest};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 
 fn fmt_time(secs: f64) -> String {
     if !secs.is_finite() || secs < 0.0 {

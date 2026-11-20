@@ -9,7 +9,7 @@ use crate::requests::episode::Episode;
 use crate::requests::pod_req;
 use crate::requests::pod_req::PodcastResponseExtra;
 use gloo_timers::future::TimeoutFuture;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::rc::Rc;

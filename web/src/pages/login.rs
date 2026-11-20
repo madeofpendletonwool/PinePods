@@ -18,7 +18,7 @@ use crate::requests::setting_reqs::{
 };
 use base64::Engine;
 use chrono_tz::{Tz, TZ_VARIANTS};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use md5;
 use wasm_bindgen::JsCast;
 use web_sys::{console, window};

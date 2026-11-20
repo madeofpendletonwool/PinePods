@@ -51,7 +51,7 @@ use crate::requests::setting_reqs::{
 
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;

@@ -15,7 +15,7 @@ use crate::requests::pod_req::Playlist;
 use crate::requests::pod_req::{self};
 
 use gloo_timers::future::TimeoutFuture;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::HashSet;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;

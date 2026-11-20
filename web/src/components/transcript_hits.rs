@@ -7,7 +7,7 @@ use crate::components::gen_components::FallbackImage;
 use crate::components::gen_funcs::{format_date, format_time_rm_hour};
 use crate::requests::episode::Episode;
 use crate::requests::search_pods::{call_search_transcripts, TranscriptHit, TranscriptSearchPage};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::HashSet;
 use std::rc::Rc;
 use wasm_bindgen_futures::spawn_local;

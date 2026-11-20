@@ -3,7 +3,7 @@
 //! `wasm-pack test --headless --chrome -- --features server_build,browser_tests`
 
 use gloo_timers::future::TimeoutFuture;
-use i18nrs::yew::{I18nProvider, I18nProviderConfig};
+use crate::components::i18n::TranslationProvider;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use wasm_bindgen::JsCast;
@@ -57,11 +57,6 @@ struct HarnessProps {
 #[function_component(Harness)]
 fn harness(props: &HarnessProps) -> Html {
     let translations = HashMap::from([("en", include_str!("../translations/en.json"))]);
-    let config = I18nProviderConfig {
-        translations,
-        default_language: "en".to_string(),
-        ..Default::default()
-    };
     let page = match props.page {
         Page::Discover => html! { <Discover /> },
         Page::Downloads => html! { <Downloads /> },
@@ -79,9 +74,9 @@ fn harness(props: &HarnessProps) -> Html {
         Page::Stats => html! { <UserStats /> },
     };
     html! {
-        <I18nProvider ..config>
+        <TranslationProvider translations={translations}>
             <BrowserRouter>{ page }</BrowserRouter>
-        </I18nProvider>
+        </TranslationProvider>
     }
 }
 

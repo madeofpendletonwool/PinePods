@@ -6,12 +6,12 @@ use crate::components::gen_components::{on_shownotes_click, EpisodeModal, Fallba
 
 use crate::components::context_menu_button::{ContextMenuButton, PageType};
 use crate::components::gen_funcs::{
-    format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target, use_long_press,
+    card_description, format_datetime, match_date_format, parse_date, use_long_press,
 };
-use crate::components::gen_funcs::{format_time, strip_images_from_html};
+use crate::components::gen_funcs::format_time;
 use crate::components::safehtml::RawHtml;
 use crate::requests::episode::Episode;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use yew_router::history::BrowserHistory;
 use web_sys::{DragEvent, MouseEvent};
 use yew::prelude::*;
@@ -278,14 +278,11 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     Episode Information
     */
 
-    // Sanitize + strip images in ONE memo so the (expensive) HTML parse and DOM walk happen
-    // once per episode-id, not on every parent re-render. Previously strip_images_from_html
-    // ran inline at the call site, so every display_count bump re-parsed every visible card's
-    // description.
-    let episode_description = use_memo(
-        props.episode.episodedescription.clone(),
-        |desc| strip_images_from_html(&sanitize_html_with_blank_target(desc)),
-    );
+    // Sanitized once per description for the whole session (see `card_description`):
+    // cards remount as the virtual list scrolls, so a per-mount memo isn't enough.
+    let episode_description = use_memo(props.episode.episodedescription.clone(), |desc| {
+        card_description(desc).to_string()
+    });
 
     let (_listen_duration_str, listen_duration_percentage) = {
         let lds = format_time(props.episode.listenduration);
@@ -637,11 +634,21 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                                 is_active_and_playing.then_some("ep-play--playing"),
                                 (is_completed && !_is_current_episode).then_some("ep-play--done"),
                             )}
-                            style={format!("--p: {};", pct)}
                             onclick={on_play_pause.clone()}
                             title={play_title.clone()}
                             aria-label={play_title.clone()}
                         >
+                            <svg class="ep-play-ring" viewBox="0 0 42 42" aria-hidden="true">
+                                <circle class="ep-play-track" cx="21" cy="21" r="19.75" />
+                                if pct > 0 {
+                                    <circle
+                                        class="ep-play-arc"
+                                        cx="21" cy="21" r="19.75"
+                                        pathLength="100"
+                                        stroke-dasharray={format!("{} 100", pct)}
+                                    />
+                                }
+                            </svg>
                             {
                                 if is_loading {
                                     html! { <i class="ph ph-spinner" style="animation: spin 1s linear infinite;"></i> }

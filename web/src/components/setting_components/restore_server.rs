@@ -3,7 +3,7 @@ use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_list_backup_files, call_restore_backup_file, call_restore_server,
 };
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::JsValue;
 use web_sys::{Event, File, FormData, HtmlInputElement};
 use yew::prelude::*;

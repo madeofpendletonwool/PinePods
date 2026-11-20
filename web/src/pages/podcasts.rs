@@ -11,7 +11,7 @@ use crate::requests::pod_req::{
     call_remove_podcasts, call_toggle_podcast_favorite, PodcastResponseExtra, RemovePodcastValues,
 };
 use crate::requests::setting_reqs::{call_add_custom_feed, call_get_podcast_count_display};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::rc::Rc;

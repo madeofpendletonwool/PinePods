@@ -1,4 +1,4 @@
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 

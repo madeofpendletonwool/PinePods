@@ -8,7 +8,7 @@ use crate::requests::setting_reqs::{
 };
 use crate::requests::setting_reqs::{call_get_my_user_info, MyUserInfo};
 use chrono_tz::{Tz, TZ_VARIANTS};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::prelude::*;

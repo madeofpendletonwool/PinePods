@@ -7,7 +7,7 @@ use crate::requests::setting_reqs::{
     call_dismiss_import, call_get_feed_problems, call_refresh_failing_feed, call_remove_import,
     call_retry_import, FailingFeed, FeedProblems, ImportFailure,
 };
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;

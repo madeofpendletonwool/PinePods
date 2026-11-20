@@ -1,6 +1,6 @@
 //! Accent colours pulled from episode artwork, used for the play ring, podcast name and
-//! other card details. Extraction runs in the browser through the server's image proxy
-//! (which allows cross-origin reads), one image at a time, and results are kept in
+//! other card details. Extraction runs in a Web Worker through the server's image proxy
+//! (which allows cross-origin reads), a few images at a time, and results are kept in
 //! localStorage so each artwork is only analysed once per browser.
 
 use crate::components::context::AppState;
@@ -12,7 +12,15 @@ use yewdux::prelude::*;
 
 #[wasm_bindgen(inline_js = r#"
 const KEY = 'pinepods_art_colors', MAX = 800, SIZE = 40;
-let saved = null, dirty = false, writeTimer = null, tail = Promise.resolve();
+let saved = null, writeTimer = null, active = 0;
+const queue = [];
+// At most three extractions at once; the rest wait their turn.
+function slot() {
+    return new Promise((resolve) => {
+        const run = () => { active++; resolve(() => { active--; const next = queue.shift(); if (next) next(); }); };
+        if (active < 3) run(); else queue.push(run);
+    });
+}
 const pending = new Map();
 
 function store() {
@@ -35,28 +43,29 @@ function remember(url, value) {
     }, 1500);
 }
 
-function rgbToHsl(r, g, b) {
-    r /= 255; g /= 255; b /= 255;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
-    if (max === min) return [0, 0, l];
-    const d = max - min;
-    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    let h;
-    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    return [h * 60, s, l];
-}
-function hslToRgb(h, s, l) {
-    const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
-    const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-    return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
-}
-
 // The most prominent saturated hue, normalised to a mid tone so CSS can push it lighter
 // or darker for the theme. Empty string when the artwork has no real colour.
+// Shared verbatim with the worker below (via toString), so keep it self-contained.
 function pick(data) {
-    const bins = new Array(24).fill(null).map(() => ({ w: 0, r: 0, g: 0, b: 0 }));
+    function rgbToHsl(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+        if (max === min) return [0, 0, l];
+        const d = max - min;
+        const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        let h;
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        return [h * 60, s, l];
+    }
+    function hslToRgb(h, s, l) {
+        const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+        const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+        return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+    }
+    const bins = [];
+    for (let i = 0; i < 24; i++) bins.push({ w: 0, r: 0, g: 0, b: 0 });
     for (let i = 0; i < data.length; i += 4) {
         if (data[i + 3] < 200) continue;
         const r = data[i], g = data[i + 1], b = data[i + 2];
@@ -66,8 +75,8 @@ function pick(data) {
         const bin = bins[Math.floor(h / 15) % 24];
         bin.w += w; bin.r += r * w; bin.g += g * w; bin.b += b * w;
     }
-    let best = null, total = 0;
-    for (const bin of bins) { total += bin.w; if (!best || bin.w > best.w) best = bin; }
+    let best = null;
+    for (const bin of bins) if (!best || bin.w > best.w) best = bin;
     // Ignore a few stray coloured pixels on otherwise grey artwork.
     if (!best || best.w < (data.length / 4) * 0.02) return '';
     const [h, s] = rgbToHsl(best.r / best.w, best.g / best.w, best.b / best.w);
@@ -75,7 +84,43 @@ function pick(data) {
     return `${r} ${g} ${b}`;
 }
 
-function extract(src) {
+// Fetch, decode, downscale and read pixels in a worker so scrolling never waits on it.
+let worker = null, nextId = 0;
+const waiting = new Map();
+function startWorker() {
+    if (worker !== null) return worker;
+    worker = false;
+    try {
+        if (typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') return worker;
+        const src = pick.toString() + `
+            self.onmessage = async (e) => {
+                const { id, url } = e.data;
+                try {
+                    const res = await fetch(url);
+                    if (!res.ok) throw new Error('status');
+                    const bitmap = await createImageBitmap(await res.blob(), { resizeWidth: ${SIZE}, resizeHeight: ${SIZE}, resizeQuality: 'low' });
+                    const canvas = new OffscreenCanvas(${SIZE}, ${SIZE});
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    ctx.drawImage(bitmap, 0, 0, ${SIZE}, ${SIZE});
+                    bitmap.close();
+                    self.postMessage({ id, color: pick(ctx.getImageData(0, 0, ${SIZE}, ${SIZE}).data) });
+                } catch (err) {
+                    self.postMessage({ id, color: null });
+                }
+            };`;
+        const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+        w.onmessage = (e) => {
+            const done = waiting.get(e.data.id);
+            waiting.delete(e.data.id);
+            if (done) done(e.data.color);
+        };
+        w.onerror = () => { for (const done of waiting.values()) done(null); waiting.clear(); worker = false; };
+        worker = w;
+    } catch (e) { worker = false; }
+    return worker;
+}
+
+function extractOnMainThread(src) {
     return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -96,6 +141,21 @@ function extract(src) {
     });
 }
 
+function extract(src) {
+    const w = startWorker();
+    if (!w) {
+        // No worker support: wait for an idle moment so it doesn't land mid-scroll.
+        const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 200));
+        return new Promise((resolve) => idle(() => extractOnMainThread(src).then(resolve), { timeout: 3000 }));
+    }
+    return new Promise((resolve) => {
+        const id = ++nextId;
+        const timer = setTimeout(() => { waiting.delete(id); resolve(null); }, 15000);
+        waiting.set(id, (color) => { clearTimeout(timer); resolve(color); });
+        w.postMessage({ id, url: new URL(src, location.href).href });
+    });
+}
+
 // "r g b", "" for artwork without a usable colour, or undefined when not analysed yet.
 export function artColorCached(url) {
     const v = store()[url];
@@ -106,13 +166,12 @@ export function artColorResolve(url, proxied) {
     const known = artColorCached(url);
     if (known !== undefined) return Promise.resolve(known);
     if (pending.has(url)) return pending.get(url);
-    const job = tail.then(() => extract(proxied)).then((color) => {
+    const job = slot().then((release) => extract(proxied).finally(release)).then((color) => {
         pending.delete(url);
         // A failed load isn't remembered, so it's retried on a later visit.
         if (color !== null) remember(url, color);
         return color || '';
     });
-    tail = job.catch(() => {});
     pending.set(url, job);
     return job;
 }

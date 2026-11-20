@@ -1,7 +1,7 @@
 use crate::components::audio::AudioPlayerProps;
 use crate::components::context::{AppState, NotificationState, UIState};
 use crate::requests::episode::Episode;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use regex::Regex;
 use std::sync::OnceLock;
 use wasm_bindgen::prelude::*;

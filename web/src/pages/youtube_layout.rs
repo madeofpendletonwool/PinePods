@@ -9,7 +9,7 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::YouTubeChannel;
 use gloo::events::EventListener;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::HashMap;
 use web_sys::MouseEvent;
 use yew::prelude::*;

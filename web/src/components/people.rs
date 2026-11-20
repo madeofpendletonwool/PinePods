@@ -6,7 +6,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use gloo_timers::future::TimeoutFuture;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{HtmlInputElement, KeyboardEvent};
 use yew::prelude::*;

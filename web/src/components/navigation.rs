@@ -6,7 +6,7 @@ use crate::requests::login_requests::{
     call_get_time_info, call_verify_key, use_check_authentication,
 };
 use crate::requests::setting_reqs::{call_get_theme, call_get_unmatched_podcasts};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;

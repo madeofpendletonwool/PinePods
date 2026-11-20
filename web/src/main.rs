@@ -45,8 +45,8 @@ use {
 
 // Yew Imports
 use crate::components::context::AppState;
-use i18nrs::yew::use_translation;
-use i18nrs::yew::{I18nProvider, I18nProviderConfig};
+use crate::components::i18n::use_translation;
+use crate::components::i18n::TranslationProvider;
 use requests::setting_reqs::call_get_server_default_language;
 use std::collections::HashMap;
 use wasm_bindgen_futures::spawn_local;
@@ -97,7 +97,6 @@ fn switch(route: Route) -> Html {
 #[function_component(LanguageHandler)]
 fn language_handler() -> Html {
     // Set up translations with all available language files
-    // IMPORTANT: English must be first for i18nrs fallback to work correctly
     let translations = HashMap::from([
         ("en", include_str!("translations/en.json")), // Keep English first for fallback
         ("ar", include_str!("translations/ar.json")),
@@ -141,19 +140,10 @@ fn language_handler() -> Html {
         ("test", include_str!("translations/test.json")),
     ]);
 
-    let config = I18nProviderConfig {
-        translations: translations,
-        default_language: "en".to_string(), // Always default to English
-        onerror: Callback::from(|error: String| {
-            web_sys::console::log_1(&format!("i18nrs error: {}", error).into());
-        }),
-        ..Default::default()
-    };
-
     html! {
-        <I18nProvider ..config>
+        <TranslationProvider translations={translations} default_language="en">
             <LanguageManager />
-        </I18nProvider>
+        </TranslationProvider>
     }
 }
 

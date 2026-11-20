@@ -4,7 +4,7 @@ use crate::requests::setting_reqs::{
     call_get_theme, call_set_theme, call_get_custom_themes, call_delete_custom_theme,
     CustomTheme, DeleteCustomThemeRequest, SetThemeRequest,
 };
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;

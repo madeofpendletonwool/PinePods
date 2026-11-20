@@ -8,7 +8,7 @@ use crate::requests::login_requests::{
 };
 use crate::requests::setting_reqs::call_get_theme;
 use chrono_tz::{Tz, TZ_VARIANTS};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use md5;
 use rand::RngExt;
 use wasm_bindgen::prelude::*;

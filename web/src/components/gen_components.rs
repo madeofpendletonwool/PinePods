@@ -1,5 +1,5 @@
 use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigationState, EpisodeStatusState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::format_time;

@@ -10,7 +10,7 @@ use crate::requests::pod_req::{
     call_ai_pull_model, call_get_ai_models, call_get_ai_settings, call_get_ai_status_full,
     call_update_ai_settings, AiModels, AiPullModelRequest, AiSettingsUpdate, AiStatus,
 };
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use web_sys::{HtmlInputElement, HtmlSelectElement};
 use yew::prelude::*;
 use yewdux::prelude::*;

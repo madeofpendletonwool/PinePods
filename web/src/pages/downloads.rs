@@ -13,7 +13,7 @@ use crate::requests::pod_req::{
     call_get_podcast_downloads_paged, BulkEpisodeActionRequest, PodcastDownloadSummary,
 };
 
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
