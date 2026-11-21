@@ -29,6 +29,9 @@ class ProgressUpdate {
   final double silenceSkipped;
   final double adsSkipped;
 
+  /// Played from a file on the device.
+  final bool downloaded;
+
   const ProgressUpdate({
     required this.episodeId,
     required this.userId,
@@ -41,6 +44,7 @@ class ProgressUpdate {
     this.speedSaved = 0,
     this.silenceSkipped = 0,
     this.adsSkipped = 0,
+    this.downloaded = false,
   });
 }
 
@@ -59,6 +63,9 @@ class PlaybackSample {
   final bool playing;
   final double rate;
 
+  /// Playing a file on the device.
+  final bool downloaded;
+
   const PlaybackSample({
     required this.episodeId,
     required this.userId,
@@ -67,6 +74,7 @@ class PlaybackSample {
     required this.duration,
     required this.playing,
     this.rate = 1.0,
+    this.downloaded = false,
   });
 
   PlaybackSample _with({double? position, bool? playing}) => PlaybackSample(
@@ -77,6 +85,7 @@ class PlaybackSample {
         duration: duration,
         playing: playing ?? this.playing,
         rate: rate,
+        downloaded: downloaded,
       );
 }
 
@@ -131,6 +140,7 @@ class ProgressTracker {
       speedSaved: speedSaved,
       silenceSkipped: silenceSkipped,
       adsSkipped: adsSkipped,
+      downloaded: sample.downloaded,
     );
   }
 

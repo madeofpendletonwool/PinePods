@@ -31,6 +31,8 @@ mod history;
 mod progress;
 pub use progress::{ListenClient, Observed, ProgressOutcome, ProgressWrite, TimeSaved, WriteRule};
 mod stats;
+mod listening_report;
+pub use listening_report::ListeningReport;
 mod home;
 mod playlists;
 mod collections;

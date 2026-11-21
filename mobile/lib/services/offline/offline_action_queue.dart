@@ -126,6 +126,7 @@ class OfflineActionQueue {
             'speed_saved': (existing?.speedSaved ?? 0) + update.speedSaved,
             'silence_skipped': (existing?.silenceSkipped ?? 0) + update.silenceSkipped,
             'ads_skipped': (existing?.adsSkipped ?? 0) + update.adsSkipped,
+            'downloaded': newer ? update.downloaded : existing.downloaded,
             'finished': newer ? update.finished : existing.finished,
             if (duration != null) 'duration': duration,
           },
@@ -224,6 +225,7 @@ class OfflineActionQueue {
                 if (a.speedSaved != 0) 'speed_saved': a.speedSaved,
                 if (a.silenceSkipped != 0) 'silence_skipped': a.silenceSkipped,
                 if (a.adsSkipped != 0) 'ads_skipped': a.adsSkipped,
+                if (a.downloaded) 'downloaded': true,
                 if (a.duration != null) 'duration': a.duration,
               },
           ]);

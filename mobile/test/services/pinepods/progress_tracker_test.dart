@@ -194,4 +194,13 @@ void main() {
     tracker.reset();
     expect(tracker.skipRanges, isEmpty);
   });
+
+  test('reports say whether a downloaded file was playing', () {
+    final local = PlaybackSample(episodeId: 7, userId: 42, isYoutube: false, position: 0, duration: 1800, playing: true, downloaded: true);
+    tracker.begin(local, t0);
+    final paused = tracker.observe(
+        PlaybackSample(episodeId: 7, userId: 42, isYoutube: false, position: 5, duration: 1800, playing: false, downloaded: true),
+        t0.add(const Duration(seconds: 5)));
+    expect(paused.single.downloaded, isTrue);
+  });
 }

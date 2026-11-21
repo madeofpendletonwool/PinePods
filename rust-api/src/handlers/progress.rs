@@ -61,7 +61,9 @@ pub struct ProgressUpdate {
     pub silence_skipped: f64,
     /// Seconds of ads skipped since the previous report.
     #[serde(default)]
-    pub ads_skipped: f64,
+    pub ads_skipped: f64,    /// Played from a file on the device rather than streamed.
+    #[serde(default)]
+    pub downloaded: bool,
 }
 
 /// The stored state of the episode after the update.
@@ -161,6 +163,7 @@ pub async fn record_progress(
                 silence: whole_seconds(update.silence_skipped.round()),
                 ads: whole_seconds(update.ads_skipped.round()),
             },
+            downloaded: update.downloaded,
         };
         let outcome = if update.episode_id > 0 { state.db_pool.write_progress(user_id, write, SyncOrigin::Pinepods).await? } else { None };
         if outcome.is_some() {

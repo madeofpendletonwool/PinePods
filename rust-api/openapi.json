@@ -6146,6 +6146,76 @@
         ]
       }
     },
+    "/api/data/listening_report": {
+      "get": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Get a listening report",
+        "operationId": "get_listening_report",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "description": "First day of the period (`YYYY-MM-DD`, the user's timezone). With `end`; both omitted\nfor all time.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "Last day of the period, inclusive.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListeningReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed or one-sided period"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Another user's report"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/manual_backup_to_directory": {
       "post": {
         "tags": [
@@ -15138,6 +15208,23 @@
           }
         }
       },
+      "DaySeconds": {
+        "type": "object",
+        "required": [
+          "date",
+          "seconds"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`, local."
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "DeleteApiKeyRequest": {
         "type": "object",
         "required": [
@@ -16462,6 +16549,204 @@
       "ListBackupFilesRequest": {
         "type": "object"
       },
+      "ListeningReport": {
+        "type": "object",
+        "required": [
+          "timezone",
+          "months",
+          "seconds",
+          "active_days",
+          "episodes",
+          "podcasts",
+          "finished",
+          "top_podcasts",
+          "top_episodes",
+          "top_categories",
+          "top_people",
+          "by_hour",
+          "by_dow",
+          "daily",
+          "by_month",
+          "longest_streak",
+          "sessions",
+          "time_saved",
+          "ad_heavy",
+          "by_client",
+          "downloaded_seconds"
+        ],
+        "properties": {
+          "start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The period, inclusive (`YYYY-MM-DD`); null for all time."
+          },
+          "end": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "recorded_since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The first day in the listening record. Days and hours before it aren't known."
+          },
+          "months": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Months with listening in the record, newest first (`YYYY-MM`)."
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "active_days": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "episodes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "podcasts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "finished": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "top_podcasts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportPodcast"
+            }
+          },
+          "top_episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportEpisode"
+            }
+          },
+          "top_categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NamedSeconds"
+            }
+          },
+          "top_people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportPerson"
+            }
+          },
+          "by_hour": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "by_dow": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Sunday first."
+          },
+          "daily": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DaySeconds"
+            }
+          },
+          "by_month": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonthSeconds"
+            },
+            "description": "Each month of the period, when it spans more than one."
+          },
+          "biggest_day": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DaySeconds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "busiest_week": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DaySeconds",
+                "description": "The Monday-to-Sunday week with the most listening; `date` is its Monday."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "longest_streak": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sessions": {
+            "$ref": "#/components/schemas/SessionStats"
+          },
+          "average_speed": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Across the apps that report speed; null without any."
+          },
+          "time_saved": {
+            "$ref": "#/components/schemas/SavedStats"
+          },
+          "ad_heavy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportPodcast"
+            },
+            "description": "Podcasts by ads skipped."
+          },
+          "by_client": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NamedSeconds"
+            },
+            "description": "`web`, `desktop`, `android`, `ios`, `sync` or `unknown`."
+          },
+          "downloaded_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Played from a file on the device."
+          },
+          "release_lag": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ReleaseLag"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "LoginResponse": {
         "type": "object",
         "required": [
@@ -16610,6 +16895,23 @@
           }
         }
       },
+      "MonthSeconds": {
+        "type": "object",
+        "required": [
+          "month",
+          "seconds"
+        ],
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "`YYYY-MM`."
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "MsgSeverity": {
         "type": "string",
         "description": "Durable in-app notification severity. Mirrored on the frontend\n(`web/src/components/context.rs`). `warning`/`error` count toward the bell\nbadge; `info`/`success` do not.",
@@ -16619,6 +16921,22 @@
           "warning",
           "error"
         ]
+      },
+      "NamedSeconds": {
+        "type": "object",
+        "required": [
+          "name",
+          "seconds"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
       },
       "NextPlaylistEpisodeRequest": {
         "type": "object",
@@ -17980,6 +18298,10 @@
             "type": "number",
             "format": "double",
             "description": "Seconds of ads skipped since the previous report."
+          },
+          "downloaded": {
+            "type": "boolean",
+            "description": "Played from a file on the device rather than streamed."
           }
         }
       },
@@ -18357,6 +18679,35 @@
           }
         }
       },
+      "ReleaseLag": {
+        "type": "object",
+        "description": "How soon after release episodes were first played.",
+        "required": [
+          "median_days",
+          "within_day",
+          "within_week",
+          "episodes"
+        ],
+        "properties": {
+          "median_days": {
+            "type": "number",
+            "format": "double"
+          },
+          "within_day": {
+            "type": "number",
+            "format": "double",
+            "description": "Share (0–1) first played within a day of release, and within a week."
+          },
+          "within_week": {
+            "type": "number",
+            "format": "double"
+          },
+          "episodes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "RemoteDeviceEntry": {
         "type": "object",
         "required": [
@@ -18543,6 +18894,107 @@
         "properties": {
           "message": {
             "type": "string"
+          }
+        }
+      },
+      "ReportEpisode": {
+        "type": "object",
+        "required": [
+          "is_youtube",
+          "title",
+          "podcast",
+          "artwork",
+          "seconds"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Null when its podcast is no longer in the library."
+          },
+          "is_youtube": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          },
+          "podcast": {
+            "type": "string"
+          },
+          "artwork": {
+            "type": "string"
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ReportPerson": {
+        "type": "object",
+        "required": [
+          "person_id",
+          "name",
+          "seconds",
+          "episodes"
+        ],
+        "properties": {
+          "person_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "episodes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ReportPodcast": {
+        "type": "object",
+        "required": [
+          "name",
+          "artwork",
+          "seconds",
+          "episodes"
+        ],
+        "properties": {
+          "podcast_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Null when it is no longer in the library."
+          },
+          "name": {
+            "type": "string"
+          },
+          "artwork": {
+            "type": "string"
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "episodes": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -18843,6 +19295,28 @@
           }
         }
       },
+      "SavedStats": {
+        "type": "object",
+        "required": [
+          "speed",
+          "silence",
+          "ads"
+        ],
+        "properties": {
+          "speed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "silence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ads": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ScheduleBackupRequest": {
         "type": "object",
         "required": [
@@ -19099,6 +19573,36 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "SessionStats": {
+        "type": "object",
+        "required": [
+          "count",
+          "average_seconds",
+          "longest_seconds"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "average_seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "longest_seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "longest_started_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the longest began, unix seconds."
           }
         }
       },

@@ -64,6 +64,9 @@ pub struct Update {
     /// Seconds of ads skipped.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub ads_skipped: f64,
+    /// Played from a file on this device.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub downloaded: bool,
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -109,6 +112,7 @@ impl Pending {
                     entry.at = update.at;
                     entry.finished = update.finished;
                     entry.duration = update.duration.or(entry.duration);
+                    entry.downloaded = update.downloaded;
                 }
             }
             None => self.0.push(update),
@@ -139,6 +143,8 @@ pub struct Sample {
     pub duration: f64,
     pub playing: bool,
     pub rate: f64,
+    /// Playing a file on this device.
+    pub downloaded: bool,
 }
 
 /// Turns looks at the player into reports.
@@ -176,6 +182,7 @@ impl Tracker {
             speed_saved: std::mem::take(&mut self.speed_saved),
             silence_skipped: std::mem::take(&mut self.silence_skipped),
             ads_skipped: std::mem::take(&mut self.ads_skipped),
+            downloaded: sample.downloaded,
         }
     }
 
@@ -271,6 +278,11 @@ pub fn resume_from(position: f64, duration: f64) -> f64 {
     position
 }
 
+/// The desktop app plays its downloads through a file server on this port.
+pub fn is_local_file(src: &str) -> bool {
+    !cfg!(feature = "server_build") && src.starts_with("http://127.0.0.1:3030")
+}
+
 /// Which app this is, recorded with the listening time for stats.
 #[cfg(feature = "server_build")]
 pub const CLIENT: &str = "web";
@@ -341,11 +353,11 @@ fn record(updates: Vec<Update>) {
 fn sample() -> Option<Sample> {
     let state = Dispatch::<UIState>::global().get();
     let playing = state.currently_playing.as_ref().filter(|p| p.episode_id != 0)?;
-    let (position, playing_now, rate) = if let Some(m) = state.media_element.as_ref() {
+    let (position, playing_now, rate, src) = if let Some(m) = state.media_element.as_ref() {
         let e = m.as_media_element();
-        (e.current_time(), !e.paused() && !e.ended(), e.playback_rate())
+        (e.current_time(), !e.paused() && !e.ended(), e.playback_rate(), e.current_src())
     } else if let Some(a) = state.audio_element.as_ref() {
-        (a.current_time(), !a.paused() && !a.ended(), a.playback_rate())
+        (a.current_time(), !a.paused() && !a.ended(), a.playback_rate(), a.current_src())
     } else {
         return None;
     };
@@ -356,6 +368,7 @@ fn sample() -> Option<Sample> {
         duration: playing.duration_sec,
         playing: playing_now,
         rate,
+        downloaded: is_local_file(&src),
     })
 }
 

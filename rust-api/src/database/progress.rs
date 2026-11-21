@@ -111,11 +111,13 @@ pub struct ProgressWrite {
     pub client: ListenClient,
     /// Time saved during the `listened` seconds.
     pub saved: TimeSaved,
+    /// Played from a file on the device rather than streamed.
+    pub downloaded: bool,
 }
 
 impl ProgressWrite {
     pub fn now(episode_id: i32, is_youtube: bool, position: i32, rule: WriteRule) -> Self {
-        Self { episode_id, is_youtube, position, observed: Observed::Ago(0), rule, listened: 0, finished: false, duration: None, client: ListenClient::Unknown, saved: TimeSaved::default() }
+        Self { episode_id, is_youtube, position, observed: Observed::Ago(0), rule, listened: 0, finished: false, duration: None, client: ListenClient::Unknown, saved: TimeSaved::default(), downloaded: false }
     }
 }
 
@@ -174,6 +176,9 @@ fn local_day_hour(at: NaiveDateTime, timezone: Option<&str>) -> (chrono::NaiveDa
     let local = tz.from_utc_datetime(&at);
     (local.date_naive(), local.hour() as i16)
 }
+
+/// A gap in listening longer than this ends a session.
+const SESSION_GAP_SECS: i64 = 600;
 
 fn age(observed: Observed) -> i64 {
     match observed {
@@ -268,13 +273,14 @@ impl DatabasePool {
                 if logged {
                     let (day, hour) = local_day_hour(at, stored.timezone.as_deref());
                     q::query(
-                        r#"INSERT INTO "ListeningLog" (userid, listenday, listenhour, itemkind, itemid, client, seconds, speedsaved, silenceskipped, adsskipped)
-                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                        r#"INSERT INTO "ListeningLog" (userid, listenday, listenhour, itemkind, itemid, client, seconds, speedsaved, silenceskipped, adsskipped, downloadedseconds)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                            ON CONFLICT (userid, listenday, listenhour, itemkind, itemid, client)
                            DO UPDATE SET seconds = "ListeningLog".seconds + EXCLUDED.seconds,
                                speedsaved = "ListeningLog".speedsaved + EXCLUDED.speedsaved,
                                silenceskipped = "ListeningLog".silenceskipped + EXCLUDED.silenceskipped,
-                               adsskipped = "ListeningLog".adsskipped + EXCLUDED.adsskipped"#,
+                               adsskipped = "ListeningLog".adsskipped + EXCLUDED.adsskipped,
+                               downloadedseconds = "ListeningLog".downloadedseconds + EXCLUDED.downloadedseconds"#,
                     )
                     .bind(user_id)
                     .bind(day)
@@ -286,28 +292,67 @@ impl DatabasePool {
                     .bind(write.saved.speed)
                     .bind(write.saved.silence)
                     .bind(write.saved.ads)
+                    .bind(if write.downloaded { write.listened } else { 0 })
                     .execute(&mut *tx)
                     .await?;
                     // What was played, kept for when the podcast is gone.
                     let item = if yt {
-                        r#"INSERT INTO "ListeningLogItems" (userid, itemkind, itemid, podcastid, podcastname, feedurl, itemtitle, artwork)
-                           SELECT $1, 1, v.videoid, p.podcastid, p.podcastname, p.feedurl, v.videotitle, COALESCE(NULLIF(v.thumbnailurl, ''), p.artworkurl)
+                        r#"INSERT INTO "ListeningLogItems" (userid, itemkind, itemid, podcastid, podcastname, feedurl, itemtitle, artwork, categories, pubdate, firstlistened)
+                           SELECT $1, 1, v.videoid, p.podcastid, p.podcastname, p.feedurl, v.videotitle, COALESCE(NULLIF(v.thumbnailurl, ''), p.artworkurl),
+                                  p.categories, v.publishedat, $3
                            FROM "YouTubeVideos" v JOIN "Podcasts" p ON p.podcastid = v.podcastid AND p.userid = $1
                            WHERE v.videoid = $2
                            ON CONFLICT (userid, itemkind, itemid) DO UPDATE SET
                                podcastid = EXCLUDED.podcastid, podcastname = EXCLUDED.podcastname, feedurl = EXCLUDED.feedurl,
-                               itemtitle = EXCLUDED.itemtitle, artwork = EXCLUDED.artwork"#
+                               itemtitle = EXCLUDED.itemtitle, artwork = EXCLUDED.artwork, categories = EXCLUDED.categories,
+                               pubdate = EXCLUDED.pubdate,
+                               firstlistened = LEAST(COALESCE("ListeningLogItems".firstlistened, EXCLUDED.firstlistened), EXCLUDED.firstlistened)"#
                     } else {
-                        r#"INSERT INTO "ListeningLogItems" (userid, itemkind, itemid, podcastid, podcastname, feedurl, itemtitle, artwork)
-                           SELECT $1, 0, e.episodeid, p.podcastid, p.podcastname, p.feedurl, e.episodetitle, COALESCE(NULLIF(e.episodeartwork, ''), p.artworkurl)
+                        r#"INSERT INTO "ListeningLogItems" (userid, itemkind, itemid, podcastid, podcastname, feedurl, itemtitle, artwork, categories, pubdate, firstlistened)
+                           SELECT $1, 0, e.episodeid, p.podcastid, p.podcastname, p.feedurl, e.episodetitle, COALESCE(NULLIF(e.episodeartwork, ''), p.artworkurl),
+                                  p.categories, e.episodepubdate, $3
                            FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid AND p.userid = $1
                            WHERE e.episodeid = $2
                            ORDER BY p.podcastid LIMIT 1
                            ON CONFLICT (userid, itemkind, itemid) DO UPDATE SET
                                podcastid = EXCLUDED.podcastid, podcastname = EXCLUDED.podcastname, feedurl = EXCLUDED.feedurl,
-                               itemtitle = EXCLUDED.itemtitle, artwork = EXCLUDED.artwork"#
+                               itemtitle = EXCLUDED.itemtitle, artwork = EXCLUDED.artwork, categories = EXCLUDED.categories,
+                               pubdate = EXCLUDED.pubdate,
+                               firstlistened = LEAST(COALESCE("ListeningLogItems".firstlistened, EXCLUDED.firstlistened), EXCLUDED.firstlistened)"#
                     };
-                    q::query(item).bind(user_id).bind(write.episode_id).execute(&mut *tx).await?;
+                    q::query(item).bind(user_id).bind(write.episode_id).bind(at).execute(&mut *tx).await?;
+                }
+                if write.listened > 0 {
+                    // Extend the session this continues, or start one.
+                    let start = at - chrono::Duration::seconds(i64::from(write.listened));
+                    let open = q::query(
+                        r#"SELECT sessionid, startedat, endedat FROM "ListeningSessions"
+                           WHERE userid = $1 AND endedat >= $2 AND startedat <= $3
+                           ORDER BY endedat DESC LIMIT 1"#,
+                    )
+                    .bind(user_id)
+                    .bind(start - chrono::Duration::seconds(SESSION_GAP_SECS))
+                    .bind(at + chrono::Duration::seconds(SESSION_GAP_SECS))
+                    .fetch_optional(&mut *tx)
+                    .await?;
+                    if let Some(row) = open {
+                        let (id, started, ended): (i32, NaiveDateTime, NaiveDateTime) = (row.try_get("sessionid")?, row.try_get("startedat")?, row.try_get("endedat")?);
+                        q::query(r#"UPDATE "ListeningSessions" SET startedat = $1, endedat = $2, seconds = seconds + $3 WHERE sessionid = $4"#)
+                            .bind(started.min(start))
+                            .bind(ended.max(at))
+                            .bind(write.listened)
+                            .bind(id)
+                            .execute(&mut *tx)
+                            .await?;
+                    } else {
+                        q::query(r#"INSERT INTO "ListeningSessions" (userid, startedat, endedat, seconds) VALUES ($1, $2, $3, $4)"#)
+                            .bind(user_id)
+                            .bind(start)
+                            .bind(at)
+                            .bind(write.listened)
+                            .execute(&mut *tx)
+                            .await?;
+                    }
                 }
                 if log && applied && stored.position != Some(write.position) {
                     let event = EpisodeEvent::Progress { position: write.position, age: age(write.observed) };
@@ -392,10 +437,11 @@ impl DatabasePool {
                 if logged {
                     let (day, hour) = local_day_hour(at, stored.timezone.as_deref());
                     sqlx::query(
-                        "INSERT INTO ListeningLog (UserID, ListenDay, ListenHour, ItemKind, ItemID, Client, Seconds, SpeedSaved, SilenceSkipped, AdsSkipped)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        "INSERT INTO ListeningLog (UserID, ListenDay, ListenHour, ItemKind, ItemID, Client, Seconds, SpeedSaved, SilenceSkipped, AdsSkipped, DownloadedSeconds)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                          ON DUPLICATE KEY UPDATE Seconds = Seconds + VALUES(Seconds), SpeedSaved = SpeedSaved + VALUES(SpeedSaved),
-                             SilenceSkipped = SilenceSkipped + VALUES(SilenceSkipped), AdsSkipped = AdsSkipped + VALUES(AdsSkipped)",
+                             SilenceSkipped = SilenceSkipped + VALUES(SilenceSkipped), AdsSkipped = AdsSkipped + VALUES(AdsSkipped),
+                             DownloadedSeconds = DownloadedSeconds + VALUES(DownloadedSeconds)",
                     )
                     .bind(user_id)
                     .bind(day)
@@ -407,30 +453,66 @@ impl DatabasePool {
                     .bind(write.saved.speed)
                     .bind(write.saved.silence)
                     .bind(write.saved.ads)
+                    .bind(if write.downloaded { write.listened } else { 0 })
                     .execute(&mut *tx)
                     .await?;
                     // Renamed source columns: the join has columns named like the target's.
                     let item = if yt {
-                        "INSERT INTO ListeningLogItems (UserID, ItemKind, ItemID, PodcastID, PodcastName, FeedURL, ItemTitle, Artwork)
+                        "INSERT INTO ListeningLogItems (UserID, ItemKind, ItemID, PodcastID, PodcastName, FeedURL, ItemTitle, Artwork, Categories, PubDate, FirstListened)
                          SELECT * FROM (
                              SELECT ? AS u, 1 AS k, v.VideoID AS i, p.PodcastID AS pid, p.PodcastName AS pname, p.FeedURL AS furl,
-                                    v.VideoTitle AS title, COALESCE(NULLIF(v.ThumbnailURL, ''), p.ArtworkURL) AS art
+                                    v.VideoTitle AS title, COALESCE(NULLIF(v.ThumbnailURL, ''), p.ArtworkURL) AS art,
+                                    p.Categories AS cats, v.PublishedAt AS pub, CAST(? AS DATETIME) AS fl
                              FROM YouTubeVideos v JOIN Podcasts p ON p.PodcastID = v.PodcastID AND p.UserID = ?
                              WHERE v.VideoID = ?
                          ) src
-                         ON DUPLICATE KEY UPDATE PodcastID = src.pid, PodcastName = src.pname, FeedURL = src.furl, ItemTitle = src.title, Artwork = src.art"
+                         ON DUPLICATE KEY UPDATE PodcastID = src.pid, PodcastName = src.pname, FeedURL = src.furl, ItemTitle = src.title, Artwork = src.art,
+                             Categories = src.cats, PubDate = src.pub, FirstListened = LEAST(COALESCE(FirstListened, src.fl), src.fl)"
                     } else {
-                        "INSERT INTO ListeningLogItems (UserID, ItemKind, ItemID, PodcastID, PodcastName, FeedURL, ItemTitle, Artwork)
+                        "INSERT INTO ListeningLogItems (UserID, ItemKind, ItemID, PodcastID, PodcastName, FeedURL, ItemTitle, Artwork, Categories, PubDate, FirstListened)
                          SELECT * FROM (
                              SELECT ? AS u, 0 AS k, e.EpisodeID AS i, p.PodcastID AS pid, p.PodcastName AS pname, p.FeedURL AS furl,
-                                    e.EpisodeTitle AS title, COALESCE(NULLIF(e.EpisodeArtwork, ''), p.ArtworkURL) AS art
+                                    e.EpisodeTitle AS title, COALESCE(NULLIF(e.EpisodeArtwork, ''), p.ArtworkURL) AS art,
+                                    p.Categories AS cats, e.EpisodePubDate AS pub, CAST(? AS DATETIME) AS fl
                              FROM Episodes e JOIN Podcasts p ON p.FeedID = e.FeedID AND p.UserID = ?
                              WHERE e.EpisodeID = ?
                              ORDER BY p.PodcastID LIMIT 1
                          ) src
-                         ON DUPLICATE KEY UPDATE PodcastID = src.pid, PodcastName = src.pname, FeedURL = src.furl, ItemTitle = src.title, Artwork = src.art"
+                         ON DUPLICATE KEY UPDATE PodcastID = src.pid, PodcastName = src.pname, FeedURL = src.furl, ItemTitle = src.title, Artwork = src.art,
+                             Categories = src.cats, PubDate = src.pub, FirstListened = LEAST(COALESCE(FirstListened, src.fl), src.fl)"
                     };
-                    sqlx::query(item).bind(user_id).bind(user_id).bind(write.episode_id).execute(&mut *tx).await?;
+                    sqlx::query(item).bind(user_id).bind(at).bind(user_id).bind(write.episode_id).execute(&mut *tx).await?;
+                }
+                if write.listened > 0 {
+                    let start = at - chrono::Duration::seconds(i64::from(write.listened));
+                    let open = sqlx::query(
+                        "SELECT SessionID AS sessionid, StartedAt AS startedat, EndedAt AS endedat FROM ListeningSessions
+                         WHERE UserID = ? AND EndedAt >= ? AND StartedAt <= ?
+                         ORDER BY EndedAt DESC LIMIT 1",
+                    )
+                    .bind(user_id)
+                    .bind(start - chrono::Duration::seconds(SESSION_GAP_SECS))
+                    .bind(at + chrono::Duration::seconds(SESSION_GAP_SECS))
+                    .fetch_optional(&mut *tx)
+                    .await?;
+                    if let Some(row) = open {
+                        let (id, started, ended): (i32, NaiveDateTime, NaiveDateTime) = (row.try_get("sessionid")?, row.try_get("startedat")?, row.try_get("endedat")?);
+                        sqlx::query("UPDATE ListeningSessions SET StartedAt = ?, EndedAt = ?, Seconds = Seconds + ? WHERE SessionID = ?")
+                            .bind(started.min(start))
+                            .bind(ended.max(at))
+                            .bind(write.listened)
+                            .bind(id)
+                            .execute(&mut *tx)
+                            .await?;
+                    } else {
+                        sqlx::query("INSERT INTO ListeningSessions (UserID, StartedAt, EndedAt, Seconds) VALUES (?, ?, ?, ?)")
+                            .bind(user_id)
+                            .bind(start)
+                            .bind(at)
+                            .bind(write.listened)
+                            .execute(&mut *tx)
+                            .await?;
+                    }
                 }
                 if log && applied && stored.position != Some(write.position) {
                     let event = EpisodeEvent::Progress { position: write.position, age: age(write.observed) };

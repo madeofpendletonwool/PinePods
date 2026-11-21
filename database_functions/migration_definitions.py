@@ -8139,7 +8139,9 @@ def migration_093_listening_log(conn, db_type: str) -> None:
         cursor.close()
 
 
-_LISTENING_LOG_SUMS = ("Seconds", "SpeedSaved", "SilenceSkipped", "AdsSkipped")
+_LISTENING_LOG_SUMS = ("Seconds", "SpeedSaved", "SilenceSkipped", "AdsSkipped", "DownloadedSeconds")
+# ListeningLogItems columns copied when an item follows a merged episode (those that exist).
+_LISTENING_ITEM_COLUMNS = ("PodcastID", "PodcastName", "FeedURL", "ItemTitle", "Artwork", "Categories", "FirstListened", "PubDate")
 
 
 def _repoint_listening_log(cursor, db_type: str) -> int:
@@ -8191,9 +8193,10 @@ def _repoint_listening_log(cursor, db_type: str) -> int:
         cursor.execute(f"DELETE FROM {log} WHERE ItemKind = 0 AND ItemID IN (SELECT OldEpisodeID FROM {aliases})")
     if exists("ListeningLogItems"):
         items = q("ListeningLogItems")
-        cols = "UserID, ItemKind, ItemID, PodcastID, PodcastName, FeedURL, ItemTitle, Artwork"
+        copied = [c for c in _LISTENING_ITEM_COLUMNS if has("ListeningLogItems", c)]
+        cols = "UserID, ItemKind, ItemID, " + ", ".join(copied)
         select = f"""
-            SELECT i.UserID, 0, a.EpisodeID, i.PodcastID, i.PodcastName, i.FeedURL, i.ItemTitle, i.Artwork
+            SELECT i.UserID, 0, a.EpisodeID, {", ".join("i." + c for c in copied)}
             FROM {items} i JOIN {aliases} a ON a.OldEpisodeID = i.ItemID WHERE i.ItemKind = 0
         """
         if pg or lite:
@@ -8300,6 +8303,96 @@ def migration_094_listening_log_items(conn, db_type: str) -> None:
             WHERE 1 = 1
             GROUP BY l.UserID, l.ItemID
             {conflict}
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("095", "listening_sessions", "Listening sessions, time played from downloads, and when each item was first played and released", requires=["094"], sqlite=True)
+def migration_095_listening_sessions(conn, db_type: str) -> None:
+    """- ListeningLog.DownloadedSeconds: of Seconds, the time played from a file on the device.
+    - ListeningLogItems.Categories / PubDate / FirstListened: the podcast's categories and the
+      item's release date when played, and when it was first played. Filled from the library
+      and the log for items logged so far.
+    - ListeningSessions: stretches of listening with no gap over 10 minutes, across items and
+      apps. Starts empty."""
+    cursor = conn.cursor()
+    pg, lite = db_type == "postgresql", db_type == "sqlite"
+
+    def has(table: str, column: str) -> bool:
+        if lite:
+            cursor.execute(f'PRAGMA table_info("{table}")')
+            return any(row[1].lower() == column.lower() for row in cursor.fetchall())
+        return _column_exists(cursor, db_type, table, column)
+
+    q = (lambda t: f'"{t}"') if pg or lite else (lambda t: t)
+    try:
+        log, items = q("ListeningLog"), q("ListeningLogItems")
+        if not has("ListeningLog", "DownloadedSeconds"):
+            cursor.execute(f"ALTER TABLE {log} ADD COLUMN {'downloadedseconds' if lite else 'DownloadedSeconds'} INT NOT NULL DEFAULT 0")
+        stamp = "TIMESTAMP" if pg or lite else "DATETIME"  # MySQL TIMESTAMP can't hold dates before 1970
+        for column, kind in (("Categories", "TEXT"), ("PubDate", stamp), ("FirstListened", stamp)):
+            if not has("ListeningLogItems", column):
+                cursor.execute(f"ALTER TABLE {items} ADD COLUMN {column.lower() if lite else column} {kind}")
+
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "ListeningSessions" (
+                    SessionID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    StartedAt TIMESTAMP NOT NULL,
+                    EndedAt TIMESTAMP NOT NULL,
+                    Seconds INT NOT NULL DEFAULT 0
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_listeningsessions_user_end ON "ListeningSessions"(UserID, EndedAt)')
+        elif lite:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "ListeningSessions" (
+                    sessionid INTEGER PRIMARY KEY AUTOINCREMENT,
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    startedat TIMESTAMP NOT NULL,
+                    endedat TIMESTAMP NOT NULL,
+                    seconds INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_listeningsessions_user_end ON "ListeningSessions"(userid, endedat)')
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ListeningSessions (
+                    SessionID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    StartedAt DATETIME NOT NULL,
+                    EndedAt DATETIME NOT NULL,
+                    Seconds INT NOT NULL DEFAULT 0,
+                    INDEX idx_listeningsessions_user_end (UserID, EndedAt),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+
+        episodes, podcasts, videos = q("Episodes"), q("Podcasts"), q("YouTubeVideos")
+        first = "CAST(MIN(l.ListenDay) AS TIMESTAMP)" if pg else ("MIN(l.ListenDay) || ' 00:00:00'" if lite else "CAST(MIN(l.ListenDay) AS DATETIME)")
+        cursor.execute(f"""
+            UPDATE {items} SET FirstListened = (
+                SELECT {first} FROM {log} l
+                WHERE l.UserID = {items}.UserID AND l.ItemKind = {items}.ItemKind AND l.ItemID = {items}.ItemID
+            ) WHERE FirstListened IS NULL
+        """)
+        cursor.execute(f"""
+            UPDATE {items} SET PubDate = (SELECT e.EpisodePubDate FROM {episodes} e WHERE e.EpisodeID = {items}.ItemID)
+            WHERE ItemKind = 0 AND PubDate IS NULL
+        """)
+        cursor.execute(f"""
+            UPDATE {items} SET PubDate = (SELECT v.PublishedAt FROM {videos} v WHERE v.VideoID = {items}.ItemID)
+            WHERE ItemKind = 1 AND PubDate IS NULL
+        """)
+        cursor.execute(f"""
+            UPDATE {items} SET Categories = (SELECT p.Categories FROM {podcasts} p WHERE p.PodcastID = {items}.PodcastID)
+            WHERE Categories IS NULL AND PodcastID IS NOT NULL
         """)
         conn.commit()
     except Exception:

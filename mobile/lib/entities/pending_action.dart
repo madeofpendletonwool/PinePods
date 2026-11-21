@@ -77,6 +77,9 @@ class PendingAction {
   /// Seconds of ads skipped, still to report.
   double get adsSkipped => _seconds('ads_skipped');
 
+  /// Whether a [recordPosition] action's time was played from a file on the device.
+  bool get downloaded => payload['downloaded'] == true;
+
   double _seconds(String key) {
     final v = payload[key];
     return v is num ? v.toDouble() : 0;

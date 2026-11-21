@@ -169,7 +169,7 @@ mod progress {
     const T0: f64 = 1_700_000_000_000.0;
 
     fn playing(position: f64) -> Sample {
-        Sample { episode_id: 7, is_youtube: false, position, duration: 1800.0, playing: true, rate: 1.0 }
+        Sample { episode_id: 7, is_youtube: false, position, duration: 1800.0, playing: true, rate: 1.0, downloaded: false }
     }
 
     fn paused(position: f64) -> Sample {
@@ -182,7 +182,7 @@ mod progress {
     }
 
     fn update(episode_id: i32, position: f64, at: f64, listened: f64) -> Update {
-        Update { episode_id, is_youtube: false, position, at, listened, duration: None, finished: false, speed_saved: 0.0, silence_skipped: 0.0, ads_skipped: 0.0 }
+        Update { episode_id, is_youtube: false, position, at, listened, duration: None, finished: false, speed_saved: 0.0, silence_skipped: 0.0, ads_skipped: 0.0, downloaded: false }
     }
 
     #[wasm_bindgen_test]
