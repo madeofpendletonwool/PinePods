@@ -33,6 +33,43 @@ pub enum WriteRule {
     ForwardOrOwn(i32),
 }
 
+/// The app that played the audio, as recorded in `ListeningLog`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ListenClient {
+    #[default]
+    Unknown,
+    Web,
+    Desktop,
+    Android,
+    Ios,
+    /// Reported through podcast sync (gpodder or Nextcloud).
+    Sync,
+}
+
+impl ListenClient {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "",
+            Self::Web => "web",
+            Self::Desktop => "desktop",
+            Self::Android => "android",
+            Self::Ios => "ios",
+            Self::Sync => "sync",
+        }
+    }
+
+    /// The `client` a request names; anything else is `Unknown`.
+    pub fn parse(name: &str) -> Self {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "web" => Self::Web,
+            "desktop" => Self::Desktop,
+            "android" => Self::Android,
+            "ios" => Self::Ios,
+            _ => Self::Unknown,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ProgressWrite {
     pub episode_id: i32,
@@ -47,11 +84,13 @@ pub struct ProgressWrite {
     pub finished: bool,
     /// The player's length for the episode, stored when the feed gave none.
     pub duration: Option<i32>,
+    /// Which app played it.
+    pub client: ListenClient,
 }
 
 impl ProgressWrite {
     pub fn now(episode_id: i32, is_youtube: bool, position: i32, rule: WriteRule) -> Self {
-        Self { episode_id, is_youtube, position, observed: Observed::Ago(0), rule, listened: 0, finished: false, duration: None }
+        Self { episode_id, is_youtube, position, observed: Observed::Ago(0), rule, listened: 0, finished: false, duration: None, client: ListenClient::Unknown }
     }
 }
 
@@ -74,6 +113,7 @@ struct Stored {
     completed: bool,
     auto_complete: i32,
     now: NaiveDateTime,
+    timezone: Option<String>,
 }
 
 impl Stored {
@@ -96,6 +136,14 @@ impl Stored {
             WriteRule::ForwardOrOwn(own) => write.position > stored || stored == own,
         }
     }
+}
+
+/// The calendar day and hour of `at` (UTC) in the user's timezone; UTC if it has none.
+fn local_day_hour(at: NaiveDateTime, timezone: Option<&str>) -> (chrono::NaiveDate, i16) {
+    use chrono::{TimeZone, Timelike};
+    let tz = timezone.and_then(|t| t.parse::<chrono_tz::Tz>().ok()).unwrap_or(chrono_tz::UTC);
+    let local = tz.from_utc_datetime(&at);
+    (local.date_naive(), local.hour() as i16)
 }
 
 fn age(observed: Observed) -> i64 {
@@ -123,6 +171,7 @@ impl DatabasePool {
                     r#"SELECT v.duration AS duration, h.uservideohistoryid AS hid, h.listenduration AS pos, h.listendate AS listendate,
                               COALESCE(v.completed, FALSE) AS completed,
                               COALESCE((SELECT us.autocompleteseconds FROM "UserSettings" us WHERE us.userid = $1), 0) AS auto,
+                              (SELECT u.timezone FROM "Users" u WHERE u.userid = $1) AS tz,
                               NOW()::timestamp AS now
                        FROM "YouTubeVideos" v
                        LEFT JOIN "UserVideoHistory" h ON h.videoid = v.videoid AND h.userid = $1
@@ -131,6 +180,7 @@ impl DatabasePool {
                     r#"SELECT e.episodeduration AS duration, h.userepisodehistoryid AS hid, h.listenduration AS pos, h.listendate AS listendate,
                               COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = $1), FALSE) AS completed,
                               COALESCE((SELECT us.autocompleteseconds FROM "UserSettings" us WHERE us.userid = $1), 0) AS auto,
+                              (SELECT u.timezone FROM "Users" u WHERE u.userid = $1) AS tz,
                               NOW()::timestamp AS now
                        FROM "Episodes" e
                        LEFT JOIN "UserEpisodeHistory" h ON h.episodeid = e.episodeid AND h.userid = $1
@@ -147,6 +197,7 @@ impl DatabasePool {
                     completed: row.try_get::<Option<bool>, _>("completed")?.unwrap_or(false),
                     auto_complete: row.try_get::<Option<i32>, _>("auto")?.unwrap_or(0),
                     now: row.try_get("now")?,
+                    timezone: row.try_get::<Option<String>, _>("tz").ok().flatten(),
                 };
                 at = stored.observed(write.observed);
                 applied = stored.accepts(&write, at);
@@ -184,6 +235,24 @@ impl DatabasePool {
                     .execute(&mut *tx)
                     .await?;
                 }
+                if write.listened > 0 {
+                    let (day, hour) = local_day_hour(at, stored.timezone.as_deref());
+                    q::query(
+                        r#"INSERT INTO "ListeningLog" (userid, listenday, listenhour, itemkind, itemid, client, seconds)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7)
+                           ON CONFLICT (userid, listenday, listenhour, itemkind, itemid, client)
+                           DO UPDATE SET seconds = "ListeningLog".seconds + EXCLUDED.seconds"#,
+                    )
+                    .bind(user_id)
+                    .bind(day)
+                    .bind(hour)
+                    .bind(i16::from(yt))
+                    .bind(write.episode_id)
+                    .bind(write.client.as_str())
+                    .bind(write.listened)
+                    .execute(&mut *tx)
+                    .await?;
+                }
                 if log && applied && stored.position != Some(write.position) {
                     let event = EpisodeEvent::Progress { position: write.position, age: age(write.observed) };
                     q::pick(events::episode_pg, events::episode_lite)(self, &mut tx, user_id, write.episode_id, event).await;
@@ -196,6 +265,7 @@ impl DatabasePool {
                     "SELECT v.Duration AS duration, h.UserVideoHistoryID AS hid, h.ListenDuration AS pos, CAST(h.ListenDate AS DATETIME) AS listendate,
                             COALESCE(v.Completed, 0) AS completed,
                             COALESCE((SELECT us.AutoCompleteSeconds FROM UserSettings us WHERE us.UserID = ?), 0) AS auto,
+                            (SELECT u.TimeZone FROM Users u WHERE u.UserID = ?) AS tz,
                             CAST(NOW() AS DATETIME) AS now
                      FROM YouTubeVideos v
                      LEFT JOIN UserVideoHistory h ON h.VideoID = v.VideoID AND h.UserID = ?
@@ -204,6 +274,7 @@ impl DatabasePool {
                     "SELECT e.EpisodeDuration AS duration, h.UserEpisodeHistoryID AS hid, h.ListenDuration AS pos, CAST(h.ListenDate AS DATETIME) AS listendate,
                             COALESCE((SELECT ues.Completed FROM UserEpisodeState ues WHERE ues.EpisodeID = e.EpisodeID AND ues.UserID = ?), 0) AS completed,
                             COALESCE((SELECT us.AutoCompleteSeconds FROM UserSettings us WHERE us.UserID = ?), 0) AS auto,
+                            (SELECT u.TimeZone FROM Users u WHERE u.UserID = ?) AS tz,
                             CAST(NOW() AS DATETIME) AS now
                      FROM Episodes e
                      LEFT JOIN UserEpisodeHistory h ON h.EpisodeID = e.EpisodeID AND h.UserID = ?
@@ -213,7 +284,7 @@ impl DatabasePool {
                 if !yt {
                     query = query.bind(user_id);
                 }
-                let Some(row) = query.bind(user_id).bind(user_id).bind(write.episode_id).bind(user_id).fetch_optional(&mut *tx).await? else {
+                let Some(row) = query.bind(user_id).bind(user_id).bind(user_id).bind(write.episode_id).bind(user_id).fetch_optional(&mut *tx).await? else {
                     return Ok(None);
                 };
                 stored = Stored {
@@ -224,6 +295,7 @@ impl DatabasePool {
                     completed: row.try_get::<Option<i64>, _>("completed")?.unwrap_or(0) != 0,
                     auto_complete: row.try_get::<Option<i64>, _>("auto")?.unwrap_or(0) as i32,
                     now: row.try_get("now")?,
+                    timezone: row.try_get::<Option<String>, _>("tz").ok().flatten(),
                 };
                 at = stored.observed(write.observed);
                 applied = stored.accepts(&write, at);
@@ -258,6 +330,23 @@ impl DatabasePool {
                     .bind(write.listened)
                     .bind(user_id)
                     .bind(write.episode_id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                if write.listened > 0 {
+                    let (day, hour) = local_day_hour(at, stored.timezone.as_deref());
+                    sqlx::query(
+                        "INSERT INTO ListeningLog (UserID, ListenDay, ListenHour, ItemKind, ItemID, Client, Seconds)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)
+                         ON DUPLICATE KEY UPDATE Seconds = Seconds + VALUES(Seconds)",
+                    )
+                    .bind(user_id)
+                    .bind(day)
+                    .bind(hour)
+                    .bind(i16::from(yt))
+                    .bind(write.episode_id)
+                    .bind(write.client.as_str())
+                    .bind(write.listened)
                     .execute(&mut *tx)
                     .await?;
                 }
@@ -444,5 +533,26 @@ impl DatabasePool {
             },
         });
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_day_and_hour_follow_the_users_timezone() {
+        let at = chrono::NaiveDate::from_ymd_opt(2026, 11, 21).unwrap().and_hms_opt(3, 30, 0).unwrap();
+        let day = |d| chrono::NaiveDate::from_ymd_opt(2026, 11, d).unwrap();
+        assert_eq!(local_day_hour(at, Some("America/New_York")), (day(20), 22));
+        assert_eq!(local_day_hour(at, None), (day(21), 3));
+        assert_eq!(local_day_hour(at, Some("not a zone")), (day(21), 3));
+    }
+
+    #[test]
+    fn client_names() {
+        assert_eq!(ListenClient::parse(" Android "), ListenClient::Android);
+        assert_eq!(ListenClient::parse("carplay"), ListenClient::Unknown);
+        assert_eq!(ListenClient::Ios.as_str(), "ios");
     }
 }

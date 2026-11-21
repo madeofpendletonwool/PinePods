@@ -539,7 +539,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     onclick={has_media.then(|| on_play_pause.clone())}
                     title={has_media.then(|| play_title.clone())}
                 >
-                    <FallbackImage
+                    <FallbackImage size={Some(192)}
                         src={art_src.clone()}
                         fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                         alt={format!("Cover for {}", props.episode.episodetitle)}

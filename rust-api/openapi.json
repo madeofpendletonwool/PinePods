@@ -12734,6 +12734,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "w",
+            "in": "query",
+            "description": "Return a thumbnail at most this many pixels wide (rounded up to one of a few fixed\nsizes, max 1024). Images already that small, or that can't be decoded, come back as-is.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -17834,6 +17848,13 @@
             ],
             "format": "int64",
             "description": "The client's clock when it sent this request, in unix milliseconds. Only its difference\nfrom each update's `at` is used, so the client's clock doesn't have to be right."
+          },
+          "client": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The app sending this: `web`, `desktop`, `android` or `ios`. Recorded with the listening\ntime for stats; anything else counts as unknown."
           },
           "updates": {
             "type": "array",

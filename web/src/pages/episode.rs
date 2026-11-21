@@ -2689,7 +2689,7 @@ pub fn epsiode() -> Html {
 
                                     // ── Compact header: artwork + meta ──
                                     <div class="ep-mobile-header">
-                                        <FallbackImage
+                                        <FallbackImage size={Some(256)}
                                             src={episode.episodeartwork.clone()}
                                             fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                                             alt={format!("{}{}", i18n_cover_alt_text, episode.episodeartwork.clone())}
@@ -2898,7 +2898,7 @@ pub fn epsiode() -> Html {
                                         ></div>
                                         <div class="ep-hero-scrim"></div>
                                         <div class="ep-hero-cover" onclick={on_title_click.clone()} title={episode.podcastname.clone()}>
-                                            <FallbackImage
+                                            <FallbackImage size={Some(512)}
                                                 src={episode.episodeartwork.clone()}
                                                 fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                                                 alt={format!("{}{}", i18n_cover_alt_text, episode.episodeartwork.clone())}

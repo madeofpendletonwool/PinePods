@@ -35,11 +35,36 @@ impl DatabasePool {
                     let saved_count: i64 = saved_count_row.try_get("saved_count")?;
                     let downloaded_count: i64 = downloaded_count_row.try_get("downloaded_count")?;
 
+                    // Counted from the library and history rather than the running tallies in
+                    // UserStats, which miss podcasts and plays that arrived through sync.
+                    let counted = q::query(r#"
+                        SELECT
+                            (SELECT COUNT(*) FROM "Podcasts" WHERE userid = $1)::bigint AS podcasts,
+                            (SELECT COUNT(DISTINCT pid) FROM (
+                                SELECT p.podcastid AS pid FROM "UserEpisodeHistory" h
+                                  JOIN "Episodes" e ON h.episodeid = e.episodeid
+                                  JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = h.userid
+                                 WHERE h.userid = $1
+                                UNION
+                                SELECT v.podcastid AS pid FROM "UserVideoHistory" h
+                                  JOIN "YouTubeVideos" v ON h.videoid = v.videoid
+                                 WHERE h.userid = $1
+                            ) played)::bigint AS played,
+                            ((SELECT COALESCE(SUM(listenedseconds), 0) FROM "UserEpisodeHistory" WHERE userid = $1)
+                             + (SELECT COALESCE(SUM(listenedseconds), 0) FROM "UserVideoHistory" WHERE userid = $1))::bigint AS seconds
+                    "#).bind(user_id).fetch_one(pool).await?;
+                    let (podcasts_added, podcasts_played, time_listened) = counted_stats(
+                        counted.try_get("podcasts")?,
+                        counted.try_get("played")?,
+                        counted.try_get("seconds")?,
+                        row.try_get::<i32, _>("timelistened")?,
+                    );
+
                     let stats = serde_json::json!({
                         "UserCreated": row.try_get::<chrono::NaiveDateTime, _>("usercreated")?.format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
-                        "PodcastsPlayed": row.try_get::<i32, _>("podcastsplayed")?,
-                        "TimeListened": row.try_get::<i32, _>("timelistened")?,
-                        "PodcastsAdded": row.try_get::<i32, _>("podcastsadded")?,
+                        "PodcastsPlayed": podcasts_played,
+                        "TimeListened": time_listened,
+                        "PodcastsAdded": podcasts_added,
                         "EpisodesSaved": saved_count as i32,
                         "EpisodesDownloaded": downloaded_count as i32
                     });
@@ -79,11 +104,37 @@ impl DatabasePool {
                     let saved_count: i64 = saved_count_row.try_get("saved_count")?;
                     let downloaded_count: i64 = downloaded_count_row.try_get("downloaded_count")?;
 
+                    // Counted from the library and history; see the PostgreSQL branch.
+                    let counted = sqlx::query(
+                        "SELECT
+                            CAST((SELECT COUNT(*) FROM Podcasts WHERE UserID = ?) AS SIGNED) AS podcasts,
+                            CAST((SELECT COUNT(DISTINCT pid) FROM (
+                                SELECT p.PodcastID AS pid FROM UserEpisodeHistory h
+                                  JOIN Episodes e ON h.EpisodeID = e.EpisodeID
+                                  JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = h.UserID
+                                 WHERE h.UserID = ?
+                                UNION
+                                SELECT v.PodcastID AS pid FROM UserVideoHistory h
+                                  JOIN YouTubeVideos v ON h.VideoID = v.VideoID
+                                 WHERE h.UserID = ?
+                            ) played) AS SIGNED) AS played,
+                            CAST((SELECT COALESCE(SUM(ListenedSeconds), 0) FROM UserEpisodeHistory WHERE UserID = ?)
+                                 + (SELECT COALESCE(SUM(ListenedSeconds), 0) FROM UserVideoHistory WHERE UserID = ?) AS SIGNED) AS seconds"
+                    )
+                    .bind(user_id).bind(user_id).bind(user_id).bind(user_id).bind(user_id)
+                    .fetch_one(pool).await?;
+                    let (podcasts_added, podcasts_played, time_listened) = counted_stats(
+                        counted.try_get("podcasts")?,
+                        counted.try_get("played")?,
+                        counted.try_get("seconds")?,
+                        row.try_get::<i32, _>("TimeListened")?,
+                    );
+
                     let stats = serde_json::json!({
                         "UserCreated": row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("UserCreated")?.format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
-                        "PodcastsPlayed": row.try_get::<i32, _>("PodcastsPlayed")?,
-                        "TimeListened": row.try_get::<i32, _>("TimeListened")?,
-                        "PodcastsAdded": row.try_get::<i32, _>("PodcastsAdded")?,
+                        "PodcastsPlayed": podcasts_played,
+                        "TimeListened": time_listened,
+                        "PodcastsAdded": podcasts_added,
                         "EpisodesSaved": saved_count as i32,
                         "EpisodesDownloaded": downloaded_count as i32
                     });
@@ -96,8 +147,112 @@ impl DatabasePool {
         })
     }
 
-    // Get extended user stats with rich listening insights
+    /// Extended stats: the base insights plus listening activity and library numbers.
     pub async fn get_extended_stats(&self, user_id: i32) -> AppResult<serde_json::Value> {
+        let mut stats = self.extended_stats_base(user_id).await?;
+        let extra = self.listening_activity(user_id).await?;
+        if let (Some(obj), serde_json::Value::Object(extra)) = (stats.as_object_mut(), extra) {
+            obj.extend(extra);
+        }
+        Ok(stats)
+    }
+
+    /// Per-episode listen rows (last listen time, seconds played) plus library counts,
+    /// summarised in the user's timezone by [`activity_summary`].
+    async fn listening_activity(&self, user_id: i32) -> AppResult<serde_json::Value> {
+        let (tz, rows, library) = dialect_match!(self, {
+            pg(pool) => {
+                let tz: Option<String> = q::query(r#"SELECT timezone FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id).fetch_optional(pool).await?
+                    .and_then(|r| r.try_get::<Option<String>, _>("timezone").ok().flatten());
+                let rows: Vec<(chrono::NaiveDateTime, i64)> = q::query(r#"
+                    SELECT listendate, COALESCE(listenedseconds, 0)::bigint AS secs
+                    FROM "UserEpisodeHistory"
+                    WHERE userid = $1 AND listendate IS NOT NULL
+                "#).bind(user_id).fetch_all(pool).await?
+                    .iter()
+                    .filter_map(|r| Some((r.try_get::<chrono::NaiveDateTime, _>("listendate").ok()?, r.try_get::<i64, _>("secs").unwrap_or(0))))
+                    .collect();
+                let lib = q::query(r#"
+                    SELECT
+                        (SELECT COUNT(DISTINCT p.podcastid)
+                           FROM "UserEpisodeHistory" h
+                           JOIN "Episodes" e ON h.episodeid = e.episodeid
+                           JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = h.userid
+                          WHERE h.userid = $1)::bigint AS podcasts_listened,
+                        (SELECT COUNT(*)
+                           FROM "Episodes" e
+                           JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = $1
+                           LEFT JOIN "UserEpisodeHistory" h ON h.episodeid = e.episodeid AND h.userid = $1
+                          WHERE h.episodeid IS NULL)::bigint AS backlog_episodes,
+                        (SELECT COALESCE(SUM(e.episodeduration), 0)
+                           FROM "Episodes" e
+                           JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = $1
+                           LEFT JOIN "UserEpisodeHistory" h ON h.episodeid = e.episodeid AND h.userid = $1
+                          WHERE h.episodeid IS NULL)::bigint AS backlog_seconds
+                "#).bind(user_id).fetch_one(pool).await?;
+                let library = (
+                    lib.try_get::<i64, _>("podcasts_listened").unwrap_or(0),
+                    lib.try_get::<i64, _>("backlog_episodes").unwrap_or(0),
+                    lib.try_get::<i64, _>("backlog_seconds").unwrap_or(0),
+                );
+                (tz, rows, library)
+            },
+            mysql(pool) => {
+                let tz: Option<String> = sqlx::query("SELECT TimeZone FROM Users WHERE UserID = ?")
+                    .bind(user_id).fetch_optional(pool).await?
+                    .and_then(|r| r.try_get::<Option<String>, _>("TimeZone").ok().flatten());
+                let rows: Vec<(chrono::NaiveDateTime, i64)> = sqlx::query(
+                    "SELECT ListenDate AS listendate, CAST(COALESCE(ListenedSeconds, 0) AS SIGNED) AS secs
+                     FROM UserEpisodeHistory
+                     WHERE UserID = ? AND ListenDate IS NOT NULL"
+                ).bind(user_id).fetch_all(pool).await?
+                    .iter()
+                    .filter_map(|r| {
+                        let when = r.try_get::<chrono::NaiveDateTime, _>("listendate").ok().or_else(|| {
+                            r.try_get::<chrono::DateTime<chrono::Utc>, _>("listendate").ok().map(|d| d.naive_utc())
+                        })?;
+                        Some((when, r.try_get::<i64, _>("secs").unwrap_or(0)))
+                    })
+                    .collect();
+                let lib = sqlx::query(
+                    "SELECT
+                        CAST((SELECT COUNT(DISTINCT p.PodcastID)
+                           FROM UserEpisodeHistory h
+                           JOIN Episodes e ON h.EpisodeID = e.EpisodeID
+                           JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = h.UserID
+                          WHERE h.UserID = ?) AS SIGNED) AS podcasts_listened,
+                        CAST((SELECT COUNT(*)
+                           FROM Episodes e
+                           JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ?
+                           LEFT JOIN UserEpisodeHistory h ON h.EpisodeID = e.EpisodeID AND h.UserID = ?
+                          WHERE h.EpisodeID IS NULL) AS SIGNED) AS backlog_episodes,
+                        CAST((SELECT COALESCE(SUM(e.EpisodeDuration), 0)
+                           FROM Episodes e
+                           JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ?
+                           LEFT JOIN UserEpisodeHistory h ON h.EpisodeID = e.EpisodeID AND h.UserID = ?
+                          WHERE h.EpisodeID IS NULL) AS SIGNED) AS backlog_seconds"
+                ).bind(user_id).bind(user_id).bind(user_id).bind(user_id).bind(user_id).fetch_one(pool).await?;
+                let library = (
+                    lib.try_get::<i64, _>("podcasts_listened").unwrap_or(0),
+                    lib.try_get::<i64, _>("backlog_episodes").unwrap_or(0),
+                    lib.try_get::<i64, _>("backlog_seconds").unwrap_or(0),
+                );
+                (tz, rows, library)
+            },
+        });
+        let tz = tz.and_then(|t| t.parse::<Tz>().ok()).unwrap_or(Tz::UTC);
+        let today = chrono::Utc::now().with_timezone(&tz).date_naive();
+        let mut summary = activity_summary(&rows, tz, today);
+        if let Some(obj) = summary.as_object_mut() {
+            obj.insert("podcasts_listened".into(), library.0.into());
+            obj.insert("backlog_episodes".into(), library.1.into());
+            obj.insert("backlog_seconds".into(), library.2.into());
+        }
+        Ok(summary)
+    }
+
+    async fn extended_stats_base(&self, user_id: i32) -> AppResult<serde_json::Value> {
         fn compute_streak(days: &[chrono::NaiveDate]) -> i32 {
             if days.is_empty() {
                 return 0;
@@ -133,16 +288,6 @@ impl DatabasePool {
                 format!("{} KB", bytes / 1024)
             } else {
                 format!("{} B", bytes)
-            }
-        }
-
-        fn badge_from_avg_hour(avg_hour: Option<f64>) -> &'static str {
-            match avg_hour {
-                None => "no_data",
-                Some(h) if h < 6.0 || h >= 22.0 => "night_owl",
-                Some(h) if h >= 18.0 => "evening_listener",
-                Some(h) if h >= 12.0 => "afternoon_listener",
-                _ => "morning_listener",
             }
         }
 
@@ -286,6 +431,8 @@ impl DatabasePool {
                     "top_podcasts": top_podcasts,
                     "favorite_categories": favorite_categories,
                     "completion_rate": completion_rate,
+                    "episodes_completed": completed,
+                    "episodes_listened": total,
                     "longest_episode": longest_episode,
                     "listening_badge": listening_badge,
                     "total_downloaded_bytes": total_bytes,
@@ -436,6 +583,8 @@ impl DatabasePool {
                     "top_podcasts": top_podcasts,
                     "favorite_categories": favorite_categories,
                     "completion_rate": completion_rate,
+                    "episodes_completed": completed,
+                    "episodes_listened": total,
                     "longest_episode": longest_episode,
                     "listening_badge": listening_badge,
                     "total_downloaded_bytes": total_bytes,
@@ -445,5 +594,151 @@ impl DatabasePool {
                 }))
             },
         })
+    }
+}
+
+/// (PodcastsAdded, PodcastsPlayed, TimeListened in minutes). Time listened keeps the stored
+/// total when it is larger: it also holds time from episodes that have since been removed.
+fn counted_stats(podcasts: i64, played: i64, history_seconds: i64, stored_minutes: i32) -> (i32, i32, i32) {
+    let from_history = (history_seconds.max(0) / 60).min(i64::from(i32::MAX)) as i32;
+    (podcasts.clamp(0, i64::from(i32::MAX)) as i32, played.clamp(0, i64::from(i32::MAX)) as i32, from_history.max(stored_minutes))
+}
+
+fn badge_from_avg_hour(avg_hour: Option<f64>) -> &'static str {
+    match avg_hour {
+        None => "no_data",
+        Some(h) if h < 6.0 || h >= 22.0 => "night_owl",
+        Some(h) if h >= 18.0 => "evening_listener",
+        Some(h) if h >= 12.0 => "afternoon_listener",
+        _ => "morning_listener",
+    }
+}
+
+/// Days of history the heatmap covers.
+const HEATMAP_DAYS: i64 = 182;
+
+/// Listening patterns from (last listen time in UTC, seconds played) per episode. Each
+/// episode counts once, on the day and hour it was last played, in `tz`.
+fn activity_summary(rows: &[(chrono::NaiveDateTime, i64)], tz: Tz, today: chrono::NaiveDate) -> serde_json::Value {
+    use chrono::{Datelike, Duration, TimeZone, Timelike};
+    let mut by_hour = [0i64; 24];
+    let mut by_day: std::collections::BTreeMap<chrono::NaiveDate, i64> = std::collections::BTreeMap::new();
+    let mut hour_sum = 0u64;
+    for (utc, secs) in rows {
+        let local = tz.from_utc_datetime(utc);
+        hour_sum += local.hour() as u64;
+        let secs = (*secs).max(0);
+        by_hour[local.hour() as usize] += secs;
+        *by_day.entry(local.date_naive()).or_insert(0) += secs;
+    }
+
+    // Longest run of consecutive days with any listening.
+    let (mut longest, mut run, mut prev) = (0i32, 0i32, None::<chrono::NaiveDate>);
+    for day in by_day.keys() {
+        run = if prev.and_then(|p| p.succ_opt()) == Some(*day) { run + 1 } else { 1 };
+        longest = longest.max(run);
+        prev = Some(*day);
+    }
+
+    let heat_start = today - Duration::days(HEATMAP_DAYS - 1);
+    let daily: Vec<serde_json::Value> = by_day
+        .range(heat_start..=today)
+        .filter(|(_, secs)| **secs > 0)
+        .map(|(d, secs)| serde_json::json!({ "date": d.format("%Y-%m-%d").to_string(), "seconds": secs }))
+        .collect();
+
+    // The last 12 calendar months, oldest first.
+    let month_index = |d: chrono::NaiveDate| d.year() * 12 + d.month0() as i32;
+    let this_month = month_index(today);
+    let mut months = [0i64; 12];
+    for (day, secs) in &by_day {
+        let back = this_month - month_index(*day);
+        if (0..12).contains(&back) {
+            months[11 - back as usize] += secs;
+        }
+    }
+    let by_month: Vec<serde_json::Value> = (0..12)
+        .map(|i| {
+            let idx = this_month - 11 + i as i32;
+            serde_json::json!({
+                "month": format!("{:04}-{:02}", idx.div_euclid(12), idx.rem_euclid(12) + 1),
+                "seconds": months[i],
+            })
+        })
+        .collect();
+
+    let year_seconds: i64 = by_day.iter().filter(|(d, _)| d.year() == today.year()).map(|(_, s)| s).sum();
+    let peak_hour = by_hour.iter().enumerate().filter(|(_, s)| **s > 0).max_by_key(|(_, s)| **s).map(|(h, _)| h as i32);
+
+    serde_json::json!({
+        "listening_by_hour": by_hour,
+        "listening_by_month": by_month,
+        "daily_listening": daily,
+        "active_days": by_day.values().filter(|s| **s > 0).count(),
+        "longest_streak": longest,
+        "year_seconds": year_seconds,
+        "peak_hour": peak_hour,
+        // Replaces the base value, which averaged UTC hours.
+        "listening_badge": badge_from_avg_hour((!rows.is_empty()).then(|| hour_sum as f64 / rows.len() as f64)),
+        "timezone": tz.name(),
+    })
+}
+
+#[cfg(test)]
+mod activity_tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    fn at(y: i32, m: u32, d: u32, h: u32) -> chrono::NaiveDateTime {
+        NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, 0, 0).unwrap()
+    }
+
+    #[test]
+    fn buckets_in_local_time() {
+        // 02:00 UTC on the 2nd is 21:00 on the 1st in New York.
+        let rows = vec![(at(2026, 11, 2, 2), 600)];
+        let tz: Tz = "America/New_York".parse().unwrap();
+        let v = activity_summary(&rows, tz, NaiveDate::from_ymd_opt(2026, 11, 20).unwrap());
+        assert_eq!(v["listening_by_hour"][21], 600);
+        assert_eq!(v["daily_listening"][0]["date"], "2026-11-01");
+        assert_eq!(v["peak_hour"], 21);
+        assert_eq!(v["listening_badge"], "evening_listener");
+    }
+
+    #[test]
+    fn streaks_months_and_window() {
+        let rows = vec![
+            (at(2026, 11, 1, 12), 60),
+            (at(2026, 11, 2, 12), 60),
+            (at(2026, 11, 3, 12), 60),
+            (at(2026, 11, 10, 12), 60),
+            (at(2025, 12, 5, 12), 120),
+            (at(2024, 1, 1, 12), 999),
+        ];
+        let v = activity_summary(&rows, Tz::UTC, NaiveDate::from_ymd_opt(2026, 11, 20).unwrap());
+        assert_eq!(v["longest_streak"], 3);
+        assert_eq!(v["active_days"], 6);
+        assert_eq!(v["year_seconds"], 240);
+        let months = v["listening_by_month"].as_array().unwrap();
+        assert_eq!(months.len(), 12);
+        assert_eq!(months[0]["month"], "2025-12");
+        assert_eq!(months[0]["seconds"], 120);
+        assert_eq!(months[11]["month"], "2026-11");
+        assert_eq!(months[11]["seconds"], 240);
+        // Only the last 182 days make the heatmap.
+        assert_eq!(v["daily_listening"].as_array().unwrap().len(), 4);
+    }
+
+    #[test]
+    fn counted_stats_prefer_the_larger_time() {
+        assert_eq!(counted_stats(6, 3, 600, 4), (6, 3, 10));
+        assert_eq!(counted_stats(6, 3, 60, 90), (6, 3, 90));
+    }
+
+    #[test]
+    fn empty_history() {
+        let v = activity_summary(&[], Tz::UTC, NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+        assert_eq!(v["longest_streak"], 0);
+        assert!(v["peak_hour"].is_null());
     }
 }

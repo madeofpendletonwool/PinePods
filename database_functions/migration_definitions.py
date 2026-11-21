@@ -8081,6 +8081,62 @@ def migration_092_listened_seconds(conn, db_type: str) -> None:
         cursor.close()
 
 
+@register_migration("093", "listening_log", "ListeningLog: seconds played per user, local day and hour, episode and client, for stats and the yearly recap", requires=["001"], sqlite=True)
+def migration_093_listening_log(conn, db_type: str) -> None:
+    """ListeningLog: time actually played, added up per user, day and hour (in the user's timezone
+    when it was played), item and client app. ItemKind 0 is an episode, 1 a YouTube video. The
+    history tables only keep one row per episode, the last time it was played; this keeps every
+    day. It starts empty: earlier listening is only in the history tables."""
+    cursor = conn.cursor()
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "ListeningLog" (
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    ListenDay DATE NOT NULL,
+                    ListenHour SMALLINT NOT NULL,
+                    ItemKind SMALLINT NOT NULL,
+                    ItemID INT NOT NULL,
+                    Client VARCHAR(16) NOT NULL DEFAULT '',
+                    Seconds INT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (UserID, ListenDay, ListenHour, ItemKind, ItemID, Client)
+                )
+            """)
+        elif db_type == "sqlite":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "ListeningLog" (
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    listenday DATE NOT NULL,
+                    listenhour INTEGER NOT NULL,
+                    itemkind INTEGER NOT NULL,
+                    itemid INTEGER NOT NULL,
+                    client TEXT NOT NULL DEFAULT '',
+                    seconds INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (userid, listenday, listenhour, itemkind, itemid, client)
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ListeningLog (
+                    UserID INT NOT NULL,
+                    ListenDay DATE NOT NULL,
+                    ListenHour SMALLINT NOT NULL,
+                    ItemKind SMALLINT NOT NULL,
+                    ItemID INT NOT NULL,
+                    Client VARCHAR(16) NOT NULL DEFAULT '',
+                    Seconds INT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (UserID, ListenDay, ListenHour, ItemKind, ItemID, Client),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("118", "gpodder_actions_follow_merged_episodes", "Episode actions point at the shared episode their merged copy became; the copies are deleted", requires=["082", "111"])
 def migration_118_gpodder_actions_follow_merged_episodes(conn, db_type: str) -> None:
     """GpodderSyncEpisodeActions.EpisodeID of actions on an episode copy merged by 082 now points

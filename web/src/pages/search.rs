@@ -967,7 +967,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                 html! {
                                     <div class="sp-tile" key={pod.podcastid} onclick={on_click}>
                                         <div class="sp-tile-cover">
-                                            <FallbackImage
+                                            <FallbackImage size={Some(384)}
                                                 src={pod.artworkurl.clone().unwrap_or_default()}
                                                 alt={format!("Cover for {}", pod.podcastname)}
                                                 class="sp-tile-cover-img"

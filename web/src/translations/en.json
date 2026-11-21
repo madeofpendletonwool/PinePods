@@ -51,7 +51,10 @@
     "server_downloads": "Server Downloads",
     "settings": "Settings",
     "sign_out": "Sign Out",
-    "subscribed_people": "People You Follow"
+    "subscribed_people": "People You Follow",
+    "section_listen": "Listen",
+    "section_library": "Library",
+    "section_explore": "Explore"
   },
   "discover": {
     "title": "Discover",
@@ -716,7 +719,9 @@
     "welcome_tip_feed_desc": "Head to the Podcasts page to add any show directly by its RSS feed URL.",
     "welcome_tip_docs_title": "Explore the docs",
     "welcome_tip_docs_desc": "New to Pinepods? The getting started guide walks you through everything the app can do.",
-    "welcome_open_podcasts": "Go to Podcasts"
+    "welcome_open_podcasts": "Go to Podcasts",
+    "see_all": "See all",
+    "episode_count": "{count} episodes"
   },
   "host_component": {
     "add_hosts_here": "Add hosts for this podcast here",
@@ -1742,7 +1747,31 @@
     "badge_evening_listener": "Evening Listener",
     "badge_afternoon_listener": "Afternoon Listener",
     "badge_morning_listener": "Morning Listener",
-    "no_listening_data": "No listening history yet"
+    "no_listening_data": "No listening history yet",
+    "listening_since": "Listening since {date}",
+    "episodes_finished": "Episodes Finished",
+    "completion_of": "{rate}% of started episodes",
+    "this_year": "Listened in {year}",
+    "longest_streak": "Best streak: {days}",
+    "active_days": "Days Listened",
+    "backlog": "Left to Hear",
+    "backlog_episodes": "{count} unplayed episodes",
+    "activity": "Activity",
+    "activity_note": "Last 6 months, by the day you last played each episode",
+    "by_hour": "Time of Day",
+    "peak_hour": "Most around {hour}",
+    "by_month": "Last 12 Months",
+    "dow_sun": "Sun",
+    "dow_mon": "Mon",
+    "dow_tue": "Tue",
+    "dow_wed": "Wed",
+    "dow_thu": "Thu",
+    "dow_fri": "Fri",
+    "dow_sat": "Sat",
+    "library": "Library",
+    "less": "Less",
+    "more": "More",
+    "episodes_played": "Episodes Played"
   },
   "validation": {
     "invalid_email": "Invalid email address",

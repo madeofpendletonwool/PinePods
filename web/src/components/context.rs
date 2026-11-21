@@ -204,7 +204,42 @@ pub struct NotificationState {
     pub error_message: Option<String>,
     pub active_tasks: Option<Vec<TaskProgress>>,
     pub messages: Vec<NotificationMessage>,
+    /// Notices this client raises itself (ids start with `local:`). Shown with `messages`, but
+    /// kept apart because server refreshes replace `messages` wholesale.
+    pub local_messages: Vec<NotificationMessage>,
     pub refresh_progress: Option<RefreshProgress>,
+}
+
+/// localStorage key remembering a dismissed local notice's title, so it stays hidden until
+/// its text changes (for example the count it reports).
+fn dismissed_notice_key(id: &str) -> String {
+    format!("pinepods_dismissed_{id}")
+}
+
+impl NotificationState {
+    /// Show a client-side notice in the Activity center unless this exact text was dismissed.
+    pub fn show_local_notice(&mut self, notice: NotificationMessage) {
+        let storage = window().and_then(|w| w.local_storage().ok().flatten());
+        let dismissed = storage
+            .and_then(|s| s.get_item(&dismissed_notice_key(&notice.id)).ok().flatten())
+            .map_or(false, |title| title == notice.title);
+        self.local_messages.retain(|m| m.id != notice.id);
+        if !dismissed {
+            self.local_messages.insert(0, notice);
+        }
+    }
+
+    /// Dismiss a client-side notice and remember it. Returns false for server messages.
+    pub fn dismiss_local_notice(&mut self, id: &str) -> bool {
+        let Some(pos) = self.local_messages.iter().position(|m| m.id == id) else {
+            return false;
+        };
+        let notice = self.local_messages.remove(pos);
+        if let Some(storage) = window().and_then(|w| w.local_storage().ok().flatten()) {
+            let _ = storage.set_item(&dismissed_notice_key(id), &notice.title);
+        }
+        true
+    }
 }
 
 /// Drives the global "Add to Collection" picker overlay. Kept as its own store so a

@@ -244,6 +244,45 @@ async fn listened_time_is_what_was_played_not_where_the_position_is() {
     assert_eq!(home["weekly_stats"]["seconds_listened"], 75, "{home}");
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn listening_is_logged_per_day_and_client() {
+    let app = TestApp::new().await;
+    let (user, _pod, ep) = setup(&app).await;
+    let logged = |client: &'static str| {
+        let (app, user) = (&app, &user);
+        async move {
+            int(app, &format!(
+                r#"SELECT CAST(COALESCE(SUM(Seconds), 0) AS INTEGER) FROM "ListeningLog" WHERE UserID = {} AND ItemKind = 0 AND ItemID = {ep} AND Client = '{client}'"#,
+                user.id
+            ))
+            .await
+            .unwrap_or(0)
+        }
+    };
+    let play = |client: Option<&str>, position: f64, listened: f64| {
+        let mut body = json!({ "updates": [{ "episode_id": ep, "position": position, "listened": listened }] });
+        if let Some(c) = client {
+            body["client"] = json!(c);
+        }
+        body
+    };
+    for body in [play(Some("android"), 100.0, 30.0), play(Some("ANDROID"), 150.0, 20.0), play(Some("web"), 200.0, 40.0), play(None, 250.0, 5.0), play(Some("toaster"), 300.0, 5.0)] {
+        app.post("/api/data/progress").key(&user).json(&body).send().await.assert_ok();
+    }
+    assert_eq!((logged("android").await, logged("web").await, logged("").await), (50, 40, 10));
+
+    // A position with no time played logs nothing.
+    app.post("/api/data/progress").key(&user).json(&play(Some("web"), 900.0, 0.0)).send().await.assert_ok();
+    assert_eq!(logged("web").await, 40);
+
+    // Old apps' forward movement counts, under no client.
+    old_report(&app, &user.api_key, &user, ep, 1000.0).await;
+    old_report(&app, &user.api_key, &user, ep, 1003.0).await;
+    assert_eq!(logged("").await, 13);
+    let rows = int(&app, &format!(r#"SELECT COUNT(*) FROM "ListeningLog" WHERE UserID = {} AND ListenHour BETWEEN 0 AND 23"#, user.id)).await;
+    assert!(rows.unwrap_or(0) >= 3);
+}
+
 // --- the request itself ----------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread")]

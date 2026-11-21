@@ -243,11 +243,9 @@ pub fn use_art_accent(art_url: &str) -> Option<String> {
                 color.set(known);
             } else {
                 let url = url.clone();
-                let proxied = format!(
-                    "{}/api/proxy/image?url={}",
-                    server,
-                    urlencoding::encode(&url)
-                );
+                // A small thumbnail is plenty for picking a colour (servers that predate
+                // thumbnails ignore `w` and send the full image).
+                let proxied = crate::components::gen_components::proxied_image_url(&server, &url, Some(64));
                 let alive = alive.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     let value = js_resolve(&url, &proxied).await.as_string().unwrap_or_default();

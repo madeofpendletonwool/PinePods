@@ -967,7 +967,7 @@ pub fn render_podcast_with_episodes(
                         html! {}
                     }}
 
-                    <FallbackImage
+                    <FallbackImage size={Some(192)}
                         src={summary.artworkurl.clone().unwrap_or_default()}
                         alt={format!("Cover for {}", summary.podcastname.clone())}
                         class="podcast-dropdown-image"

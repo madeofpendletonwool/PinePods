@@ -387,7 +387,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     html! {
         <div class="podcast-card">
             <div class="podcast-card__cover">
-                <FallbackImage
+                <FallbackImage size={Some(384)}
                     src={podcast.image.clone()}
                     alt={format!("Cover for {}", podcast.title)}
                     class="podcast-card__img"

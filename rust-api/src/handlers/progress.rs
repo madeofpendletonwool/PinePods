@@ -10,7 +10,7 @@ use axum::{extract::State, http::HeaderMap, Json};
 use serde::{Deserialize, Serialize};
 
 use super::extract_api_key;
-use crate::database::{Observed, ProgressWrite, WriteRule};
+use crate::database::{ListenClient, Observed, ProgressWrite, WriteRule};
 use crate::error::{AppError, AppResult};
 use crate::services::sync::SyncOrigin;
 use crate::AppState;
@@ -26,6 +26,10 @@ pub struct ProgressRequest {
     /// from each update's `at` is used, so the client's clock doesn't have to be right.
     #[serde(default)]
     pub sent_at: Option<i64>,
+    /// The app sending this: `web`, `desktop`, `android` or `ios`. Recorded with the listening
+    /// time for stats; anything else counts as unknown.
+    #[serde(default)]
+    pub client: Option<String>,
     pub updates: Vec<ProgressUpdate>,
 }
 
@@ -118,6 +122,7 @@ pub async fn record_progress(
     let mut updates: Vec<(i64, &ProgressUpdate)> = request.updates.iter().map(|u| (age_secs(request.sent_at, u.at), u)).collect();
     updates.sort_by_key(|(age, _)| std::cmp::Reverse(*age));
 
+    let client = request.client.as_deref().map_or(ListenClient::Unknown, ListenClient::parse);
     let mut results = Vec::with_capacity(updates.len());
     let mut listened_total = 0i64;
     for (age, update) in updates {
@@ -131,6 +136,7 @@ pub async fn record_progress(
             listened,
             finished: update.finished,
             duration: update.duration.filter(|d| d.is_finite() && *d >= 1.0).map(|d| d.round() as i32),
+            client,
         };
         let outcome = if update.episode_id > 0 { state.db_pool.write_progress(user_id, write, SyncOrigin::Pinepods).await? } else { None };
         if outcome.is_some() {

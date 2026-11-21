@@ -58,6 +58,47 @@ pub struct ExtendedUserStats {
     pub total_downloaded_formatted: String,
     pub current_streak: i32,
     pub listening_by_dow: Vec<i64>,
+    // Newer servers also send these; older ones leave them at their defaults.
+    #[serde(default)]
+    pub listening_by_hour: Vec<i64>,
+    #[serde(default)]
+    pub listening_by_month: Vec<MonthStat>,
+    #[serde(default)]
+    pub daily_listening: Vec<DayStat>,
+    #[serde(default)]
+    pub active_days: i64,
+    #[serde(default)]
+    pub longest_streak: i32,
+    #[serde(default)]
+    pub year_seconds: i64,
+    #[serde(default)]
+    pub peak_hour: Option<i32>,
+    #[serde(default)]
+    pub podcasts_listened: i64,
+    #[serde(default)]
+    pub backlog_episodes: i64,
+    #[serde(default)]
+    pub backlog_seconds: i64,
+    #[serde(default)]
+    pub episodes_completed: Option<i64>,
+    #[serde(default)]
+    pub episodes_listened: Option<i64>,
+    #[serde(default)]
+    pub timezone: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
+pub struct MonthStat {
+    /// `YYYY-MM`
+    pub month: String,
+    pub seconds: i64,
+}
+
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
+pub struct DayStat {
+    /// `YYYY-MM-DD` in the user's timezone
+    pub date: String,
+    pub seconds: i64,
 }
 
 #[allow(dead_code)]

@@ -305,7 +305,7 @@ pub fn queue_panel() -> Html {
 
                 if let (Some(art), Some(title)) = (now_playing_art, now_playing_title) {
                     <div class="queue-nowplaying">
-                        <FallbackImage
+                        <FallbackImage size={Some(192)}
                             src={art}
                             fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                             alt="Now playing art"
@@ -467,7 +467,7 @@ pub fn queue_panel() -> Html {
 
                                     // Artwork with play/pause overlay
                                     <div class="queue-item-art-wrap" onclick={on_art_click}>
-                                        <FallbackImage
+                                        <FallbackImage size={Some(128)}
                                             src={ep_art}
                                             fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                                             alt="Episode art"

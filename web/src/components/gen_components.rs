@@ -35,88 +35,77 @@ pub struct FallbackImageProps {
     /// Shown when there's no artwork or it fails to load.
     #[prop_or(DEFAULT_PODCAST_ART.to_string())]
     pub fallback: String,
+    /// Width in pixels to request from the server's thumbnail proxy (about twice the displayed
+    /// size). None loads the original image.
+    #[prop_or_default]
+    pub size: Option<u32>,
 }
 
 pub const DEFAULT_PODCAST_ART: &str = "/static/assets/default-podcast.png";
 pub const DEFAULT_EPISODE_ART: &str = "/static/assets/default-episode.png";
 
+/// The image proxy URL for `url`, optionally as a thumbnail `width` pixels wide.
+pub fn proxied_image_url(server_name: &str, url: &str, width: Option<u32>) -> String {
+    let mut out = format!("{}/api/proxy/image?url={}", server_name, urlencoding::encode(url));
+    if let Some(w) = width {
+        out.push_str(&format!("&w={w}"));
+    }
+    out
+}
+
+/// The URLs to try in order: thumbnail (when asked for and the image is on the web),
+/// the original, the full-size proxy copy (for hosts that block hotlinking), then the
+/// fallback artwork.
+fn image_candidates(server_name: &str, src: &str, size: Option<u32>, fallback: &str) -> Vec<String> {
+    if src.is_empty() {
+        return vec![fallback.to_string()];
+    }
+    let is_web = src.starts_with("http://") || src.starts_with("https://");
+    let mut out = Vec::with_capacity(4);
+    if let (true, Some(w)) = (is_web, size) {
+        out.push(proxied_image_url(server_name, src, Some(w)));
+    }
+    out.push(src.to_string());
+    if is_web {
+        out.push(proxied_image_url(server_name, src, None));
+    }
+    out.push(fallback.to_string());
+    out
+}
+
 #[function_component(FallbackImage)]
 pub fn fallback_image(props: &FallbackImageProps) -> Html {
-    let image_ref = use_node_ref();
-    let has_error = use_state(|| false);
     let server_name_sel = use_selector(|state: &AppState| {
         state.auth_details.as_ref().map(|ud| ud.server_name.clone()).unwrap_or_default()
     });
-    let server_name = (*server_name_sel).clone();
+    let candidates = use_memo(
+        ((*server_name_sel).clone(), props.src.clone(), props.size, props.fallback.clone()),
+        |(server, src, size, fallback)| image_candidates(server, src, *size, fallback),
+    );
+    // Which candidate is showing, tied to the list it indexes so a new source starts over at
+    // the first candidate on its very first render.
+    let attempt = use_state(|| (candidates.clone(), 0usize));
+    let index = if std::rc::Rc::ptr_eq(&attempt.0, &candidates) { attempt.1 } else { 0 };
 
-    let fallback = props.fallback.clone();
-
-    // Just use the original src without timestamps; treat empty src as immediate fallback
-    let image_src = use_state(|| {
-        if props.src.is_empty() {
-            fallback.clone()
-        } else {
-            props.src.clone()
-        }
-    });
-
-    // Update src when props.src changes
-    {
-        let image_src = image_src.clone();
-        let props_src = props.src.clone();
-        let fallback = fallback.clone();
-        use_effect_with(props_src, move |src| {
-            if src.is_empty() {
-                image_src.set(fallback);
-            } else {
-                image_src.set(src.clone());
-            }
-            || ()
-        });
-    }
-
-    // Create a proxied URL from the original source; skip proxy for empty URLs
-    let proxied_url = {
-        let original_url = props.src.clone();
-        if original_url.is_empty() {
-            fallback.clone()
-        } else {
-            format!(
-                "{}/api/proxy/image?url={}",
-                server_name,
-                urlencoding::encode(&original_url)
-            )
-        }
-    };
-
-    // Handle image load error
     let on_error = {
-        let has_error = has_error.clone();
-        let image_src = image_src.clone();
-        let proxied_url = proxied_url.clone();
-        let fallback = fallback.clone();
+        let attempt = attempt.clone();
+        let candidates = candidates.clone();
         Callback::from(move |_: Event| {
-            if !*has_error {
-                // First error - switch to proxied URL
-                has_error.set(true);
-                image_src.set(proxied_url.clone());
-                web_sys::console::log_1(
-                    &format!("Image load failed, switching to proxy: {}", proxied_url).into(),
-                );
-            } else if *image_src != fallback {
-                // The proxy couldn't load it either
-                image_src.set(fallback.clone());
+            if index + 1 < candidates.len() {
+                attempt.set((candidates.clone(), index + 1));
             }
         })
     };
 
-    // If we have a click handler, pass it through
-    let onclick = props.onclick.clone();
+    let current = candidates
+        .get(index)
+        .or_else(|| candidates.last())
+        .cloned()
+        .unwrap_or_default();
 
     html! {
         <img
-            ref={image_ref}
-            src={(*image_src).clone()}
+            src={current}
             alt={props.alt.clone()}
             class={props.class.clone().unwrap_or_default()}
             style={props.style.clone().unwrap_or_default()}
@@ -124,7 +113,7 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
             decoding={props.decoding.clone()}
             // DON'T ADD CROSSORIGIN - it causes CORS issues with NPR's CDN
             onerror={on_error}
-            onclick={onclick}
+            onclick={props.onclick.clone()}
         />
     }
 }
@@ -1061,7 +1050,7 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                 aria-label={props.episode_title.clone()}
             >
                 <div class="ep-modal-hero">
-                    <FallbackImage
+                    <FallbackImage size={Some(256)}
                         src={props.episode_artwork.clone()}
                         fallback={DEFAULT_EPISODE_ART}
                         alt="Episode artwork"

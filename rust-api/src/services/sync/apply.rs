@@ -66,10 +66,15 @@ pub async fn apply_resolved(
     let mut summary = ApplySummary { received: actions.len(), matched: resolved.iter().flatten().count(), ..Default::default() };
 
     let mut newest: HashMap<i32, &EpisodeAction> = HashMap::new();
+    // Seconds played per episode across all its play actions (each covers `started` to `position`).
+    let mut played: HashMap<i32, i32> = HashMap::new();
     for (action, episode_id) in actions.iter().zip(resolved) {
         let Some(episode_id) = *episode_id else { continue };
         if !matches!(action.action, ActionKind::Play | ActionKind::New) {
             continue;
+        }
+        if action.action == ActionKind::Play {
+            *played.entry(episode_id).or_insert(0) += play_seconds(action);
         }
         let keep = newest.get(&episode_id).is_none_or(|current| action.timestamp >= current.timestamp);
         if keep {
@@ -107,15 +112,21 @@ pub async fn apply_resolved(
                     db.set_episode_duration_if_missing(episode_id, total).await?;
                 }
                 let total = action_total.or(local_duration);
-                if total.is_some_and(|t| position >= t - complete_within) {
-                    db.mark_episode_completed(episode_id, user_id, false, origin).await?;
-                } else {
-                    use crate::database::{Observed, ProgressWrite, WriteRule};
+                let finished = total.is_some_and(|t| position >= t - complete_within);
+                let listened = played.get(&episode_id).copied().unwrap_or(0).min(86_400);
+                if !finished || listened > 0 {
+                    use crate::database::{ListenClient, Observed, ProgressWrite, WriteRule};
                     let write = ProgressWrite {
                         observed: Observed::At(at.naive_utc()),
+                        client: ListenClient::Sync,
+                        listened,
                         ..ProgressWrite::now(episode_id, false, position, WriteRule::Newest)
                     };
                     db.write_progress(user_id, write, origin).await?;
+                    db.add_listen_seconds(user_id, listened).await?;
+                }
+                if finished {
+                    db.mark_episode_completed(episode_id, user_id, false, origin).await?;
                 }
             }
             ActionKind::New => db.mark_episode_uncompleted(episode_id, user_id, false, origin).await?,
@@ -130,6 +141,14 @@ pub async fn apply_resolved(
         user_id, summary.received, summary.matched, summary.applied, summary.older
     );
     Ok(summary)
+}
+
+/// Seconds a play action covers: from `started` to `position`, at most a day.
+fn play_seconds(action: &EpisodeAction) -> i32 {
+    match (action.started, action.position) {
+        (Some(started), Some(position)) if started >= 0 => (position - started).clamp(0, 86_400),
+        _ => 0,
+    }
 }
 
 /// After new episodes were inserted for `podcast_id`, match the log's unmatched actions for that

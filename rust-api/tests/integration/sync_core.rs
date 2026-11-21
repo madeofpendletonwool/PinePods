@@ -500,6 +500,36 @@ async fn rewinds_and_late_reports_reach_the_log_as_of_when_they_happened() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn synced_plays_count_as_listening_time() {
+    let app = TestApp::new().await;
+    let user = app.user("synced").await;
+    let url = app.feed("synced.xml", &Feed::with_episodes("Synced", 2));
+    let pod = app.subscribe(&user, &url, 2).await;
+    let (e1, e2) = (app.episode_id(&user, pod, "Episode 1").await, app.episode_id(&user, pod, "Episode 2").await);
+    let session = |ep: u32, started: i32, position: i32, at| {
+        action(json!({
+            "podcast": url, "episode": ep_url(ep), "action": "play",
+            "timestamp": ts(at).timestamp(), "started": started, "position": position, "total": 1801 + ep as i32,
+        }))
+    };
+    // Two sessions on one episode, and one that plays another to the end.
+    let batch = [session(1, 0, 300, 900), session(1, 300, 500, 600), session(2, 1500, 1802, 300)];
+    sync::apply_episode_actions(app.db(), user.id, &batch, SyncOrigin::Client).await.unwrap();
+
+    let listened = |ep: i32| {
+        let (app, user) = (&app, &user);
+        async move { int(app, &format!(r#"SELECT ListenedSeconds FROM "UserEpisodeHistory" WHERE UserID = {} AND EpisodeID = {ep}"#, user.id)).await }
+    };
+    assert_eq!((listened(e1).await, listened(e2).await), (Some(500), Some(302)));
+    assert_eq!(position(&app, &user, e1).await, Some(500));
+    assert!(completed(&app, e2).await);
+    let log = int(&app, &format!(r#"SELECT CAST(SUM(Seconds) AS INTEGER) FROM "ListeningLog" WHERE UserID = {} AND Client = 'sync'"#, user.id)).await;
+    assert_eq!(log, Some(802));
+    let stats = app.get("/api/data/get_stats").key(&user).query("user_id", user.id).send().await.ok_json();
+    assert_eq!((stats["TimeListened"].as_i64(), stats["PodcastsPlayed"].as_i64()), (Some(13), Some(1)), "{stats}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn completion_threshold_new_and_ignored_actions() {
     let app = TestApp::new().await;
     let user = app.user("finisher").await;

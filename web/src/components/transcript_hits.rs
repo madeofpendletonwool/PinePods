@@ -286,7 +286,7 @@ fn render_hit(
     html! {
         <article class="ts-hit" key={id}>
             <button class="ts-hit-art" onclick={open_episode.clone()} aria-label={ep.episodetitle.clone()}>
-                <FallbackImage src={art} alt={ep.episodetitle.clone()} class="ts-hit-art-img" />
+                <FallbackImage size={Some(128)} src={art} alt={ep.episodetitle.clone()} class="ts-hit-art-img" />
             </button>
             <div class="ts-hit-body">
                 <button class="ts-hit-title" onclick={open_episode}>{ &ep.episodetitle }</button>

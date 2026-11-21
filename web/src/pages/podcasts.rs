@@ -193,7 +193,7 @@ fn render_podcasts(
                         html! {
                             <div key={podcast_key} class="ep-row">
                                 <div class="ep-art-wrap" onclick={on_title_click.clone()}>
-                                    <FallbackImage
+                                    <FallbackImage size={Some(192)}
                                         src={podcast_artwork}
                                         alt={format!("{}{}", i18n.t("podcasts.cover_alt_text"), podcast.podcastname.clone())}
                                         class={"ep-art-img"}
@@ -297,7 +297,7 @@ fn render_podcasts(
                                 </div>
 
                                 <div class="podcast-image-container">
-                                    <FallbackImage
+                                    <FallbackImage size={Some(384)}
                                         src={podcast_artwork}
                                         alt={format!("{}{}", i18n.t("podcasts.cover_alt_text"), podcast.podcastname.clone())}
                                         class={"podcast-image"}

@@ -385,7 +385,12 @@ pub fn notification_center() -> Html {
 
     // ---- derived data ----
     let tasks = state.active_tasks.clone().unwrap_or_default();
-    let messages = state.messages.clone();
+    let messages: Vec<NotificationMessage> = state
+        .local_messages
+        .iter()
+        .chain(state.messages.iter())
+        .cloned()
+        .collect();
 
     let active_tasks: Vec<TaskProgress> =
         tasks.iter().filter(|t| is_active(&t.status)).cloned().collect();
@@ -494,6 +499,12 @@ pub fn notification_center() -> Html {
         let dispatch = dispatch.clone();
         let creds = creds.clone();
         Callback::from(move |id: String| {
+            if id.starts_with("local:") {
+                dispatch.reduce_mut(move |state| {
+                    state.dismiss_local_notice(&id);
+                });
+                return;
+            }
             {
                 let id = id.clone();
                 dispatch.reduce_mut(move |state| state.messages.retain(|m| m.id != id));
