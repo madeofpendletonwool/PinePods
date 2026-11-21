@@ -161,4 +161,46 @@ void main() {
     expect(resumeFrom(-3, 1800), 0);
     expect(resumeFrom(double.nan, 1800), 0);
   });
+
+  test('time saved by speed is the episode time gained over the time played', () {
+    tracker.begin(at(0, rate: 1.5), t0);
+    final fast = play(tracker, t0, 0, 30, rate: 1.5);
+    expect(fast.single.listened, 30);
+    expect(fast.single.speedSaved, closeTo(15, 1e-9));
+
+    tracker.begin(at(0, rate: 0.5), t0);
+    final slow = play(tracker, t0, 0, 30, rate: 0.5);
+    expect(slow.single.speedSaved, closeTo(-15, 1e-9));
+  });
+
+  test('a jump to the end of a skip range counts as skipped silence or ads', () {
+    tracker.skipRanges = const [(start: 20, end: 80, ad: true), (start: 100, end: 104, ad: false)];
+    tracker.begin(at(10), t0);
+    play(tracker, t0, 10, 10); // at 20
+    // The player jumps over the ad.
+    final jump = tracker.observe(at(81), t0.add(const Duration(seconds: 11)));
+    expect(jump.single.adsSkipped, closeTo(59, 1e-9)); // from where it was, 21, to the end
+    expect(jump.single.silenceSkipped, 0);
+    // A seek by the user lands nowhere special: nothing skipped.
+    final seek = tracker.observe(at(300), t0.add(const Duration(seconds: 12)));
+    expect(seek.single.adsSkipped + seek.single.silenceSkipped, 0);
+    // Back to before the silence, then over it: a jump too small to be a seek.
+    tracker.observe(at(98), t0.add(const Duration(seconds: 13)));
+    tracker.observe(at(100), t0.add(const Duration(seconds: 15)));
+    expect(tracker.observe(at(103.9), t0.add(const Duration(seconds: 16))), isEmpty);
+    final silence = tracker.leave(t0.add(const Duration(seconds: 17)))!;
+    expect(silence.silenceSkipped, closeTo(3, 1e-9));
+
+    tracker.reset();
+    expect(tracker.skipRanges, isEmpty);
+  });
+
+  test('reports say whether a downloaded file was playing', () {
+    final local = PlaybackSample(episodeId: 7, userId: 42, isYoutube: false, position: 0, duration: 1800, playing: true, downloaded: true);
+    tracker.begin(local, t0);
+    final paused = tracker.observe(
+        PlaybackSample(episodeId: 7, userId: 42, isYoutube: false, position: 5, duration: 1800, playing: false, downloaded: true),
+        t0.add(const Duration(seconds: 5)));
+    expect(paused.single.downloaded, isTrue);
+  });
 }

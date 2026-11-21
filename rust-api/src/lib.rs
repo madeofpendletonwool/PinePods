@@ -275,6 +275,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::podcasts::get_podcast_id_from_ep_id))
         .routes(routes!(handlers::podcasts::get_stats))
         .routes(routes!(handlers::podcasts::get_extended_stats))
+        .routes(routes!(handlers::podcasts::get_listening_report))
         .routes(routes!(handlers::podcasts::get_pinepods_version))
         .routes(routes!(handlers::podcasts::search_data))
         .routes(routes!(handlers::podcasts::proxy_search))

@@ -244,6 +244,93 @@ async fn listened_time_is_what_was_played_not_where_the_position_is() {
     assert_eq!(home["weekly_stats"]["seconds_listened"], 75, "{home}");
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn listening_is_logged_per_day_and_client() {
+    let app = TestApp::new().await;
+    let (user, _pod, ep) = setup(&app).await;
+    let logged = |client: &'static str| {
+        let (app, user) = (&app, &user);
+        async move {
+            int(app, &format!(
+                r#"SELECT CAST(COALESCE(SUM(Seconds), 0) AS INTEGER) FROM "ListeningLog" WHERE UserID = {} AND ItemKind = 0 AND ItemID = {ep} AND Client = '{client}'"#,
+                user.id
+            ))
+            .await
+            .unwrap_or(0)
+        }
+    };
+    let play = |client: Option<&str>, position: f64, listened: f64| {
+        let mut body = json!({ "updates": [{ "episode_id": ep, "position": position, "listened": listened }] });
+        if let Some(c) = client {
+            body["client"] = json!(c);
+        }
+        body
+    };
+    for body in [play(Some("android"), 100.0, 30.0), play(Some("ANDROID"), 150.0, 20.0), play(Some("web"), 200.0, 40.0), play(None, 250.0, 5.0), play(Some("toaster"), 300.0, 5.0)] {
+        app.post("/api/data/progress").key(&user).json(&body).send().await.assert_ok();
+    }
+    assert_eq!((logged("android").await, logged("web").await, logged("").await), (50, 40, 10));
+
+    // A position with no time played logs nothing.
+    app.post("/api/data/progress").key(&user).json(&play(Some("web"), 900.0, 0.0)).send().await.assert_ok();
+    assert_eq!(logged("web").await, 40);
+
+    // Old apps' forward movement counts, under no client.
+    old_report(&app, &user.api_key, &user, ep, 1000.0).await;
+    old_report(&app, &user.api_key, &user, ep, 1003.0).await;
+    assert_eq!(logged("").await, 13);
+    let rows = int(&app, &format!(r#"SELECT COUNT(*) FROM "ListeningLog" WHERE UserID = {} AND ListenHour BETWEEN 0 AND 23"#, user.id)).await;
+    assert!(rows.unwrap_or(0) >= 3);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn time_saved_and_what_was_played_outlive_the_podcast() {
+    let app = TestApp::new().await;
+    let (user, pod, ep) = setup(&app).await;
+    let body = json!({ "client": "android", "updates": [
+        { "episode_id": ep, "position": 400.0, "listened": 30.0, "speed_saved": 15.2, "silence_skipped": 2.4, "ads_skipped": 60.0 },
+    ]});
+    app.post("/api/data/progress").key(&user).json(&body).send().await.assert_ok();
+    // Slower than 1x takes time back; a skip with no time played is still logged.
+    let body = json!({ "client": "android", "updates": [
+        { "episode_id": ep, "position": 500.0, "listened": 10.0, "speed_saved": -5.0 },
+        { "episode_id": ep, "position": 590.0, "ads_skipped": 30.0 },
+    ]});
+    app.post("/api/data/progress").key(&user).json(&body).send().await.assert_ok();
+
+    let sum = |column: &'static str| {
+        let (app, user) = (&app, &user);
+        async move { int(app, &format!(r#"SELECT CAST(SUM({column}) AS INTEGER) FROM "ListeningLog" WHERE UserID = {}"#, user.id)).await }
+    };
+    assert_eq!((sum("Seconds").await, sum("SpeedSaved").await, sum("SilenceSkipped").await, sum("AdsSkipped").await), (Some(40), Some(10), Some(2), Some(90)));
+
+    let stats = app.get("/api/data/get_extended_stats").key(&user).query("user_id", user.id).send().await.ok_json();
+    assert_eq!(stats["time_saved"], json!({ "speed": 10, "silence": 2, "ads": 90 }), "{stats}");
+    let days = stats["daily_listening"].as_array().cloned().unwrap_or_default();
+    assert_eq!(days.iter().map(|d| d["seconds"].as_i64().unwrap()).sum::<i64>(), 40, "the calendar reads the log: {days:?}");
+
+    app.post("/api/data/remove_podcast_id").key(&user).json(&json!({ "podcast_id": pod, "user_id": user.id })).send().await.assert_ok();
+    let item = |column: &str| format!(r#"SELECT {column} FROM "ListeningLogItems" WHERE UserID = {} AND ItemKind = 0 AND ItemID = {ep}"#, user.id);
+    let item = (text(&app, &item("PodcastName")).await, text(&app, &item("ItemTitle")).await);
+    assert_eq!(item, (Some("Progress Show".into()), Some("Episode 1".into())), "the log still says what was played");
+    assert_eq!(sum("Seconds").await, Some(40));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn upgrading_fills_in_what_earlier_rows_played() {
+    let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
+    let (user, _pod, ep) = setup(&app).await;
+    app.post("/api/data/progress").key(&user).json(&json!({ "updates": [{ "episode_id": ep, "position": 60.0, "listened": 60.0 }] })).send().await.assert_ok();
+    // As logged before the items were kept.
+    exec(&app, r#"DROP TABLE "ListeningLogItems""#).await;
+    rerun_migrations(&app, &["094"]).await;
+    let name = text(&app, &format!(r#"SELECT PodcastName FROM "ListeningLogItems" WHERE UserID = {} AND ItemID = {ep}"#, user.id)).await;
+    assert_eq!(name.as_deref(), Some("Progress Show"));
+}
+
 // --- the request itself ----------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread")]

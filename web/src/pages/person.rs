@@ -212,7 +212,7 @@ pub fn person(props: &PersonProps) -> Html {
         html! {
             <button type="button" class="pp-show" {onclick} title={show.podcastname.clone()}>
                 <div class="pp-show-art">
-                    <FallbackImage
+                    <FallbackImage size={Some(384)}
                         src={show.artworkurl.clone().unwrap_or_default()}
                         alt={show.podcastname.clone()}
                         class={Some("pp-show-img".to_string())}

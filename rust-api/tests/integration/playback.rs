@@ -162,17 +162,31 @@ async fn per_podcast_speed_and_skips_override_the_user_default() {
 #[tokio::test(flavor = "multi_thread")]
 async fn every_user_has_stats_that_count_activity() {
     let app = TestApp::new().await;
-    let (user, _pod, _ep) = setup(&app).await;
+    let (user, _pod, ep) = setup(&app).await;
     let stats = || async { app.get("/api/data/get_stats").key(&user).query("user_id", user.id).send().await.ok_json() };
     let before = stats().await;
-    assert_eq!(before["PodcastsAdded"], 1, "{before}");
+    assert_eq!((before["PodcastsAdded"].as_i64(), before["PodcastsPlayed"].as_i64()), (Some(1), Some(0)), "{before}");
 
-    app.put(&format!("/api/data/increment_played/{}", user.id)).key(&user).send().await.assert_ok();
+    // Counted from the library and history, so podcasts and plays that arrive any other way
+    // (sync, imports) count too.
+    let feed = app.feed("second.xml", &Feed::with_episodes("Second Show", 1));
+    app.subscribe(&user, &feed, 1).await;
+    app.post("/api/data/progress")
+        .key(&user)
+        .json(&json!({ "updates": [{ "episode_id": ep, "position": 200.0, "listened": 150.0 }] }))
+        .send()
+        .await
+        .assert_ok();
     let after = stats().await;
     assert_eq!(
-        after["PodcastsPlayed"].as_i64().unwrap(),
-        before["PodcastsPlayed"].as_i64().unwrap() + 1
+        (after["PodcastsAdded"].as_i64(), after["PodcastsPlayed"].as_i64(), after["TimeListened"].as_i64()),
+        (Some(2), Some(1), Some(2)),
+        "{after}"
     );
+
+    // The old counter endpoint doesn't make a podcast played.
+    app.put(&format!("/api/data/increment_played/{}", user.id)).key(&user).send().await.assert_ok();
+    assert_eq!(stats().await["PodcastsPlayed"], 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -369,7 +369,7 @@ pub fn queue_manage_modal(props: &QueueManageModalProps) -> Html {
                                         <i class={classes!("ph", if is_sel { "ph-check-square" } else { "ph-square" })}></i>
                                     </button>
                                     <span class="queue-manage-index">{ idx + 1 }</span>
-                                    <FallbackImage
+                                    <FallbackImage size={Some(128)}
                                         src={ep.episodeartwork.clone()}
                                         fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                                         alt="Episode art"

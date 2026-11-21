@@ -31,6 +31,66 @@ pub enum WriteRule {
     /// A lower one, or exactly this position: the reporter's previous report, which means nobody
     /// else has written since and it is moving its own position back.
     ForwardOrOwn(i32),
+    /// None: only the listened time is credited. For plays that arrive after a newer change.
+    ListenOnly,
+}
+
+/// Seconds saved while playing, as reported by the app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TimeSaved {
+    /// By playing faster than 1x; negative when slower.
+    pub speed: i32,
+    /// By skipping silence.
+    pub silence: i32,
+    /// By skipping ads.
+    pub ads: i32,
+}
+
+impl TimeSaved {
+    fn clamped(self) -> Self {
+        Self { speed: self.speed.clamp(-86_400, 86_400), silence: self.silence.clamp(0, 86_400), ads: self.ads.clamp(0, 86_400) }
+    }
+
+    fn any(self) -> bool {
+        self != Self::default()
+    }
+}
+
+/// The app that played the audio, as recorded in `ListeningLog`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ListenClient {
+    #[default]
+    Unknown,
+    Web,
+    Desktop,
+    Android,
+    Ios,
+    /// Reported through podcast sync (gpodder or Nextcloud).
+    Sync,
+}
+
+impl ListenClient {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "",
+            Self::Web => "web",
+            Self::Desktop => "desktop",
+            Self::Android => "android",
+            Self::Ios => "ios",
+            Self::Sync => "sync",
+        }
+    }
+
+    /// The `client` a request names; anything else is `Unknown`.
+    pub fn parse(name: &str) -> Self {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "web" => Self::Web,
+            "desktop" => Self::Desktop,
+            "android" => Self::Android,
+            "ios" => Self::Ios,
+            _ => Self::Unknown,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -47,11 +107,17 @@ pub struct ProgressWrite {
     pub finished: bool,
     /// The player's length for the episode, stored when the feed gave none.
     pub duration: Option<i32>,
+    /// Which app played it.
+    pub client: ListenClient,
+    /// Time saved during the `listened` seconds.
+    pub saved: TimeSaved,
+    /// Played from a file on the device rather than streamed.
+    pub downloaded: bool,
 }
 
 impl ProgressWrite {
     pub fn now(episode_id: i32, is_youtube: bool, position: i32, rule: WriteRule) -> Self {
-        Self { episode_id, is_youtube, position, observed: Observed::Ago(0), rule, listened: 0, finished: false, duration: None }
+        Self { episode_id, is_youtube, position, observed: Observed::Ago(0), rule, listened: 0, finished: false, duration: None, client: ListenClient::Unknown, saved: TimeSaved::default(), downloaded: false }
     }
 }
 
@@ -74,6 +140,7 @@ struct Stored {
     completed: bool,
     auto_complete: i32,
     now: NaiveDateTime,
+    timezone: Option<String>,
 }
 
 impl Stored {
@@ -86,6 +153,9 @@ impl Stored {
     }
 
     fn accepts(&self, write: &ProgressWrite, at: NaiveDateTime) -> bool {
+        if write.rule == WriteRule::ListenOnly {
+            return false;
+        }
         if !self.has_row {
             return true;
         }
@@ -94,9 +164,21 @@ impl Stored {
             WriteRule::Newest => self.listen_date.is_none_or(|d| d <= at),
             WriteRule::Forward => write.position > stored,
             WriteRule::ForwardOrOwn(own) => write.position > stored || stored == own,
+            WriteRule::ListenOnly => false,
         }
     }
 }
+
+/// The calendar day and hour of `at` (UTC) in the user's timezone; UTC if it has none.
+fn local_day_hour(at: NaiveDateTime, timezone: Option<&str>) -> (chrono::NaiveDate, i16) {
+    use chrono::{TimeZone, Timelike};
+    let tz = timezone.and_then(|t| t.parse::<chrono_tz::Tz>().ok()).unwrap_or(chrono_tz::UTC);
+    let local = tz.from_utc_datetime(&at);
+    (local.date_naive(), local.hour() as i16)
+}
+
+/// A gap in listening longer than this ends a session.
+const SESSION_GAP_SECS: i64 = 600;
 
 fn age(observed: Observed) -> i64 {
     match observed {
@@ -109,7 +191,8 @@ impl DatabasePool {
     /// Record a position (and listened time) for one of the user's episodes. `None` when the
     /// episode isn't theirs.
     pub async fn write_progress(&self, user_id: i32, write: ProgressWrite, origin: SyncOrigin) -> AppResult<Option<ProgressOutcome>> {
-        let write = ProgressWrite { position: write.position.max(0), listened: write.listened.clamp(0, 86_400), ..write };
+        let write = ProgressWrite { position: write.position.max(0), listened: write.listened.clamp(0, 86_400), saved: write.saved.clamped(), ..write };
+        let logged = write.listened > 0 || write.saved.any();
         let yt = write.is_youtube;
         let log = !yt && events::should_log(self, user_id, origin).await;
 
@@ -123,6 +206,7 @@ impl DatabasePool {
                     r#"SELECT v.duration AS duration, h.uservideohistoryid AS hid, h.listenduration AS pos, h.listendate AS listendate,
                               COALESCE(v.completed, FALSE) AS completed,
                               COALESCE((SELECT us.autocompleteseconds FROM "UserSettings" us WHERE us.userid = $1), 0) AS auto,
+                              (SELECT u.timezone FROM "Users" u WHERE u.userid = $1) AS tz,
                               NOW()::timestamp AS now
                        FROM "YouTubeVideos" v
                        LEFT JOIN "UserVideoHistory" h ON h.videoid = v.videoid AND h.userid = $1
@@ -131,6 +215,7 @@ impl DatabasePool {
                     r#"SELECT e.episodeduration AS duration, h.userepisodehistoryid AS hid, h.listenduration AS pos, h.listendate AS listendate,
                               COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = $1), FALSE) AS completed,
                               COALESCE((SELECT us.autocompleteseconds FROM "UserSettings" us WHERE us.userid = $1), 0) AS auto,
+                              (SELECT u.timezone FROM "Users" u WHERE u.userid = $1) AS tz,
                               NOW()::timestamp AS now
                        FROM "Episodes" e
                        LEFT JOIN "UserEpisodeHistory" h ON h.episodeid = e.episodeid AND h.userid = $1
@@ -147,6 +232,7 @@ impl DatabasePool {
                     completed: row.try_get::<Option<bool>, _>("completed")?.unwrap_or(false),
                     auto_complete: row.try_get::<Option<i32>, _>("auto")?.unwrap_or(0),
                     now: row.try_get("now")?,
+                    timezone: row.try_get::<Option<String>, _>("tz").ok().flatten(),
                 };
                 at = stored.observed(write.observed);
                 applied = stored.accepts(&write, at);
@@ -184,6 +270,90 @@ impl DatabasePool {
                     .execute(&mut *tx)
                     .await?;
                 }
+                if logged {
+                    let (day, hour) = local_day_hour(at, stored.timezone.as_deref());
+                    q::query(
+                        r#"INSERT INTO "ListeningLog" (userid, listenday, listenhour, itemkind, itemid, client, seconds, speedsaved, silenceskipped, adsskipped, downloadedseconds)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                           ON CONFLICT (userid, listenday, listenhour, itemkind, itemid, client)
+                           DO UPDATE SET seconds = "ListeningLog".seconds + EXCLUDED.seconds,
+                               speedsaved = "ListeningLog".speedsaved + EXCLUDED.speedsaved,
+                               silenceskipped = "ListeningLog".silenceskipped + EXCLUDED.silenceskipped,
+                               adsskipped = "ListeningLog".adsskipped + EXCLUDED.adsskipped,
+                               downloadedseconds = "ListeningLog".downloadedseconds + EXCLUDED.downloadedseconds"#,
+                    )
+                    .bind(user_id)
+                    .bind(day)
+                    .bind(hour)
+                    .bind(i16::from(yt))
+                    .bind(write.episode_id)
+                    .bind(write.client.as_str())
+                    .bind(write.listened)
+                    .bind(write.saved.speed)
+                    .bind(write.saved.silence)
+                    .bind(write.saved.ads)
+                    .bind(if write.downloaded { write.listened } else { 0 })
+                    .execute(&mut *tx)
+                    .await?;
+                    // What was played, kept for when the podcast is gone.
+                    let item = if yt {
+                        r#"INSERT INTO "ListeningLogItems" (userid, itemkind, itemid, podcastid, podcastname, feedurl, itemtitle, artwork, categories, pubdate, firstlistened)
+                           SELECT $1, 1, v.videoid, p.podcastid, p.podcastname, p.feedurl, v.videotitle, COALESCE(NULLIF(v.thumbnailurl, ''), p.artworkurl),
+                                  p.categories, v.publishedat, $3
+                           FROM "YouTubeVideos" v JOIN "Podcasts" p ON p.podcastid = v.podcastid AND p.userid = $1
+                           WHERE v.videoid = $2
+                           ON CONFLICT (userid, itemkind, itemid) DO UPDATE SET
+                               podcastid = EXCLUDED.podcastid, podcastname = EXCLUDED.podcastname, feedurl = EXCLUDED.feedurl,
+                               itemtitle = EXCLUDED.itemtitle, artwork = EXCLUDED.artwork, categories = EXCLUDED.categories,
+                               pubdate = EXCLUDED.pubdate,
+                               firstlistened = LEAST(COALESCE("ListeningLogItems".firstlistened, EXCLUDED.firstlistened), EXCLUDED.firstlistened)"#
+                    } else {
+                        r#"INSERT INTO "ListeningLogItems" (userid, itemkind, itemid, podcastid, podcastname, feedurl, itemtitle, artwork, categories, pubdate, firstlistened)
+                           SELECT $1, 0, e.episodeid, p.podcastid, p.podcastname, p.feedurl, e.episodetitle, COALESCE(NULLIF(e.episodeartwork, ''), p.artworkurl),
+                                  p.categories, e.episodepubdate, $3
+                           FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid AND p.userid = $1
+                           WHERE e.episodeid = $2
+                           ORDER BY p.podcastid LIMIT 1
+                           ON CONFLICT (userid, itemkind, itemid) DO UPDATE SET
+                               podcastid = EXCLUDED.podcastid, podcastname = EXCLUDED.podcastname, feedurl = EXCLUDED.feedurl,
+                               itemtitle = EXCLUDED.itemtitle, artwork = EXCLUDED.artwork, categories = EXCLUDED.categories,
+                               pubdate = EXCLUDED.pubdate,
+                               firstlistened = LEAST(COALESCE("ListeningLogItems".firstlistened, EXCLUDED.firstlistened), EXCLUDED.firstlistened)"#
+                    };
+                    q::query(item).bind(user_id).bind(write.episode_id).bind(at).execute(&mut *tx).await?;
+                }
+                if write.listened > 0 {
+                    // Extend the session this continues, or start one.
+                    let start = at - chrono::Duration::seconds(i64::from(write.listened));
+                    let open = q::query(
+                        r#"SELECT sessionid, startedat, endedat FROM "ListeningSessions"
+                           WHERE userid = $1 AND endedat >= $2 AND startedat <= $3
+                           ORDER BY endedat DESC LIMIT 1"#,
+                    )
+                    .bind(user_id)
+                    .bind(start - chrono::Duration::seconds(SESSION_GAP_SECS))
+                    .bind(at + chrono::Duration::seconds(SESSION_GAP_SECS))
+                    .fetch_optional(&mut *tx)
+                    .await?;
+                    if let Some(row) = open {
+                        let (id, started, ended): (i32, NaiveDateTime, NaiveDateTime) = (row.try_get("sessionid")?, row.try_get("startedat")?, row.try_get("endedat")?);
+                        q::query(r#"UPDATE "ListeningSessions" SET startedat = $1, endedat = $2, seconds = seconds + $3 WHERE sessionid = $4"#)
+                            .bind(started.min(start))
+                            .bind(ended.max(at))
+                            .bind(write.listened)
+                            .bind(id)
+                            .execute(&mut *tx)
+                            .await?;
+                    } else {
+                        q::query(r#"INSERT INTO "ListeningSessions" (userid, startedat, endedat, seconds) VALUES ($1, $2, $3, $4)"#)
+                            .bind(user_id)
+                            .bind(start)
+                            .bind(at)
+                            .bind(write.listened)
+                            .execute(&mut *tx)
+                            .await?;
+                    }
+                }
                 if log && applied && stored.position != Some(write.position) {
                     let event = EpisodeEvent::Progress { position: write.position, age: age(write.observed) };
                     q::pick(events::episode_pg, events::episode_lite)(self, &mut tx, user_id, write.episode_id, event).await;
@@ -196,6 +366,7 @@ impl DatabasePool {
                     "SELECT v.Duration AS duration, h.UserVideoHistoryID AS hid, h.ListenDuration AS pos, CAST(h.ListenDate AS DATETIME) AS listendate,
                             COALESCE(v.Completed, 0) AS completed,
                             COALESCE((SELECT us.AutoCompleteSeconds FROM UserSettings us WHERE us.UserID = ?), 0) AS auto,
+                            (SELECT u.TimeZone FROM Users u WHERE u.UserID = ?) AS tz,
                             CAST(NOW() AS DATETIME) AS now
                      FROM YouTubeVideos v
                      LEFT JOIN UserVideoHistory h ON h.VideoID = v.VideoID AND h.UserID = ?
@@ -204,6 +375,7 @@ impl DatabasePool {
                     "SELECT e.EpisodeDuration AS duration, h.UserEpisodeHistoryID AS hid, h.ListenDuration AS pos, CAST(h.ListenDate AS DATETIME) AS listendate,
                             COALESCE((SELECT ues.Completed FROM UserEpisodeState ues WHERE ues.EpisodeID = e.EpisodeID AND ues.UserID = ?), 0) AS completed,
                             COALESCE((SELECT us.AutoCompleteSeconds FROM UserSettings us WHERE us.UserID = ?), 0) AS auto,
+                            (SELECT u.TimeZone FROM Users u WHERE u.UserID = ?) AS tz,
                             CAST(NOW() AS DATETIME) AS now
                      FROM Episodes e
                      LEFT JOIN UserEpisodeHistory h ON h.EpisodeID = e.EpisodeID AND h.UserID = ?
@@ -213,7 +385,7 @@ impl DatabasePool {
                 if !yt {
                     query = query.bind(user_id);
                 }
-                let Some(row) = query.bind(user_id).bind(user_id).bind(write.episode_id).bind(user_id).fetch_optional(&mut *tx).await? else {
+                let Some(row) = query.bind(user_id).bind(user_id).bind(user_id).bind(write.episode_id).bind(user_id).fetch_optional(&mut *tx).await? else {
                     return Ok(None);
                 };
                 stored = Stored {
@@ -224,6 +396,7 @@ impl DatabasePool {
                     completed: row.try_get::<Option<i64>, _>("completed")?.unwrap_or(0) != 0,
                     auto_complete: row.try_get::<Option<i64>, _>("auto")?.unwrap_or(0) as i32,
                     now: row.try_get("now")?,
+                    timezone: row.try_get::<Option<String>, _>("tz").ok().flatten(),
                 };
                 at = stored.observed(write.observed);
                 applied = stored.accepts(&write, at);
@@ -260,6 +433,86 @@ impl DatabasePool {
                     .bind(write.episode_id)
                     .execute(&mut *tx)
                     .await?;
+                }
+                if logged {
+                    let (day, hour) = local_day_hour(at, stored.timezone.as_deref());
+                    sqlx::query(
+                        "INSERT INTO ListeningLog (UserID, ListenDay, ListenHour, ItemKind, ItemID, Client, Seconds, SpeedSaved, SilenceSkipped, AdsSkipped, DownloadedSeconds)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         ON DUPLICATE KEY UPDATE Seconds = Seconds + VALUES(Seconds), SpeedSaved = SpeedSaved + VALUES(SpeedSaved),
+                             SilenceSkipped = SilenceSkipped + VALUES(SilenceSkipped), AdsSkipped = AdsSkipped + VALUES(AdsSkipped),
+                             DownloadedSeconds = DownloadedSeconds + VALUES(DownloadedSeconds)",
+                    )
+                    .bind(user_id)
+                    .bind(day)
+                    .bind(hour)
+                    .bind(i16::from(yt))
+                    .bind(write.episode_id)
+                    .bind(write.client.as_str())
+                    .bind(write.listened)
+                    .bind(write.saved.speed)
+                    .bind(write.saved.silence)
+                    .bind(write.saved.ads)
+                    .bind(if write.downloaded { write.listened } else { 0 })
+                    .execute(&mut *tx)
+                    .await?;
+                    // Renamed source columns: the join has columns named like the target's.
+                    let item = if yt {
+                        "INSERT INTO ListeningLogItems (UserID, ItemKind, ItemID, PodcastID, PodcastName, FeedURL, ItemTitle, Artwork, Categories, PubDate, FirstListened)
+                         SELECT * FROM (
+                             SELECT ? AS u, 1 AS k, v.VideoID AS i, p.PodcastID AS pid, p.PodcastName AS pname, p.FeedURL AS furl,
+                                    v.VideoTitle AS title, COALESCE(NULLIF(v.ThumbnailURL, ''), p.ArtworkURL) AS art,
+                                    p.Categories AS cats, v.PublishedAt AS pub, CAST(? AS DATETIME) AS fl
+                             FROM YouTubeVideos v JOIN Podcasts p ON p.PodcastID = v.PodcastID AND p.UserID = ?
+                             WHERE v.VideoID = ?
+                         ) src
+                         ON DUPLICATE KEY UPDATE PodcastID = src.pid, PodcastName = src.pname, FeedURL = src.furl, ItemTitle = src.title, Artwork = src.art,
+                             Categories = src.cats, PubDate = src.pub, FirstListened = LEAST(COALESCE(FirstListened, src.fl), src.fl)"
+                    } else {
+                        "INSERT INTO ListeningLogItems (UserID, ItemKind, ItemID, PodcastID, PodcastName, FeedURL, ItemTitle, Artwork, Categories, PubDate, FirstListened)
+                         SELECT * FROM (
+                             SELECT ? AS u, 0 AS k, e.EpisodeID AS i, p.PodcastID AS pid, p.PodcastName AS pname, p.FeedURL AS furl,
+                                    e.EpisodeTitle AS title, COALESCE(NULLIF(e.EpisodeArtwork, ''), p.ArtworkURL) AS art,
+                                    p.Categories AS cats, e.EpisodePubDate AS pub, CAST(? AS DATETIME) AS fl
+                             FROM Episodes e JOIN Podcasts p ON p.FeedID = e.FeedID AND p.UserID = ?
+                             WHERE e.EpisodeID = ?
+                             ORDER BY p.PodcastID LIMIT 1
+                         ) src
+                         ON DUPLICATE KEY UPDATE PodcastID = src.pid, PodcastName = src.pname, FeedURL = src.furl, ItemTitle = src.title, Artwork = src.art,
+                             Categories = src.cats, PubDate = src.pub, FirstListened = LEAST(COALESCE(FirstListened, src.fl), src.fl)"
+                    };
+                    sqlx::query(item).bind(user_id).bind(at).bind(user_id).bind(write.episode_id).execute(&mut *tx).await?;
+                }
+                if write.listened > 0 {
+                    let start = at - chrono::Duration::seconds(i64::from(write.listened));
+                    let open = sqlx::query(
+                        "SELECT SessionID AS sessionid, StartedAt AS startedat, EndedAt AS endedat FROM ListeningSessions
+                         WHERE UserID = ? AND EndedAt >= ? AND StartedAt <= ?
+                         ORDER BY EndedAt DESC LIMIT 1",
+                    )
+                    .bind(user_id)
+                    .bind(start - chrono::Duration::seconds(SESSION_GAP_SECS))
+                    .bind(at + chrono::Duration::seconds(SESSION_GAP_SECS))
+                    .fetch_optional(&mut *tx)
+                    .await?;
+                    if let Some(row) = open {
+                        let (id, started, ended): (i32, NaiveDateTime, NaiveDateTime) = (row.try_get("sessionid")?, row.try_get("startedat")?, row.try_get("endedat")?);
+                        sqlx::query("UPDATE ListeningSessions SET StartedAt = ?, EndedAt = ?, Seconds = Seconds + ? WHERE SessionID = ?")
+                            .bind(started.min(start))
+                            .bind(ended.max(at))
+                            .bind(write.listened)
+                            .bind(id)
+                            .execute(&mut *tx)
+                            .await?;
+                    } else {
+                        sqlx::query("INSERT INTO ListeningSessions (UserID, StartedAt, EndedAt, Seconds) VALUES (?, ?, ?, ?)")
+                            .bind(user_id)
+                            .bind(start)
+                            .bind(at)
+                            .bind(write.listened)
+                            .execute(&mut *tx)
+                            .await?;
+                    }
                 }
                 if log && applied && stored.position != Some(write.position) {
                     let event = EpisodeEvent::Progress { position: write.position, age: age(write.observed) };
@@ -444,5 +697,26 @@ impl DatabasePool {
             },
         });
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_day_and_hour_follow_the_users_timezone() {
+        let at = chrono::NaiveDate::from_ymd_opt(2026, 11, 21).unwrap().and_hms_opt(3, 30, 0).unwrap();
+        let day = |d| chrono::NaiveDate::from_ymd_opt(2026, 11, d).unwrap();
+        assert_eq!(local_day_hour(at, Some("America/New_York")), (day(20), 22));
+        assert_eq!(local_day_hour(at, None), (day(21), 3));
+        assert_eq!(local_day_hour(at, Some("not a zone")), (day(21), 3));
+    }
+
+    #[test]
+    fn client_names() {
+        assert_eq!(ListenClient::parse(" Android "), ListenClient::Android);
+        assert_eq!(ListenClient::parse("carplay"), ListenClient::Unknown);
+        assert_eq!(ListenClient::Ios.as_str(), "ios");
     }
 }

@@ -6014,7 +6014,7 @@ pub async fn call_get_merged_podcasts(
 
 // ---- Collections ----------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Collection {
     pub collection_id: i32,
     pub user_id: i32,

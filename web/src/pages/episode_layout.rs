@@ -328,7 +328,7 @@ pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
                                             if is_selected { "bg-gray-700" } else { "" }
                                         )}
                                     >
-                                        <FallbackImage
+                                        <FallbackImage size={Some(128)}
                                             src={podcast.artworkurl.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
                                             alt={format!("Cover for {}", podcast.podcastname)}
                                             class="w-12 h-12 rounded object-cover"
@@ -4928,7 +4928,7 @@ pub fn episode_layout() -> Html {
 
                                                     // ── Compact header: artwork + title + actions ──
                                                     <div class="ep-mobile-header">
-                                                        <FallbackImage
+                                                        <FallbackImage size={Some(256)}
                                                             src={podcast_info.artworkurl.clone()}
                                                             alt={format!("Cover for {}", &podcast_info.podcastname)}
                                                             class="ep-mobile-art rounded-corners"
@@ -5094,7 +5094,7 @@ pub fn episode_layout() -> Html {
                                                     <div class="pd-banner-scrim"></div>
                                                     <div class="pd-banner-inner">
                                                         <div class="pd-banner-top">
-                                                            <FallbackImage
+                                                            <FallbackImage size={Some(384)}
                                                                 src={podcast_info.artworkurl.clone()}
                                                                 alt={format!("Cover for {}", &podcast_info.podcastname)}
                                                                 class={"pd-banner-cover"}

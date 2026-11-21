@@ -55,6 +55,39 @@ pub struct Update {
     pub duration: Option<f64>,
     #[serde(default)]
     pub finished: bool,
+    /// Episode time gained by playing faster than 1x during `listened` (negative when slower).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub speed_saved: f64,
+    /// Seconds of silence skipped.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub silence_skipped: f64,
+    /// Seconds of ads skipped.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub ads_skipped: f64,
+    /// Played from a file on this device.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub downloaded: bool,
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
+impl Update {
+    /// The played and saved time, taken out of a later report of the same episode.
+    fn take_counts(&mut self, sent: &Update) {
+        self.listened = (self.listened - sent.listened).max(0.0);
+        self.speed_saved -= sent.speed_saved;
+        self.silence_skipped = (self.silence_skipped - sent.silence_skipped).max(0.0);
+        self.ads_skipped = (self.ads_skipped - sent.ads_skipped).max(0.0);
+    }
+
+    fn clear_counts(&mut self) {
+        self.listened = 0.0;
+        self.speed_saved = 0.0;
+        self.silence_skipped = 0.0;
+        self.ads_skipped = 0.0;
+    }
 }
 
 /// Unreported progress, one entry per episode.
@@ -71,11 +104,15 @@ impl Pending {
         match self.0.iter_mut().find(|u| u.episode_id == update.episode_id && u.is_youtube == update.is_youtube) {
             Some(entry) => {
                 entry.listened += update.listened;
+                entry.speed_saved += update.speed_saved;
+                entry.silence_skipped += update.silence_skipped;
+                entry.ads_skipped += update.ads_skipped;
                 if update.at >= entry.at {
                     entry.position = update.position;
                     entry.at = update.at;
                     entry.finished = update.finished;
                     entry.duration = update.duration.or(entry.duration);
+                    entry.downloaded = update.downloaded;
                 }
             }
             None => self.0.push(update),
@@ -90,7 +127,7 @@ impl Pending {
                 if self.0[i].at <= s.at {
                     self.0.remove(i);
                 } else {
-                    self.0[i].listened = (self.0[i].listened - s.listened).max(0.0);
+                    self.0[i].take_counts(s);
                 }
             }
         }
@@ -106,6 +143,8 @@ pub struct Sample {
     pub duration: f64,
     pub playing: bool,
     pub rate: f64,
+    /// Playing a file on this device.
+    pub downloaded: bool,
 }
 
 /// Turns looks at the player into reports.
@@ -116,6 +155,16 @@ pub struct Tracker {
     last_report: f64,
     reported_position: f64,
     listened: f64,
+    speed_saved: f64,
+    silence_skipped: f64,
+    ads_skipped: f64,
+}
+
+/// What an automatic skip jumped over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Skipped {
+    Silence,
+    Ad,
 }
 
 impl Tracker {
@@ -130,12 +179,27 @@ impl Tracker {
             listened: std::mem::take(&mut self.listened),
             duration: (sample.duration.is_finite() && sample.duration >= 1.0).then_some(sample.duration),
             finished,
+            speed_saved: std::mem::take(&mut self.speed_saved),
+            silence_skipped: std::mem::take(&mut self.silence_skipped),
+            ads_skipped: std::mem::take(&mut self.ads_skipped),
+            downloaded: sample.downloaded,
         }
     }
 
     /// Whether the tracked episode has anything the server hasn't been told.
     fn unreported(&self, sample: &Sample) -> bool {
-        self.listened >= 1.0 || (sample.position - self.reported_position).abs() >= 1.0
+        self.listened >= 1.0 || self.silence_skipped + self.ads_skipped >= 1.0 || (sample.position - self.reported_position).abs() >= 1.0
+    }
+
+    /// The player skipped `seconds` of silence or ads in the tracked episode.
+    pub fn skipped(&mut self, kind: Skipped, seconds: f64) {
+        if self.last.is_none() || !seconds.is_finite() || seconds <= 0.0 {
+            return;
+        }
+        match kind {
+            Skipped::Silence => self.silence_skipped += seconds,
+            Skipped::Ad => self.ads_skipped += seconds,
+        }
     }
 
     /// Look at the player (`None`: nothing loaded) at `now` (unix ms). Returns what to report.
@@ -152,6 +216,9 @@ impl Tracker {
                 out.push(self.report(&p, now, false));
             }
             self.listened = 0.0;
+            self.speed_saved = 0.0;
+            self.silence_skipped = 0.0;
+            self.ads_skipped = 0.0;
             self.last = sample;
             self.last_tick = now;
             // Nothing is reported for the start itself: the starting position is what some
@@ -165,8 +232,10 @@ impl Tracker {
         let awake = elapsed <= MAX_TICK_MS;
         let mut expected = previous.position;
         if previous.playing && awake {
+            let rate = if previous.rate > 0.0 { previous.rate } else { 1.0 };
             self.listened += elapsed / 1000.0;
-            expected += elapsed / 1000.0 * if previous.rate > 0.0 { previous.rate } else { 1.0 };
+            self.speed_saved += elapsed / 1000.0 * (rate - 1.0);
+            expected += elapsed / 1000.0 * rate;
         }
         let seeked = awake && (sample.position - expected).abs() > SEEK_SECONDS;
         let paused = previous.playing && !sample.playing;
@@ -209,9 +278,20 @@ pub fn resume_from(position: f64, duration: f64) -> f64 {
     position
 }
 
+/// The desktop app plays its downloads through a file server on this port.
+pub fn is_local_file(src: &str) -> bool {
+    !cfg!(feature = "server_build") && src.starts_with("http://127.0.0.1:3030")
+}
+
+/// Which app this is, recorded with the listening time for stats.
+#[cfg(feature = "server_build")]
+pub const CLIENT: &str = "web";
+#[cfg(not(feature = "server_build"))]
+pub const CLIENT: &str = "desktop";
+
 /// The request body for `updates`, sent at `now` (unix ms).
 pub fn request_body(updates: &[Update], now: f64) -> String {
-    serde_json::json!({ "sent_at": now as i64, "updates": updates.iter().map(|u| {
+    serde_json::json!({ "sent_at": now as i64, "client": CLIENT, "updates": updates.iter().map(|u| {
         let mut v = serde_json::to_value(u).unwrap_or_default();
         v["at"] = serde_json::json!(u.at as i64);
         v
@@ -273,11 +353,11 @@ fn record(updates: Vec<Update>) {
 fn sample() -> Option<Sample> {
     let state = Dispatch::<UIState>::global().get();
     let playing = state.currently_playing.as_ref().filter(|p| p.episode_id != 0)?;
-    let (position, playing_now, rate) = if let Some(m) = state.media_element.as_ref() {
+    let (position, playing_now, rate, src) = if let Some(m) = state.media_element.as_ref() {
         let e = m.as_media_element();
-        (e.current_time(), !e.paused() && !e.ended(), e.playback_rate())
+        (e.current_time(), !e.paused() && !e.ended(), e.playback_rate(), e.current_src())
     } else if let Some(a) = state.audio_element.as_ref() {
-        (a.current_time(), !a.paused() && !a.ended(), a.playback_rate())
+        (a.current_time(), !a.paused() && !a.ended(), a.playback_rate(), a.current_src())
     } else {
         return None;
     };
@@ -288,6 +368,7 @@ fn sample() -> Option<Sample> {
         duration: playing.duration_sec,
         playing: playing_now,
         rate,
+        downloaded: is_local_file(&src),
     })
 }
 
@@ -341,6 +422,11 @@ pub fn start() {
     send();
 }
 
+/// The player skipped `seconds` of silence or an ad.
+pub fn skipped(kind: Skipped, seconds: f64) {
+    TRACKER.with(|t| t.borrow_mut().skipped(kind, seconds));
+}
+
 /// The episode in the player ran to its end.
 pub fn finished() {
     tick();
@@ -370,9 +456,9 @@ fn leave() {
     let Ok(fetch) = Reflect::get(&window, &"fetch".into()).and_then(|f| f.dyn_into::<Function>()) else { return };
     let _ = fetch.call2(&window, &format!("{}/api/data/progress", creds.server).into(), &init);
     // The positions stay until a later request confirms them (sending one twice is harmless);
-    // the played time is taken as delivered so it can't be counted twice.
+    // the played and saved time is taken as delivered so it can't be counted twice.
     for update in &mut pending.0 {
-        update.listened = 0.0;
+        update.clear_counts();
     }
     save(&pending);
 }

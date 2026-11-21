@@ -55,6 +55,8 @@ rand = "0.10.3"
 # MFA/TOTP Support
 totp-rs = { version = "6.0.0", features = ["otpauth"] }
 qrcode = "0.14.1"
+# Image proxy thumbnails
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 
 # Encryption for sync credentials
 fernet = "0.2.2"

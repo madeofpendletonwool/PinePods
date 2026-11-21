@@ -13,6 +13,54 @@ use crate::AppState;
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct ImageProxyQuery {
     pub url: String,
+    /// Return a thumbnail at most this many pixels wide (rounded up to one of a few fixed
+    /// sizes, max 1024). Images already that small, or that can't be decoded, come back as-is.
+    pub w: Option<u32>,
+}
+
+/// Thumbnail widths the proxy produces; a requested width is rounded up to the next one so
+/// the cache holds a handful of variants per image rather than one per pixel width.
+const THUMB_WIDTHS: [u32; 7] = [64, 128, 192, 256, 384, 512, 1024];
+
+fn thumb_width(requested: u32) -> u32 {
+    THUMB_WIDTHS
+        .iter()
+        .copied()
+        .find(|w| *w >= requested)
+        .unwrap_or(*THUMB_WIDTHS.last().unwrap())
+}
+
+/// Downscale `bytes` to `width` pixels wide. JPEG for opaque images, PNG when there's
+/// transparency. None when the image is already narrow enough or can't be decoded.
+fn make_thumbnail(bytes: &[u8], width: u32) -> Option<(&'static str, Vec<u8>)> {
+    use image::{codecs::jpeg::JpegEncoder, ImageReader, Limits};
+    use std::io::Cursor;
+
+    let mut reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format().ok()?;
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(12_000);
+    limits.max_image_height = Some(12_000);
+    limits.max_alloc = Some(256 * 1024 * 1024);
+    reader.limits(limits);
+    let img = reader.decode().ok()?;
+    if img.width() <= width {
+        return None;
+    }
+    let height = ((img.height() as u64 * width as u64) / img.width() as u64).max(1) as u32;
+    let thumb = img.thumbnail(width, height);
+
+    let mut out = Vec::new();
+    if thumb.color().has_alpha() {
+        thumb
+            .write_to(&mut Cursor::new(&mut out), image::ImageFormat::Png)
+            .ok()?;
+        Some(("image/png", out))
+    } else {
+        JpegEncoder::new_with_quality(&mut out, 82)
+            .encode_image(&thumb.to_rgb8())
+            .ok()?;
+        Some(("image/jpeg", out))
+    }
 }
 
 // Server-side image cache: 1-day TTL, skip caching anything larger than this so a few huge images
@@ -20,11 +68,43 @@ pub struct ImageProxyQuery {
 const IMAGE_CACHE_TTL_SECS: u64 = 86_400;
 const IMAGE_CACHE_MAX_BYTES: usize = 5 * 1024 * 1024;
 
-fn image_cache_keys(url: &str) -> (String, String) {
+fn image_cache_keys(url: &str, width: Option<u32>) -> (String, String) {
     let mut hasher = DefaultHasher::new();
     url.hash(&mut hasher);
     let h = hasher.finish();
-    (format!("imgproxy:{:x}:data", h), format!("imgproxy:{:x}:ct", h))
+    let variant = width.map(|w| format!(":w{w}")).unwrap_or_default();
+    (
+        format!("imgproxy:{:x}{}:data", h, variant),
+        format!("imgproxy:{:x}{}:ct", h, variant),
+    )
+}
+
+async fn cached_image(state: &AppState, url: &str, width: Option<u32>) -> Option<(String, Vec<u8>)> {
+    let (data_key, ct_key) = image_cache_keys(url, width);
+    let cached = state.redis_client.get::<Vec<u8>>(&data_key).await.ok().flatten()?;
+    if cached.is_empty() {
+        return None;
+    }
+    let ct = state
+        .redis_client
+        .get::<String>(&ct_key)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    Some((ct, cached))
+}
+
+async fn cache_image(state: &AppState, url: &str, width: Option<u32>, content_type: &str, bytes: &[u8]) {
+    if bytes.is_empty() || bytes.len() > IMAGE_CACHE_MAX_BYTES {
+        return;
+    }
+    let (data_key, ct_key) = image_cache_keys(url, width);
+    let _ = state.redis_client.set_ex(&data_key, bytes.to_vec(), IMAGE_CACHE_TTL_SECS).await;
+    let _ = state
+        .redis_client
+        .set_ex(&ct_key, content_type.to_string(), IMAGE_CACHE_TTL_SECS)
+        .await;
 }
 
 fn image_response(content_type: &str, bytes: axum::body::Bytes) -> Response {
@@ -60,30 +140,48 @@ pub async fn proxy_image(
         return Err(StatusCode::BAD_REQUEST);
     }
 
+    let Some(width) = query.w.map(thumb_width) else {
+        let (content_type, bytes) = original_image(&state, &query.url).await?;
+        return Ok(image_response(&content_type, bytes));
+    };
+
+    if let Some((ct, bytes)) = cached_image(&state, &query.url, Some(width)).await {
+        return Ok(image_response(&ct, axum::body::Bytes::from(bytes)));
+    }
+    let (content_type, original) = original_image(&state, &query.url).await?;
+    let source = original.clone();
+    let thumb = tokio::task::spawn_blocking(move || make_thumbnail(&source, width))
+        .await
+        .ok()
+        .flatten();
+    match thumb {
+        Some((ct, bytes)) => {
+            cache_image(&state, &query.url, Some(width), ct, &bytes).await;
+            Ok(image_response(ct, axum::body::Bytes::from(bytes)))
+        }
+        // Already small enough, or not something we can decode: send the original.
+        None => Ok(image_response(&content_type, original)),
+    }
+}
+
+/// The full-size image, from the cache or fetched (and then cached).
+async fn original_image(
+    state: &AppState,
+    url: &str,
+) -> Result<(String, axum::body::Bytes), StatusCode> {
     // Serve from the server-side cache when present (avoids re-fetching upstream for every cold
     // client). Best-effort: any Redis hiccup just falls through to a live fetch.
-    let (data_key, ct_key) = image_cache_keys(&query.url);
-    if let Ok(Some(cached)) = state.redis_client.get::<Vec<u8>>(&data_key).await {
-        if !cached.is_empty() {
-            let ct = state
-                .redis_client
-                .get::<String>(&ct_key)
-                .await
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| "application/octet-stream".to_string());
-            tracing::debug!("Image proxy cache hit for {}", query.url);
-            return Ok(image_response(&ct, axum::body::Bytes::from(cached)));
-        }
+    if let Some((ct, cached)) = cached_image(state, url, None).await {
+        tracing::debug!("Image proxy cache hit for {}", url);
+        return Ok((ct, axum::body::Bytes::from(cached)));
     }
 
     // SSRF guard: refuse to fetch from loopback/private/link-local/etc. addresses
     // (e.g. cloud metadata at 169.254.169.254 or internal-network services).
-    if !host_is_public(&query.url).await {
+    if !host_is_public(url).await {
         tracing::warn!("Blocked image proxy request to non-public host");
         return Err(StatusCode::FORBIDDEN);
     }
-
     let client = reqwest::Client::builder()
         // Re-validate redirect targets so a public URL can't bounce us to an IP-literal
         // internal address. (Hostname-based rebinding on redirect is a residual edge case.)
@@ -105,15 +203,15 @@ pub async fn proxy_image(
         .build()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    tracing::info!("Fetching image from: {}", query.url);
+    tracing::debug!("Fetching image from: {}", url);
     
     let response = client
-        .get(&query.url)
+        .get(url)
         .send()
         .await
         .map_err(|_| StatusCode::BAD_GATEWAY)?;
 
-    tracing::info!("Image fetch response status: {}", response.status());
+    tracing::debug!("Image fetch response status: {}", response.status());
 
     if !response.status().is_success() {
         return Err(StatusCode::BAD_GATEWAY);
@@ -135,20 +233,8 @@ pub async fn proxy_image(
 
     let bytes = response.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
-    // Populate the cache (best-effort) for reasonably sized images.
-    if !bytes.is_empty() && bytes.len() <= IMAGE_CACHE_MAX_BYTES {
-        let _ = state
-            .redis_client
-            .set_ex(&data_key, bytes.to_vec(), IMAGE_CACHE_TTL_SECS)
-            .await;
-        let _ = state
-            .redis_client
-            .set_ex(&ct_key, content_type.clone(), IMAGE_CACHE_TTL_SECS)
-            .await;
-    }
-
-    tracing::debug!("Returning freshly fetched image response");
-    Ok(image_response(&content_type, bytes))
+    cache_image(state, url, None, &content_type, &bytes).await;
+    Ok((content_type, bytes))
 }
 
 fn is_valid_image_url(url: &str) -> bool {
@@ -229,4 +315,56 @@ pub async fn placeholder_image(
     headers.insert("content-type", "image/svg+xml".parse().unwrap());
     headers.insert("cache-control", "public, max-age=86400".parse().unwrap());
     (headers, svg)
+}
+#[cfg(test)]
+mod thumbnail_tests {
+    use super::*;
+    use image::{ImageFormat, Rgb, RgbImage, Rgba, RgbaImage};
+    use std::io::Cursor;
+
+    fn encoded(img: image::DynamicImage, format: ImageFormat) -> Vec<u8> {
+        let mut out = Vec::new();
+        img.write_to(&mut Cursor::new(&mut out), format).unwrap();
+        out
+    }
+
+    #[test]
+    fn widths_round_up_to_a_fixed_size() {
+        assert_eq!(thumb_width(1), 64);
+        assert_eq!(thumb_width(64), 64);
+        assert_eq!(thumb_width(200), 256);
+        assert_eq!(thumb_width(5000), 1024);
+    }
+
+    #[test]
+    fn opaque_image_becomes_a_smaller_jpeg() {
+        let src = encoded(RgbImage::from_pixel(1400, 1400, Rgb([200, 80, 40])).into(), ImageFormat::Png);
+        let (ct, bytes) = make_thumbnail(&src, 256).expect("thumbnail");
+        assert_eq!(ct, "image/jpeg");
+        let out = image::load_from_memory(&bytes).unwrap();
+        assert_eq!((out.width(), out.height()), (256, 256));
+        assert!(bytes.len() < src.len());
+    }
+
+    #[test]
+    fn keeps_aspect_ratio() {
+        let src = encoded(RgbImage::from_pixel(1200, 600, Rgb([10, 10, 10])).into(), ImageFormat::Jpeg);
+        let (_, bytes) = make_thumbnail(&src, 384).expect("thumbnail");
+        let out = image::load_from_memory(&bytes).unwrap();
+        assert_eq!((out.width(), out.height()), (384, 192));
+    }
+
+    #[test]
+    fn transparent_image_stays_png() {
+        let src = encoded(RgbaImage::from_pixel(800, 800, Rgba([0, 0, 0, 0])).into(), ImageFormat::Png);
+        let (ct, _) = make_thumbnail(&src, 128).expect("thumbnail");
+        assert_eq!(ct, "image/png");
+    }
+
+    #[test]
+    fn small_or_broken_images_are_left_alone() {
+        let small = encoded(RgbImage::from_pixel(100, 100, Rgb([1, 2, 3])).into(), ImageFormat::Png);
+        assert!(make_thumbnail(&small, 256).is_none());
+        assert!(make_thumbnail(b"not an image", 256).is_none());
+    }
 }

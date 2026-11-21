@@ -198,7 +198,7 @@ pub fn discover() -> Html {
         html! {
             <div class="discover-host-card flex flex-col items-center text-center p-3 cursor-pointer" onclick={onclick}>
                 <div class="w-20 h-20 rounded-full overflow-hidden mb-2">
-                    <FallbackImage src={host.img.clone()} alt={host.name.clone()} class={Some("w-full h-full object-cover".to_string())} />
+                    <FallbackImage size={Some(256)} src={host.img.clone()} alt={host.name.clone()} class={Some("w-full h-full object-cover".to_string())} />
                 </div>
                 <p class="item_container-text text-sm font-semibold">{ &host.name }</p>
                 { sub }

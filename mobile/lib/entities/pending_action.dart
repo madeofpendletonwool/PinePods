@@ -67,6 +67,24 @@ class PendingAction {
     return l is num ? l.toDouble() : 0;
   }
 
+  /// Seconds of episode gained by playing faster than 1x (negative when slower)
+  /// that a [recordPosition] action still has to report.
+  double get speedSaved => _seconds('speed_saved');
+
+  /// Seconds of silence skipped, still to report.
+  double get silenceSkipped => _seconds('silence_skipped');
+
+  /// Seconds of ads skipped, still to report.
+  double get adsSkipped => _seconds('ads_skipped');
+
+  /// Whether a [recordPosition] action's time was played from a file on the device.
+  bool get downloaded => payload['downloaded'] == true;
+
+  double _seconds(String key) {
+    final v = payload[key];
+    return v is num ? v.toDouble() : 0;
+  }
+
   /// Whether a [recordPosition] action says the episode played to its end.
   bool get finished => payload['finished'] == true;
 

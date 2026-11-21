@@ -151,6 +151,10 @@ class PinepodsAudioService {
           'at': update.at.millisecondsSinceEpoch,
           'listened': update.listened,
           'finished': update.finished,
+          if (update.speedSaved != 0) 'speed_saved': update.speedSaved,
+          if (update.silenceSkipped != 0) 'silence_skipped': update.silenceSkipped,
+          if (update.adsSkipped != 0) 'ads_skipped': update.adsSkipped,
+          if (update.downloaded) 'downloaded': true,
           if (update.duration != null) 'duration': update.duration,
         },
       ]);
@@ -619,6 +623,10 @@ class PinepodsAudioService {
 
       Future<void> apply(List<Map<String, double>> ads) {
         skippedAds.value = [for (final a in ads) (start: a['start']!, end: a['end']!)];
+        _tracker.skipRanges = [
+          for (final r in silenceRanges) (start: r['start']!, end: r['end']!, ad: false),
+          for (final a in ads) (start: a['start']!, end: a['end']!, ad: true),
+        ];
         return _audioPlayerService.applyEpisodeSkipSegments(
           silenceEnabled: trimSettings.enabled,
           silenceRanges: silenceRanges,
@@ -694,6 +702,7 @@ class PinepodsAudioService {
       duration: state.length.inSeconds > 0 ? state.length.inMilliseconds / 1000.0 : (_currentEpisodeDuration ?? 0).toDouble(),
       playing: _audible,
       rate: _audioPlayerService.playbackSpeed?.valueOrNull ?? 1.0,
+      downloaded: _audioPlayerService.nowPlaying?.downloadState == DownloadState.downloaded,
     );
   }
 

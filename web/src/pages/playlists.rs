@@ -560,7 +560,7 @@ pub fn podcast_selector(props: &PodcastSelectorProps) -> Html {
                                             if is_selected { "bg-gray-700" } else { "" }
                                         )}
                                     >
-                                        <FallbackImage
+                                        <FallbackImage size={Some(128)}
                                             src={podcast.artworkurl.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
                                             alt={format!("Cover for {}", podcast.podcastname)}
                                             class="w-12 h-12 rounded object-cover"

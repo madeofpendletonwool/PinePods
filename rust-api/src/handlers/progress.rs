@@ -10,7 +10,7 @@ use axum::{extract::State, http::HeaderMap, Json};
 use serde::{Deserialize, Serialize};
 
 use super::extract_api_key;
-use crate::database::{Observed, ProgressWrite, WriteRule};
+use crate::database::{ListenClient, Observed, ProgressWrite, TimeSaved, WriteRule};
 use crate::error::{AppError, AppResult};
 use crate::services::sync::SyncOrigin;
 use crate::AppState;
@@ -26,6 +26,10 @@ pub struct ProgressRequest {
     /// from each update's `at` is used, so the client's clock doesn't have to be right.
     #[serde(default)]
     pub sent_at: Option<i64>,
+    /// The app sending this: `web`, `desktop`, `android` or `ios`. Recorded with the listening
+    /// time for stats; anything else counts as unknown.
+    #[serde(default)]
+    pub client: Option<String>,
     pub updates: Vec<ProgressUpdate>,
 }
 
@@ -48,6 +52,18 @@ pub struct ProgressUpdate {
     /// The episode was played to the end.
     #[serde(default)]
     pub finished: bool,
+    /// Of the `listened` seconds: episode time gained by playing faster than 1x (negative when
+    /// slower).
+    #[serde(default)]
+    pub speed_saved: f64,
+    /// Seconds of silence skipped since the previous report.
+    #[serde(default)]
+    pub silence_skipped: f64,
+    /// Seconds of ads skipped since the previous report.
+    #[serde(default)]
+    pub ads_skipped: f64,    /// Played from a file on the device rather than streamed.
+    #[serde(default)]
+    pub downloaded: bool,
 }
 
 /// The stored state of the episode after the update.
@@ -69,6 +85,15 @@ pub struct ProgressResult {
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct ProgressResponse {
     pub results: Vec<ProgressResult>,
+}
+
+/// Rounded to whole seconds, either sign.
+fn signed_seconds(value: f64) -> i32 {
+    if value.is_finite() {
+        value.round().clamp(i32::MIN as f64, i32::MAX as f64) as i32
+    } else {
+        0
+    }
 }
 
 fn whole_seconds(value: f64) -> i32 {
@@ -118,6 +143,7 @@ pub async fn record_progress(
     let mut updates: Vec<(i64, &ProgressUpdate)> = request.updates.iter().map(|u| (age_secs(request.sent_at, u.at), u)).collect();
     updates.sort_by_key(|(age, _)| std::cmp::Reverse(*age));
 
+    let client = request.client.as_deref().map_or(ListenClient::Unknown, ListenClient::parse);
     let mut results = Vec::with_capacity(updates.len());
     let mut listened_total = 0i64;
     for (age, update) in updates {
@@ -131,6 +157,13 @@ pub async fn record_progress(
             listened,
             finished: update.finished,
             duration: update.duration.filter(|d| d.is_finite() && *d >= 1.0).map(|d| d.round() as i32),
+            client,
+            saved: TimeSaved {
+                speed: signed_seconds(update.speed_saved),
+                silence: whole_seconds(update.silence_skipped.round()),
+                ads: whole_seconds(update.ads_skipped.round()),
+            },
+            downloaded: update.downloaded,
         };
         let outcome = if update.episode_id > 0 { state.db_pool.write_progress(user_id, write, SyncOrigin::Pinepods).await? } else { None };
         if outcome.is_some() {

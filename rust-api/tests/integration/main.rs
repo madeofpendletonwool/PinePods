@@ -21,6 +21,7 @@ mod gpodder_server;
 mod in_app_notifications;
 mod task_list;
 mod library;
+mod listening_report;
 mod local_media;
 mod mobile_contract;
 mod moved_feeds;

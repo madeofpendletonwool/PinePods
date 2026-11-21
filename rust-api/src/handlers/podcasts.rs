@@ -2535,6 +2535,61 @@ pub async fn get_extended_stats(
     }
 }
 
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct ListeningReportQuery {
+    pub user_id: i32,
+    /// First day of the period (`YYYY-MM-DD`, the user's timezone). With `end`; both omitted
+    /// for all time.
+    pub start: Option<String>,
+    /// Last day of the period, inclusive.
+    pub end: Option<String>,
+}
+
+/// What the user listened to over a period or all time: totals, top podcasts, episodes,
+/// categories and people, when they listened, sessions, time saved, apps and downloads.
+#[utoipa::path(
+    get,
+    path = "/listening_report",
+    tag = "podcasts",
+    summary = "Get a listening report",
+    params(ListeningReportQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "The report", body = crate::database::ListeningReport),
+        (status = 400, description = "A malformed or one-sided period"),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Another user's report"),
+    ),
+)]
+pub async fn get_listening_report(
+    Query(query): Query<ListeningReportQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<crate::database::ListeningReport>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only get stats for your own account."));
+    }
+    let day = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| AppError::bad_request("Dates are YYYY-MM-DD"));
+    let range = match (query.start.as_deref(), query.end.as_deref()) {
+        (None, None) => None,
+        (Some(s), Some(e)) => {
+            let (s, e) = (day(s)?, day(e)?);
+            if e < s {
+                return Err(AppError::bad_request("The period ends before it starts"));
+            }
+            Some((s, e))
+        }
+        _ => return Err(AppError::bad_request("Give both start and end, or neither")),
+    };
+    Ok(Json(state.db_pool.listening_report(query.user_id, range).await?))
+}
+
 // Get PinePods version - matches Python get_pinepods_version endpoint exactly
 #[utoipa::path(
     get,
