@@ -104,6 +104,9 @@ class AppSettings {
   /// Tint episode cards with a colour pulled from the podcast artwork.
   final bool artworkAccentColors;
 
+  /// When an episode ends, start the next one in the queue.
+  final bool autoPlayQueue;
+
   /// UI language code (e.g. en, pt-BR, zh-Hans); empty follows the device.
   final String language;
 
@@ -138,6 +141,7 @@ class AppSettings {
     this.deleteDownloadsAfterDays = 0,
     this.playButtonStyle = 'ring',
     this.artworkAccentColors = true,
+    this.autoPlayQueue = true,
     this.language = '',
   });
 
@@ -172,6 +176,7 @@ class AppSettings {
         deleteDownloadsAfterDays = 0,
         playButtonStyle = 'ring',
         artworkAccentColors = true,
+        autoPlayQueue = true,
         language = '';
 
   AppSettings copyWith({
@@ -205,6 +210,7 @@ class AppSettings {
     int? deleteDownloadsAfterDays,
     String? playButtonStyle,
     bool? artworkAccentColors,
+    bool? autoPlayQueue,
     String? language,
   }) =>
       AppSettings(
@@ -238,6 +244,7 @@ class AppSettings {
         deleteDownloadsAfterDays: deleteDownloadsAfterDays ?? this.deleteDownloadsAfterDays,
         playButtonStyle: playButtonStyle ?? this.playButtonStyle,
         artworkAccentColors: artworkAccentColors ?? this.artworkAccentColors,
+        autoPlayQueue: autoPlayQueue ?? this.autoPlayQueue,
         language: language ?? this.language,
       );
 }

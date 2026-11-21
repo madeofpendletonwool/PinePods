@@ -787,6 +787,9 @@ impl TaskSpawner {
         tokio::spawn(async move {
             let _turn = BULK_TRANSCRIBE.lock().await;
             for (task_id, episode_id) in jobs {
+                if !task_manager.still_queued(&task_id).await {
+                    continue;
+                }
                 run_transcribe_task(&db_pool, task_manager.clone(), task_id, episode_id, user_id, force).await;
             }
         });

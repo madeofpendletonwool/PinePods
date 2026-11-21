@@ -186,9 +186,9 @@ pub fn ai_settings() -> Html {
             let kind = (*pull_kind).clone();
             let request = AiPullModelRequest {
                 kind: kind.clone(),
-                model: (*pull_model).clone(),
-                repo: Some((*pull_repo).clone()).filter(|s| !s.is_empty()),
-                filename: Some((*pull_filename).clone()).filter(|s| !s.is_empty()),
+                model: pull_model.trim().to_string(),
+                repo: Some(pull_repo.trim().to_string()).filter(|s| !s.is_empty()),
+                filename: Some(pull_filename.trim().to_string()).filter(|s| !s.is_empty()),
                 url: if kind == "ollama" { Some((*llm_url).clone()).filter(|s| !s.is_empty()) } else { None },
             };
             let (started, err) = (started.clone(), err.clone());

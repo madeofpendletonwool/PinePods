@@ -73,6 +73,7 @@ async fn main() -> AppResult<()> {
 
     // Initialize task management
     let task_manager = Arc::new(TaskManager::new(redis_client.clone(), db_pool.clone(), instance_id.clone()));
+    task_manager.spawn_liveness();
     let task_spawner = Arc::new(TaskSpawner::new(task_manager.clone(), db_pool.clone()));
     let websocket_manager = Arc::new(WebSocketManager::new());
     let now_playing_manager = Arc::new(handlers::nowplaying::NowPlayingManager::new());

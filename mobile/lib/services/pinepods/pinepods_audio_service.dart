@@ -17,7 +17,7 @@ import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:logging/logging.dart';
 
 /// An episode to play next, and how to play it.
-typedef _NextEpisode = ({PinepodsEpisode episode, int? playlistId, bool skipQueue});
+typedef _NextEpisode = ({PinepodsEpisode episode, int? playlistId, bool skipQueue, bool fromQueue});
 
 class PinepodsAudioService {
   final log = Logger('PinepodsAudioService');
@@ -846,6 +846,11 @@ class PinepodsAudioService {
       log.info('Nothing left to play - stopping playback');
       return false;
     }
+    // Picked before the user turned off playing the queue automatically.
+    if (next.fromQueue && !_settingsBloc.currentSettings.autoPlayQueue) {
+      log.info('Not starting the next queued episode: queue auto-play is off');
+      return false;
+    }
 
     try {
       log.info('Auto-advancing to ${next.episode.episodeTitle}');
@@ -897,7 +902,7 @@ class PinepodsAudioService {
     if (playlistId != null) {
       try {
         final next = await _pinepodsService.getNextPlaylistEpisode(episodeId, playlistId, userId);
-        if (next != null) return (episode: next, playlistId: playlistId, skipQueue: false);
+        if (next != null) return (episode: next, playlistId: playlistId, skipQueue: false, fromQueue: false);
         log.info('Playlist exhausted, continuing outside it');
       } catch (e) {
         log.fine('Could not get next playlist episode (continuing): $e');
@@ -913,7 +918,7 @@ class PinepodsAudioService {
       final autoPlayNext = await _pinepodsService.getAutoPlayNextStatus(podcastId, userId);
       if (autoPlayNext) {
         final next = await _pinepodsService.getNextPodcastEpisode(episodeId, userId);
-        if (next != null) return (episode: next, playlistId: null, skipQueue: true);
+        if (next != null) return (episode: next, playlistId: null, skipQueue: true, fromQueue: false);
         log.info('No next episode found in podcast, falling through to queue');
       }
     } catch (e) {
@@ -922,12 +927,14 @@ class PinepodsAudioService {
 
     // PRIORITY 3: Server-side queue. The backend returns it ORDER BY
     // queueposition ASC, so the first entry that isn't the finishing episode
-    // (and isn't already completed) is next.
+    // (and isn't already completed) is next. Skipped when the user turned off
+    // playing the queue automatically.
+    if (!_settingsBloc.currentSettings.autoPlayQueue) return null;
     try {
       final queued = await _pinepodsService.getQueuedEpisodes(userId);
       for (final ep in queued) {
         if (ep.episodeId != episodeId && !ep.completed) {
-          return (episode: ep, playlistId: null, skipQueue: false);
+          return (episode: ep, playlistId: null, skipQueue: false, fromQueue: true);
         }
       }
     } catch (e) {

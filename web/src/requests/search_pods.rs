@@ -791,11 +791,9 @@ pub async fn call_youtube_search(
 
         Ok(search_results)
     } else {
-        let error_text = response.status_text();
-        Err(Error::msg(format!(
-            "Error searching YouTube. Server response: {}",
-            error_text
-        )))
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(Error::msg(crate::requests::pod_req::server_error_text(status, &body)))
     }
 }
 

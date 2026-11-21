@@ -193,15 +193,19 @@ class PinepodsMediaService : MediaLibraryService() {
 
     @androidx.annotation.OptIn(UnstableApi::class)
     private fun initializePlayer() {
-        // Configure load control for better buffering (fixes rewind rebuffering issue)
+        // Keep about ten minutes of a stream buffered so playback rides out a dead zone.
+        // Loading stops at the max and only resumes below the min, so the two sit close
+        // together to stay near ten minutes ahead. Ten minutes of podcast audio is ~10 MB;
+        // the byte cap only bites on unusually high bitrates.
         val loadControl = DefaultLoadControl.Builder()
-            .setAllocator(DefaultAllocator(true, 16))
+            .setAllocator(DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE))
             .setBufferDurationsMs(
-                60_000,    // min buffer: 60s (increased from buggy 45s)
-                180_000,   // max buffer: 3min
+                540_000,   // min buffer: 9 min
+                600_000,   // max buffer: 10 min
                 2_500,     // buffer for playback start: 2.5s (Media3 default)
                 5_000      // buffer for rebuffer: 5s (Media3 default)
             )
+            .setTargetBufferBytes(48 * 1024 * 1024)
             .setBackBuffer(60_000, true)  // Keep 60s back buffer for rewind without rebuffering
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()

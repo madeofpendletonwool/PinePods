@@ -13343,6 +13343,34 @@
         ]
       }
     },
+    "/api/tasks/clear_finished": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "Clear finished tasks",
+        "description": "Removes every completed or failed task from the caller's activity list.",
+        "operationId": "clear_finished_tasks",
+        "responses": {
+          "200": {
+            "description": "Number of tasks removed",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/tasks/user/{user_id}": {
       "get": {
         "tags": [
@@ -13422,6 +13450,84 @@
           },
           "403": {
             "description": "Task does not belong to the requesting user"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/tasks/{task_id}/cancel": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "Cancel a queued task",
+        "description": "Cancels a task that is still waiting its turn, such as a queued transcription. Tasks already running can't be cancelled.",
+        "operationId": "cancel_task",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task cancelled"
+          },
+          "400": {
+            "description": "Task is not queued or can't be cancelled"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such task for this user"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/tasks/{task_id}/dismiss": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "Dismiss a finished task",
+        "description": "Removes a completed or failed task from the caller's activity list.",
+        "operationId": "dismiss_task",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task removed"
+          },
+          "400": {
+            "description": "Task is still queued or running"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such task for this user"
           }
         },
         "security": [
@@ -19779,6 +19885,13 @@
             ],
             "format": "int32",
             "description": "Total item count a grouped run is working through (for \"x of N\")."
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "API process running the task. A pending/running task whose process is gone\n(restart, crash) is failed on the next read instead of sitting there for days."
           }
         }
       },

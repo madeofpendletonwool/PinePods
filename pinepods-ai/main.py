@@ -155,6 +155,16 @@ class PullRequest(BaseModel):
     url: Optional[str] = None        # remote Ollama base URL (for 'ollama')
 
 
+_INVISIBLE = "\u200b\u200c\u200d\u2060\ufeff"
+
+
+def _clean_name(value: Optional[str]) -> Optional[str]:
+    """Drop surrounding whitespace and zero-width characters copied along with a name."""
+    if value is None:
+        return None
+    return value.strip().strip(_INVISIBLE).strip() or None
+
+
 def _check_auth(token: Optional[str]):
     if AUTH_TOKEN and token != AUTH_TOKEN:
         raise HTTPException(status_code=401, detail="Invalid AI token")
@@ -479,6 +489,10 @@ def pull_model(req: PullRequest, x_ai_token: Optional[str] = Header(default=None
     """Download a model, streaming NDJSON progress. GGUF and Ollama pulls report real
     byte-level progress; whisper pulls emit start + completion (faster-whisper gives no hook)."""
     _check_auth(x_ai_token)
+    req.model = _clean_name(req.model) or ""
+    req.repo = _clean_name(req.repo)
+    req.filename = _clean_name(req.filename)
+    req.url = _clean_name(req.url)
 
     def stream():
         try:
