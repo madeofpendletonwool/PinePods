@@ -11,7 +11,7 @@ use crate::components::episode_list_item::{DragCallbacks, EpisodeListItem};
 use crate::requests::episode::Episode;
 
 use crate::requests::pod_req::{self, PodcastResponseExtra, QueuedEpisodesResponse};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::JsCast;
 use web_sys::{window, DragEvent, HtmlElement};
 use yew::prelude::*;

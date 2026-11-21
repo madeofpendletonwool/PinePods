@@ -10,7 +10,7 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::UnifiedPodcast;
 use crate::components::app_drawer::App_drawer;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use web_sys::MouseEvent;

@@ -7,6 +7,7 @@ use crate::components::context::{
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
+use crate::components::page_cache;
 use crate::components::setting_components::nextcloud_options::SyncNoticeBanner;
 use crate::pages::routes::Route;
 use crate::requests::episode::Episode;
@@ -14,7 +15,7 @@ use crate::requests::pod_req::Playlist;
 use crate::requests::pod_req::{self};
 
 use gloo_timers::future::TimeoutFuture;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::HashSet;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
@@ -326,7 +327,8 @@ pub fn home() -> Html {
     let (home_state, home_dispatch) = use_store::<HomePageState>();
     let (playlist_state, playlist_dispatch) = use_store::<PlaylistDataState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
-    let loading = use_state(|| true);
+    // Data from an earlier visit renders straight away; the fetch below refreshes it.
+    let loading = use_state(|| home_state.home_overview.is_none());
     let history = BrowserHistory::new();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -365,6 +367,36 @@ pub fn home() -> Html {
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
+                    let cache_key = page_cache::key("home", &server_name, user_id);
+                    let network_done = std::rc::Rc::new(std::cell::Cell::new(false));
+                    if effect_dispatch.get().home_overview.is_none() {
+                        let cache_key = cache_key.clone();
+                        let network_done = network_done.clone();
+                        let loading = loading.clone();
+                        let dispatch = effect_dispatch.clone();
+                        spawn_local(async move {
+                            if let Some(cached) =
+                                page_cache::stored::<pod_req::HomeOverview>(&cache_key).await
+                            {
+                                if !network_done.get() && dispatch.get().home_overview.is_none() {
+                                    let completed: std::collections::HashSet<i32> = cached
+                                        .recent_episodes
+                                        .iter()
+                                        .chain(cached.in_progress_episodes.iter())
+                                        .chain(cached.queue_preview.iter())
+                                        .filter(|ep| ep.completed)
+                                        .map(|ep| ep.episodeid)
+                                        .collect();
+                                    Dispatch::<EpisodeStatusState>::global()
+                                        .reduce_mut(move |state| state.completed_episodes = completed);
+                                    dispatch.reduce_mut(move |state| {
+                                        state.home_overview = Some(cached);
+                                    });
+                                    loading.set(false);
+                                }
+                            }
+                        });
+                    }
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_home_overview(
                             &server_name,
@@ -406,6 +438,8 @@ pub fn home() -> Html {
                                     .map(|ep| ep.clone())
                                     .collect();
 
+                                network_done.set(true);
+                                page_cache::put(&cache_key, &home_data);
                                 effect_dispatch.reduce_mut(move |state| {
                                     state.home_overview = Some(home_data);
                                 });
@@ -421,6 +455,7 @@ pub fn home() -> Html {
                                 loading.set(false);
                             }
                             Err(e) => {
+                                network_done.set(true);
                                 web_sys::console::log_1(
                                     &format!("Error fetching home data: {:?}", e).into(),
                                 );
@@ -446,11 +481,26 @@ pub fn home() -> Html {
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
+                    let cache_key = page_cache::key("home_playlists", &server_name, user_id);
+                    if playlist_dispatch.get().playlists.is_none() {
+                        let cache_key = cache_key.clone();
+                        let dispatch = playlist_dispatch.clone();
+                        spawn_local(async move {
+                            if let Some(cached) =
+                                page_cache::stored::<Vec<Playlist>>(&cache_key).await
+                            {
+                                if dispatch.get().playlists.is_none() {
+                                    dispatch.reduce_mut(move |state| state.playlists = Some(cached));
+                                }
+                            }
+                        });
+                    }
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_playlists(&server_name, &api_key.unwrap(), user_id)
                             .await
                         {
                             Ok(playlist_response) => {
+                                page_cache::put(&cache_key, &playlist_response.playlists);
                                 playlist_dispatch.reduce_mut(move |state| {
                                     state.playlists = Some(playlist_response.playlists);
                                 });

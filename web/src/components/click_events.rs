@@ -242,3 +242,81 @@ pub fn create_on_title_click(
         });
     })
 }
+
+/// Open a subscribed podcast's page from just its id (episode cards, the episode modal).
+/// Uses the podcast list already in memory when it has the podcast, else asks the server.
+pub fn open_podcast_by_id(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    podcast_id: i32,
+    history: BrowserHistory,
+    event: MouseEvent,
+) {
+    if podcast_id <= 0 {
+        return;
+    }
+    let known = Dispatch::<PodcastFeedState>::global()
+        .get()
+        .podcast_feed_return_extra
+        .as_ref()
+        .and_then(|r| r.pods.as_ref())
+        .and_then(|pods| pods.iter().find(|p| p.podcastid == podcast_id).cloned());
+    if let Some(p) = known {
+        let categories = p
+            .categories
+            .as_ref()
+            .map(|c| c.values().cloned().collect::<Vec<_>>().join(", "));
+        create_on_title_click(
+            server_name,
+            Some(Some(api_key)),
+            &history,
+            p.podcastid,
+            p.podcastindexid,
+            p.podcastname,
+            p.feedurl,
+            p.description.unwrap_or_default(),
+            p.author.unwrap_or_default(),
+            p.artworkurl.unwrap_or_default(),
+            p.explicit,
+            p.episodecount.unwrap_or(0),
+            categories,
+            p.websiteurl.unwrap_or_default(),
+            user_id,
+            p.is_youtube,
+        )
+        .emit(event);
+        return;
+    }
+    wasm_bindgen_futures::spawn_local(async move {
+        match crate::requests::pod_req::call_get_podcast_details(
+            &server_name,
+            &api_key,
+            user_id,
+            podcast_id,
+        )
+        .await
+        {
+            Ok(d) => create_on_title_click(
+                server_name,
+                Some(Some(api_key)),
+                &history,
+                d.podcastid,
+                d.podcastindexid,
+                d.podcastname,
+                d.feedurl,
+                d.description,
+                d.author,
+                d.artworkurl,
+                d.explicit,
+                d.episodecount,
+                Some(d.categories.values().cloned().collect::<Vec<_>>().join(", ")),
+                d.websiteurl,
+                user_id,
+                d.is_youtube,
+            )
+            .emit(event),
+            Err(e) => web_sys::console::log_1(&format!("Error opening podcast: {:?}", e).into()),
+        }
+    });
+}

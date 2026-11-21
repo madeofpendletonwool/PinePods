@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SetPlaybackSpeedRequest {

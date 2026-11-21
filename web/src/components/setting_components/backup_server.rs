@@ -4,7 +4,7 @@ use crate::requests::setting_reqs::{
     call_backup_server, call_delete_backup_file, call_get_scheduled_backup,
     call_list_backup_files, call_manual_backup_to_directory, call_schedule_backup,
 };
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use web_sys::{window, Blob, BlobPropertyBag, HtmlSelectElement, Url};

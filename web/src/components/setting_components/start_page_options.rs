@@ -6,7 +6,7 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::{HtmlSelectElement, HtmlInputElement};
 use yew::prelude::*;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 
 #[function_component(StartPageOptions)]
 pub fn startpage() -> Html {

@@ -6,7 +6,7 @@
 
 use crate::components::context::UIState;
 use gloo::events::{EventListener, EventListenerOptions, EventListenerPhase};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;

@@ -11,7 +11,7 @@ use crate::requests::pod_req::{
     call_remove_podcasts, call_toggle_podcast_favorite, PodcastResponseExtra, RemovePodcastValues,
 };
 use crate::requests::setting_reqs::{call_add_custom_feed, call_get_podcast_count_display};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -451,12 +451,32 @@ pub fn podcasts() -> Html {
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
                     let _dispatch = effect_dispatch.clone();
+                    let cache_key = crate::components::page_cache::key("podcasts", &server_name, user_id);
+                    let network_done = std::rc::Rc::new(std::cell::Cell::new(false));
+                    if Dispatch::<PodcastFeedState>::global().get().podcast_feed_return_extra.is_none() {
+                        let cache_key = cache_key.clone();
+                        let network_done = network_done.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let cached = crate::components::page_cache::stored::<Vec<PodcastExtra>>(&cache_key).await;
+                            if let Some(pods) = cached {
+                                let dispatch = Dispatch::<PodcastFeedState>::global();
+                                if !network_done.get() && dispatch.get().podcast_feed_return_extra.is_none() {
+                                    dispatch.reduce_mut(move |state| {
+                                        state.podcast_feed_return_extra =
+                                            Some(PodcastResponseExtra { pods: Some(pods) });
+                                    });
+                                }
+                            }
+                        });
+                    }
 
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_podcasts_extra(&server_name, &api_key, &user_id)
                             .await
                         {
                             Ok(fetched_podcasts) => {
+                                network_done.set(true);
+                                crate::components::page_cache::put(&cache_key, &fetched_podcasts);
                                 let fetch_casts = fetched_podcasts.clone();
                                 Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                                     state.podcast_feed_return_extra = Some(PodcastResponseExtra {

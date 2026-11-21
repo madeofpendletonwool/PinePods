@@ -11,7 +11,7 @@ use crate::requests::pod_req::RefreshProgress;
 use crate::requests::task_reqs::{init_task_monitoring, parse_rfc3339_ms};
 use gloo_timers::callback::Interval;
 use gloo_timers::callback::Timeout;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::wasm_bindgen;

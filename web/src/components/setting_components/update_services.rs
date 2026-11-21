@@ -3,7 +3,7 @@
 
 use crate::components::context::{AppState, NotificationState};
 use crate::requests::setting_reqs::{call_get_update_services, call_set_podping, UpdateServices};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;

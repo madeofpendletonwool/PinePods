@@ -10,7 +10,7 @@ use crate::requests::discover_req::{
 };
 use crate::requests::people_req::{self, DiscoverHost, DiscoverPodcast, DiscoverStats};
 use crate::requests::search_pods::UnifiedPodcast;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};

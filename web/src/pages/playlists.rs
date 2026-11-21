@@ -6,7 +6,7 @@ use crate::components::context::{AppState, NotificationState, PlaylistDataState,
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{self, CreatePlaylistRequest, Playlist, Podcast};
 use gloo_events::EventListener;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::HashSet;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlElement, HtmlInputElement};

@@ -4,7 +4,7 @@ use crate::requests::setting_reqs::{
     call_get_theme, call_set_theme, call_get_custom_themes, call_delete_custom_theme,
     CustomTheme, DeleteCustomThemeRequest, SetThemeRequest,
 };
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
@@ -1096,5 +1096,32 @@ pub fn initialize_default_theme() {
                 }
             }
         }
+    }
+}
+
+/// Per-browser toggle for tinting episode cards with their artwork's colours.
+#[function_component(ArtAccentOption)]
+pub fn art_accent_option() -> Html {
+    use crate::components::art_accent::CardAppearance;
+    let (i18n, _) = use_translation();
+    let enabled = *yewdux::prelude::use_selector(|s: &CardAppearance| s.art_accents);
+    let on_change = Callback::from(move |e: Event| {
+        if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+            CardAppearance::set_art_accents(input.checked());
+        }
+    });
+    html! {
+        <div class="settings-row">
+            <div>
+                <div class="settings-row-label">{ i18n.t("theme_options.art_accents") }</div>
+                <div class="settings-row-desc">{ i18n.t("theme_options.art_accents_description") }</div>
+            </div>
+            <div class="settings-row-control">
+                <label class="toggle">
+                    <input type="checkbox" checked={enabled} onchange={on_change} />
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
+            </div>
+        </div>
     }
 }

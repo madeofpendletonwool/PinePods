@@ -22,12 +22,15 @@ pub(crate) mod virtual_list;
 pub(crate) mod youtube_video_filter;
 
 pub(crate) mod audio;
+pub(crate) mod art_accent;
+pub(crate) mod page_cache;
 pub(crate) mod click_events;
 pub(crate) mod queue_panel;
 pub(crate) mod queue_manage_modal;
 pub(crate) mod context;
 pub(crate) mod desc_impl;
 pub(crate) mod gen_components;
+pub(crate) mod i18n;
 pub mod gen_funcs;
 // #[cfg(feature = "server_build")]
 // pub(crate) mod login;

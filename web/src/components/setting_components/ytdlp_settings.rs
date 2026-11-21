@@ -11,7 +11,7 @@ use crate::requests::pod_req::{
     call_get_ytdlp_settings, call_trigger_ytdlp_update, call_update_ytdlp_settings,
     YtDlpSettingsUpdate,
 };
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use web_sys::HtmlSelectElement;
 use yew::prelude::*;
 use yewdux::prelude::*;

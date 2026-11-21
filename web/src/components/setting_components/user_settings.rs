@@ -14,7 +14,7 @@ use web_sys::console;
 use yew::platform::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 // use crate::gen_components::_ErrorMessageProps::error_message;
 
 #[function_component(UserSettings)]

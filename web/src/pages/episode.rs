@@ -27,7 +27,7 @@ use crate::requests::pod_req::{
     AdSegmentReviewRequest,
 };
 use crate::requests::search_pods::{call_get_podcast_details_dynamic, call_parse_podcast_url};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use regex::Regex;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -1589,6 +1589,13 @@ pub fn epsiode() -> Html {
     }
 
     let page_state = use_state(|| PageState::Loading);
+    // Artwork colour for the whole page (play button, tabs, chapters, progress follow it).
+    let page_art = match &*page_state {
+        PageState::Ok(e) if !e.episodeartwork.is_empty() => e.episodeartwork.clone(),
+        PageState::Ok(e) => e.artworkurl.clone(),
+        _ => String::new(),
+    };
+    let page_accent = crate::components::art_accent::use_art_accent(&page_art);
 
     {
         let audio_dispatch = audio_dispatch.clone();
@@ -2193,7 +2200,10 @@ pub fn epsiode() -> Html {
     let page_state = page_state.clone();
     html! {
         <>
-        <div class="main-container">
+        <div
+            class={classes!("main-container", page_accent.is_some().then_some("art-scope"))}
+            style={crate::components::art_accent::accent_style(&page_accent)}
+        >
             <Search_nav />
             <UseScrollToTop />
             {
@@ -2882,6 +2892,11 @@ pub fn epsiode() -> Html {
                                 <div class="episode-layout-container">
                                     // ===== HERO =====
                                     <div class="ep-hero">
+                                        <div
+                                            class="ep-hero-backdrop"
+                                            style={format!("background-image: url('{}');", crate::components::art_accent::css_url_escape(if episode.episodeartwork.is_empty() { &episode.artworkurl } else { &episode.episodeartwork }))}
+                                        ></div>
+                                        <div class="ep-hero-scrim"></div>
                                         <div class="ep-hero-cover" onclick={on_title_click.clone()} title={episode.podcastname.clone()}>
                                             <FallbackImage
                                                 src={episode.episodeartwork.clone()}

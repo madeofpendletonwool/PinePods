@@ -139,6 +139,40 @@ pub fn sanitize_html_with_blank_target(html: &str) -> String {
     builder.clean(html).to_string()
 }
 
+/// A card's description: sanitized like [`sanitize_html_with_blank_target`] with images
+/// dropped, cached so a card scrolled back into view doesn't sanitize it again.
+pub fn card_description(html: &str) -> std::rc::Rc<str> {
+    use std::cell::RefCell;
+    use std::hash::{Hash, Hasher};
+    thread_local! {
+        static CACHE: RefCell<HashMap<u64, std::rc::Rc<str>>> = RefCell::new(HashMap::new());
+    }
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    html.hash(&mut hasher);
+    let key = hasher.finish();
+    if let Some(hit) = CACHE.with(|c| c.borrow().get(&key).cloned()) {
+        return hit;
+    }
+    let mut attribute_values = HashMap::new();
+    attribute_values.insert("target", "_blank");
+    let mut tag_attribute_values = HashMap::new();
+    tag_attribute_values.insert("a", attribute_values);
+    let mut builder = Builder::default();
+    builder.add_tags(&["a"]);
+    builder.add_tag_attributes("a", &["href", "target"]);
+    builder.set_tag_attribute_values(tag_attribute_values);
+    builder.rm_tags(&["img"]);
+    let clean: std::rc::Rc<str> = builder.clean(html).to_string().into();
+    CACHE.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.len() >= 2000 {
+            c.clear();
+        }
+        c.insert(key, clean.clone());
+    });
+    clean
+}
+
 pub fn encode_password(password: &str) -> Result<String, argon2::password_hash::Error> {
     // Argon2id with default params; the salt is generated internally via getrandom.
     let password_hash: argon2::PasswordHash = Argon2::default().hash_password(password.as_bytes())?;

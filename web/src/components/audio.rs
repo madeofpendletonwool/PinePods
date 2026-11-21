@@ -24,7 +24,7 @@ use crate::requests::pod_req::{
     QueuePodcastRequest, UpdateEpisodeDurationRequest,
 };
 use gloo_timers::callback::Interval;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::cell::Cell;
 #[cfg(not(feature = "server_build"))]
 use std::path::Path;

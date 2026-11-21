@@ -6,7 +6,7 @@ use crate::requests::setting_reqs::{
     call_update_podcast_index_id, UnmatchedPodcast,
 };
 use gloo_events::EventListener;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlElement;

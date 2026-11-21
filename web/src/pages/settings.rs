@@ -5,7 +5,7 @@ use crate::components::setting_components;
 use crate::requests::setting_reqs::call_user_admin_check;
 use crate::components::app_drawer::App_drawer;
 use crate::components::gen_components::{Search_nav, UseScrollToTop};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use yew::prelude::*;
 use yew_router::hooks::use_location;
 use yewdux::prelude::*;
@@ -245,6 +245,7 @@ pub fn settings() -> Html {
                                 </div>
                                 <div class="settings-section-body">
                                     <setting_components::theme_options::ThemeOptions refresh_trigger={*custom_themes_trigger} />
+                                    <div class="px-6 pb-4"><setting_components::theme_options::ArtAccentOption /></div>
                                 </div>
                             </div>
                             <div class="settings-section">

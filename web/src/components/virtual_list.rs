@@ -142,12 +142,40 @@ fn read_viewport_height(source: &ScrollSource) -> f64 {
     }
 }
 
+/// Cards moved per re-render while scrolling. The window snaps to multiples of this, so the
+/// list re-renders once every `CHUNK` cards instead of on every frame.
+const CHUNK: usize = 4;
+
+/// The `(start, end)` card range to render for a scroll position.
+fn visible_window(scroll: f64, item_h: f64, viewport_h: f64, total: usize, buffer: usize) -> (usize, usize) {
+    let first = (scroll / item_h).floor().max(0.0) as usize;
+    let last = ((scroll + viewport_h) / item_h).ceil().max(0.0) as usize;
+    let start = (first.saturating_sub(buffer) / CHUNK) * CHUNK;
+    let end = ((last + buffer + CHUNK - 1) / CHUNK) * CHUNK;
+    let end = end.min(total).max(start.min(total));
+    (start.min(end), end)
+}
+
 #[function_component(VirtualList)]
 pub fn virtual_list(props: &VirtualListProps) -> Html {
-    let scroll_top = use_state(|| 0.0_f64);
+    // The scroll position is read every frame but only re-renders the list when the visible
+    // window of cards changes (`window_key`). Re-rendering per frame re-cloned and re-diffed
+    // every visible card's props for no visible change.
+    let scroll_top = use_mut_ref(|| 0.0_f64);
+    let window_key = use_state(|| (0usize, 0usize));
     let viewport_height = use_state(|| 0.0_f64);
     let item_height = use_state(|| 138.0_f64);
     let root_ref = use_node_ref();
+    // Latest layout inputs, for the scroll callback (which outlives any one render).
+    let layout = use_mut_ref(|| (138.0_f64, 0.0_f64, 0usize, 3usize));
+    // The range the last render showed, so the scroll callback only re-renders on a change.
+    let last_key = use_mut_ref(|| (usize::MAX, usize::MAX));
+    *layout.borrow_mut() = (
+        (*item_height).max(1.0),
+        *viewport_height,
+        props.episodes.len(),
+        props.buffer_items,
+    );
 
     // Mount + resize: measure viewport height and item height. The first render uses the
     // initial state defaults; this effect fires after the first paint and triggers a re-render
@@ -194,6 +222,9 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
     // re-firing within the same frame; RAF coalescing solves it directly.
     {
         let scroll_top = scroll_top.clone();
+        let window_key = window_key.clone();
+        let layout = layout.clone();
+        let last_key = last_key.clone();
         let scroll_source = props.scroll_source.clone();
         let root_ref = root_ref.clone();
         use_effect_with(
@@ -204,6 +235,9 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
 
                 let on_scroll: Rc<dyn Fn()> = {
                     let scroll_top = scroll_top.clone();
+                    let window_key = window_key.clone();
+                    let layout = layout.clone();
+                    let last_key = last_key.clone();
                     let scroll_source = scroll_source.clone();
                     let root_ref = root_ref.clone();
                     let raf_scheduled = raf_scheduled.clone();
@@ -214,12 +248,22 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
                         }
                         *raf_scheduled.borrow_mut() = true;
                         let scroll_top = scroll_top.clone();
+                        let window_key = window_key.clone();
+                        let layout = layout.clone();
+                        let last_key = last_key.clone();
                         let scroll_source = scroll_source.clone();
                         let root_ref = root_ref.clone();
                         let raf_scheduled = raf_scheduled.clone();
                         let cb = Closure::once_into_js(move || {
                             *raf_scheduled.borrow_mut() = false;
-                            scroll_top.set(read_scroll_position(&scroll_source, &root_ref));
+                            let pos = read_scroll_position(&scroll_source, &root_ref);
+                            *scroll_top.borrow_mut() = pos;
+                            let (item_h, viewport_h, total, buffer) = *layout.borrow();
+                            let key = visible_window(pos, item_h, viewport_h, total, buffer);
+                            if key != *last_key.borrow() {
+                                *last_key.borrow_mut() = key;
+                                window_key.set(key);
+                            }
                         });
                         let _ = win.request_animation_frame(cb.as_ref().unchecked_ref());
                     })
@@ -289,13 +333,15 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
 
     let item_h = (*item_height).max(1.0);
     let total = props.episodes.len();
-    let buffer = props.buffer_items;
-
-    let start_unbuffered = (*scroll_top / item_h).floor().max(0.0) as usize;
-    let start = start_unbuffered.saturating_sub(buffer);
-    let end_unbuffered =
-        ((*scroll_top + *viewport_height) / item_h).ceil().max(0.0) as usize + buffer;
-    let end = end_unbuffered.min(total).max(start);
+    let _ = *window_key;
+    let (start, end) = visible_window(
+        *scroll_top.borrow(),
+        item_h,
+        *viewport_height,
+        total,
+        props.buffer_items,
+    );
+    *last_key.borrow_mut() = (start, end);
 
     let top_h = (start as f64) * item_h;
     let bot_h = ((total - end) as f64) * item_h;

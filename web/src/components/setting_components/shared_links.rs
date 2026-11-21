@@ -3,7 +3,7 @@ use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_delete_shared_link, call_extend_shared_link, call_get_user_shared_links, SharedLink,
 };
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::JsCast;
 use yew::prelude::*;
 use yewdux::prelude::*;

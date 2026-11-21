@@ -5383,7 +5383,7 @@ pub async fn call_update_episode_duration(
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct HomePodcast {
     pub podcastid: i32,
     pub podcastname: String,
@@ -5401,13 +5401,13 @@ pub struct HomePodcast {
     pub total_listen_time: Option<i32>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 pub struct WeeklyStats {
     pub seconds_listened: i64,
     pub episodes_completed: i32,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct HomeOverview {
     pub recent_episodes: Vec<Episode>,
     pub in_progress_episodes: Vec<Episode>,
@@ -5477,13 +5477,13 @@ pub async fn call_get_home_overview(
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct PlaylistEpisode {
     pub title: String,
     pub artwork: String,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Playlist {
     pub playlist_id: i32,
     pub user_id: i32,

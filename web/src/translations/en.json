@@ -436,7 +436,14 @@
   },
   "failed_to_find_podcast_metadata": "Failed to find podcast's metadata.",
   "episode_list_item": {
-    "completed": "Completed"
+    "completed": "Completed",
+    "time_left": "{time} left",
+    "play": "Play",
+    "pause": "Pause",
+    "resume": "Resume",
+    "saved": "Saved",
+    "queued": "Queued",
+    "downloaded": "Downloaded"
   },
   "episodes_layout": {
     "transcribe": "Transcribe",
@@ -668,7 +675,10 @@
     "username": "Username",
     "valid_email_required": "Please enter a valid email address",
     "welcome_to_pinepods": "Welcome to Pinepods",
-    "youtube": "YouTube"
+    "youtube": "YouTube",
+    "close": "Close",
+    "copy_link": "Copy link",
+    "link_copied": "Copied"
   },
   "history": {
     "history": "History",
@@ -1747,7 +1757,9 @@
   },
   "theme_options": {
     "my_themes": "My Themes",
-    "show_fewer": "Show Fewer"
+    "show_fewer": "Show Fewer",
+    "art_accents": "Artwork colours",
+    "art_accents_description": "Tint episode cards (play button, podcast name, progress) with colours from each episode's artwork. Saved in this browser."
   },
   "youtube_layout": {
     "channel_thumbnail": "channel thumbnail",

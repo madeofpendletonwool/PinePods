@@ -1,5 +1,5 @@
 use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigationState, EpisodeStatusState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::format_time;
@@ -945,6 +945,32 @@ pub struct EpisodeModalProps {
     pub listen_duration_percentage: i32,
     pub is_youtube: bool,
     pub is_video: bool,
+    #[prop_or_default]
+    pub podcast_name: Option<String>,
+    #[prop_or_default]
+    pub on_podcast_click: Option<Callback<MouseEvent>>,
+    /// Shows a Play / Resume / Pause button when set.
+    #[prop_or_default]
+    pub on_play: Option<Callback<MouseEvent>>,
+    #[prop_or_default]
+    pub is_playing: bool,
+    #[prop_or_default]
+    pub is_loading: bool,
+    #[prop_or_default]
+    pub is_completed: bool,
+    /// "23m left", when the episode is partly played.
+    #[prop_or_default]
+    pub remaining: Option<String>,
+    /// Artwork accent as "r g b".
+    #[prop_or_default]
+    pub accent: Option<String>,
+    /// The full episode, for the "more" menu.
+    #[prop_or_default]
+    pub episode: Option<crate::requests::episode::Episode>,
+    #[prop_or(crate::components::context_menu_button::PageType::Default)]
+    pub page_type: crate::components::context_menu_button::PageType,
+    #[prop_or_default]
+    pub on_episode_removed: Callback<i32>,
 }
 
 #[function_component(EpisodeModal)]
@@ -961,35 +987,156 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
             }
         })
     };
+
+    // Escape closes; the page behind doesn't scroll while the modal is open.
+    {
+        let on_close = props.on_close.clone();
+        use_effect_with((), move |_| {
+            let document = web_sys::window().and_then(|w| w.document());
+            let listener = document.as_ref().map(|doc| {
+                gloo_events::EventListener::new(doc, "keydown", move |event| {
+                    if let Some(key) = event.dyn_ref::<web_sys::KeyboardEvent>() {
+                        if key.key() == "Escape" {
+                            if let Ok(click) = MouseEvent::new("click") {
+                                on_close.emit(click);
+                            }
+                        }
+                    }
+                })
+            });
+            let body = document.and_then(|d| d.body());
+            if let Some(body) = &body {
+                let _ = body.class_list().add_1("ep-modal-open");
+            }
+            move || {
+                drop(listener);
+                if let Some(body) = body {
+                    let _ = body.class_list().remove_1("ep-modal-open");
+                }
+            }
+        });
+    }
+
+    let copied = use_state(|| false);
+    let on_copy_link = {
+        let copied = copied.clone();
+        let episode_id = props.episode_id;
+        let is_youtube = props.is_youtube;
+        Callback::from(move |_: MouseEvent| {
+            let Some(window) = web_sys::window() else { return };
+            let origin = window.location().origin().unwrap_or_default();
+            let link = if is_youtube {
+                format!("{}/episode?episode_id={}&youtube=true", origin, episode_id)
+            } else {
+                format!("{}/episode?episode_id={}", origin, episode_id)
+            };
+            let _ = window.navigator().clipboard().write_text(&link);
+            copied.set(true);
+        })
+    };
+
     let formatted_duration = format_time(props.duration.into());
+    let style = props
+        .accent
+        .as_ref()
+        .map(|c| format!("--art-rgb: {c};"))
+        .unwrap_or_default();
+    let play_label = if props.is_playing {
+        i18n.t("episode_list_item.pause").to_string()
+    } else if props.remaining.is_some() {
+        i18n.t("episode_list_item.resume").to_string()
+    } else {
+        i18n.t("episode_list_item.play").to_string()
+    };
+    let has_page = props.episode_id > 0;
 
     html! {
-        <div class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        <div class="modal-overlay ep-modal-overlay fixed inset-0 flex items-center justify-center z-50"
              onclick={onclick_outside}>
-            <div class="bg-custom-light dark:bg-custom-dark w-11/12 max-w-2xl rounded-lg shadow-xl max-h-[90vh] flex flex-col">
-                // Header with artwork and title - fixed at top
-                <div class="flex items-start space-x-4 p-6 border-b border-custom-border">
+            <div
+                class={classes!("ep-modal", props.accent.is_some().then_some("ep-modal--art"))}
+                style={style}
+                role="dialog"
+                aria-modal="true"
+                aria-label={props.episode_title.clone()}
+            >
+                <div class="ep-modal-hero">
                     <FallbackImage
                         src={props.episode_artwork.clone()}
                         fallback={DEFAULT_EPISODE_ART}
                         alt="Episode artwork"
-                        class="w-32 h-32 rounded-lg object-cover flex-shrink-0"
+                        class="ep-modal-art"
                     />
-                    <div class="flex-1 min-w-0"> // min-w-0 helps with text truncation
-                        <h2 class="text-xl font-bold mb-2 item_container-text truncate">
-                            {props.episode_title.clone()}
-                        </h2>
-                        <p class="item_container-text text-sm">
-                            {props.format_release.clone()}
-                        </p>
+                    <div class="ep-modal-heading">
+                        if let Some(name) = props.podcast_name.clone() {
+                            if let Some(on_podcast) = props.on_podcast_click.clone() {
+                                <button class="ep-modal-podcast" onclick={on_podcast}>{ name }</button>
+                            } else {
+                                <span class="ep-modal-podcast">{ name }</span>
+                            }
+                        }
+                        <h2 class="ep-modal-title">{ props.episode_title.clone() }</h2>
+                        <div class="ep-modal-meta">
+                            <span>{ props.format_release.clone() }</span>
+                            <span class="ep-meta-sep">{ "\u{00B7}" }</span>
+                            <span>{ formatted_duration.clone() }</span>
+                            if props.is_completed {
+                                <span class="ep-meta-sep">{ "\u{00B7}" }</span>
+                                <span class="ep-meta-played"><i class="ph ph-check"></i>{ " " }{ i18n.t("episode_list_item.completed") }</span>
+                            } else if let Some(left) = props.remaining.clone() {
+                                <span class="ep-meta-sep">{ "\u{00B7}" }</span>
+                                <span class="ep-meta-left">{ left }</span>
+                            }
+                        </div>
                     </div>
-                    <button onclick={props.on_close.clone()} class="hover:opacity-75 flex-shrink-0 item_container-text">
-                        <i class="ph ph-arrow-u-left-down text-2xl"></i>
+                    <button onclick={props.on_close.clone()} class="ep-modal-close" aria-label={i18n.t("gen_components.close").to_string()}>
+                        <i class="ph ph-x"></i>
                     </button>
                 </div>
 
-                // Description - scrollable section
-                <div class="flex-1 p-6 overflow-y-auto">
+                <div class="ep-modal-actions">
+                    if let Some(on_play) = props.on_play.clone() {
+                        <button class="ep-modal-play" onclick={on_play}>
+                            if props.is_loading {
+                                <i class="ph ph-spinner" style="animation: spin 1s linear infinite;"></i>
+                            } else if props.is_playing {
+                                <i class="ph ph-pause"></i>
+                            } else {
+                                <i class="ph ph-play"></i>
+                            }
+                            <span>{ play_label }</span>
+                        </button>
+                    }
+                    if has_page {
+                        <button class="ep-modal-btn" onclick={props.on_show_notes.clone()}>
+                            <i class="ph ph-article"></i>
+                            <span>{ &i18n_go_to_episode_page }</span>
+                        </button>
+                        <button class="ep-modal-btn" onclick={on_copy_link} title={i18n.t("gen_components.copy_link").to_string()}>
+                            <i class={if *copied { "ph ph-check" } else { "ph ph-link" }}></i>
+                            <span class="ep-modal-btn-label">
+                                { if *copied { i18n.t("gen_components.link_copied") } else { i18n.t("gen_components.copy_link") } }
+                            </span>
+                        </button>
+                    }
+                    if let Some(episode) = props.episode.clone() {
+                        <div class="ep-modal-more">
+                            <crate::components::context_menu_button::ContextMenuButton
+                                episode={episode}
+                                page_type={props.page_type.clone()}
+                                on_episode_removed={props.on_episode_removed.clone()}
+                            />
+                        </div>
+                    }
+                </div>
+
+                if props.listen_duration_percentage > 0 && !props.is_completed {
+                    <div class="ep-modal-progress">
+                        <div style={format!("width: {}%;", props.listen_duration_percentage.min(100))}></div>
+                    </div>
+                }
+
+                <div class="ep-modal-body">
                     <div class="prose dark:prose-invert item_container-text max-w-none">
                         <div class="links-custom episode-description-container">
                             <SafeHtml
@@ -1006,21 +1153,6 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                             />
                         </div>
                     </div>
-                </div>
-
-                // Footer - fixed at bottom
-                <div class="flex justify-between items-center p-6 border-t border-custom-border mt-auto">
-                    <div class="flex items-center space-x-2">
-                        <span class="item_container-text">{formatted_duration.clone()}</span>
-                        <div class="progress-bar-container">
-                            <div class="progress-bar"
-                                 style={format!("width: {}%;", props.listen_duration_percentage)} />
-                        </div>
-                    </div>
-                    <button onclick={props.on_show_notes.clone()}
-                            class="bg-custom-primary hover:opacity-75 text-white px-4 py-2 rounded-lg">
-                        { &i18n_go_to_episode_page }
-                    </button>
                 </div>
             </div>
         </div>

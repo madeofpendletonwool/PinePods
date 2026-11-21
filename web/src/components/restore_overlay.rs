@@ -1,5 +1,5 @@
 use crate::requests::setting_reqs::call_restore_status;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use yew::prelude::*;
 
 /// Global overlay that shows a full-page "restore in progress" screen while a server

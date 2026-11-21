@@ -7,7 +7,7 @@ use crate::requests::pod_req::{
     ReorderQueueItem,
     QueuedEpisodesResponse,
 };
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{HtmlInputElement, MouseEvent};

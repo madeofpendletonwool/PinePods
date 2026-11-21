@@ -112,6 +112,9 @@ pub struct EpisodeListViewProps {
     /// Whether the active collection tab is the pinned default Saved bucket.
     #[prop_or(false)]
     pub active_collection_is_default: bool,
+    /// Show each card's podcast name (off when every card is from the same podcast).
+    #[prop_or(true)]
+    pub show_podcast: bool,
 }
 
 // Mirror of the latest props that the IntersectionObserver callback needs to read on every
@@ -223,6 +226,7 @@ pub fn episode_list_view(props: &EpisodeListViewProps) -> Html {
         let on_episode_removed = props.on_episode_removed.clone();
         let active_collection_id = props.active_collection_id;
         let active_collection_is_default = props.active_collection_is_default;
+        let show_podcast = props.show_podcast;
         use_callback(
             (
                 props.page_type.clone(),
@@ -234,6 +238,7 @@ pub fn episode_list_view(props: &EpisodeListViewProps) -> Html {
                 props.on_episode_removed.clone(),
                 props.active_collection_id,
                 props.active_collection_is_default,
+                props.show_podcast,
             ),
             move |(ep, _i): (Episode, usize), _| {
                 let ep_id = ep.episodeid;
@@ -254,6 +259,7 @@ pub fn episode_list_view(props: &EpisodeListViewProps) -> Html {
                         on_episode_removed={on_episode_removed.clone()}
                         active_collection_id={active_collection_id}
                         active_collection_is_default={active_collection_is_default}
+                        show_podcast={show_podcast}
                     />
                 }
             },

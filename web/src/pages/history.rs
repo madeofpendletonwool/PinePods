@@ -10,7 +10,7 @@ use crate::components::loading::Loading;
 use crate::requests::episode::Episode;
 use crate::requests::pod_req;
 use gloo_timers::future::TimeoutFuture;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::rc::Rc;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
