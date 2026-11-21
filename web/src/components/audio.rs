@@ -609,6 +609,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             } else if let Some(audio_element) = live_state.audio_element.as_ref() {
                                 audio_element.set_current_time(seg.end_time);
                             }
+                            let kind = if seg.kind == "ad" {
+                                crate::components::progress::Skipped::Ad
+                            } else {
+                                crate::components::progress::Skipped::Silence
+                            };
+                            crate::components::progress::skipped(kind, seg.end_time - time_in_seconds);
                         }
                     }
 

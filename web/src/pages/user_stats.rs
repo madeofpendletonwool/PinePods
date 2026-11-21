@@ -220,6 +220,18 @@ fn panel(props: &PanelProps) -> Html {
     }
 }
 
+/// Time saved by speed and skipping, once there is any.
+fn saved_tile(ext: &ExtendedUserStats, t: &dyn Fn(&str) -> String) -> Html {
+    let Some(saved) = ext.time_saved.as_ref() else { return Html::default() };
+    let skipped = saved.silence.max(0) + saved.ads.max(0);
+    let total = saved.speed.max(0) + skipped;
+    if total < 60 {
+        return Html::default();
+    }
+    let sub = t("time_saved_detail").replace("{speed}", &fmt_secs(saved.speed.max(0))).replace("{skipped}", &fmt_secs(skipped));
+    html! { <Tile icon="ph-lightning" value={fmt_total(total)} label={t("time_saved")} sub={Some(sub)} /> }
+}
+
 fn insights(ext: &ExtendedUserStats, i18n: &crate::components::i18n::Translations) -> Html {
     let t = |k: &str| i18n.t(&format!("user_stats.{k}")).to_string();
     let today = today_in(ext.timezone.as_deref());
@@ -271,6 +283,7 @@ fn insights(ext: &ExtendedUserStats, i18n: &crate::components::i18n::Translation
                 }
                 <Tile icon="ph-hourglass-medium" value={fmt_total(ext.backlog_seconds)} label={t("backlog")}
                       sub={Some(t("backlog_episodes").replace("{count}", &group(ext.backlog_episodes)))} />
+                { saved_tile(ext, &t) }
             </div>
 
             if has_activity {

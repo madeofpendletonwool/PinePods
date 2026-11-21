@@ -133,6 +133,10 @@ async fn upgrading_merges_the_copies_and_old_ids_keep_working() {
             r#"INSERT INTO "GpodderSyncEpisodeActions" (UserID, PodcastURL, EpisodeURL, Action, Timestamp, ServerTs, EpisodeID)
                VALUES ({uid_b}, '{url}', 'https://cdn.example.invalid/audio/ep1.mp3', 'play', 1700000000, 1, {c1})"#
         ),
+        // Listening logged on the copy and on the original in the same hour.
+        format!(r#"INSERT INTO "ListeningLog" (UserID, ListenDay, ListenHour, ItemKind, ItemID, Client, Seconds, SpeedSaved) VALUES ({uid_b}, '2026-03-02', 10, 0, {c1}, 'web', 120, 10)"#),
+        format!(r#"INSERT INTO "ListeningLog" (UserID, ListenDay, ListenHour, ItemKind, ItemID, Client, Seconds, SpeedSaved) VALUES ({uid_b}, '2026-03-02', 10, 0, {e1}, 'web', 30, 0)"#),
+        format!(r#"INSERT INTO "ListeningLogItems" (UserID, ItemKind, ItemID, PodcastName, ItemTitle) VALUES ({uid_b}, 0, {c1}, 'Show', 'Episode 1')"#),
     ] {
         exec(&app, &sql).await;
     }
@@ -157,6 +161,10 @@ async fn upgrading_merges_the_copies_and_old_ids_keep_working() {
     assert_eq!(count(&app, format!(r#"SELECT COUNT(*) FROM "EpisodeQueue" WHERE UserID = {uid_b} AND EpisodeID = {e2}"#)).await, 1);
     assert_eq!(count(&app, format!(r#"SELECT COUNT(*) FROM "EpisodeSkipSegments" WHERE EpisodeID = {e1}"#)).await, 1);
     assert_eq!(count(&app, format!(r#"SELECT COUNT(*) FROM "GpodderSyncEpisodeActions" WHERE UserID = {uid_b} AND EpisodeID = {e1}"#)).await, 1, "the sync log follows");
+    let logged = format!(r#"SELECT CAST(SUM(Seconds) * 1000 + SUM(SpeedSaved) AS INTEGER) FROM "ListeningLog" WHERE UserID = {uid_b} AND ItemID = {e1}"#);
+    assert_eq!(count(&app, logged).await, 150_010, "the listening log is folded into the episode");
+    assert_eq!(count(&app, format!(r#"SELECT COUNT(*) FROM "ListeningLog" WHERE ItemID = {c1}"#)).await, 0);
+    assert_eq!(count(&app, format!(r#"SELECT COUNT(*) FROM "ListeningLogItems" WHERE UserID = {uid_b} AND ItemID = {e1}"#)).await, 1);
 
     let bobs = app.episodes(&bob, b).await;
     assert_eq!(bobs.len(), 2, "{bobs:#?}");

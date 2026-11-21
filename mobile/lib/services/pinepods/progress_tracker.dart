@@ -21,6 +21,14 @@ class ProgressUpdate {
   /// The episode played to its end.
   final bool finished;
 
+  /// Of [listened]: episode seconds gained by playing faster than 1x
+  /// (negative when slower).
+  final double speedSaved;
+
+  /// Seconds of silence and of ads the player skipped.
+  final double silenceSkipped;
+  final double adsSkipped;
+
   const ProgressUpdate({
     required this.episodeId,
     required this.userId,
@@ -30,8 +38,14 @@ class ProgressUpdate {
     this.listened = 0,
     this.duration,
     this.finished = false,
+    this.speedSaved = 0,
+    this.silenceSkipped = 0,
+    this.adsSkipped = 0,
   });
 }
+
+/// A range the player skips on its own: silence, or an ad.
+typedef SkipRange = ({double start, double end, bool ad});
 
 /// What the player is doing at one moment.
 class PlaybackSample {
@@ -83,6 +97,16 @@ class ProgressTracker {
   DateTime _lastReport = DateTime.fromMillisecondsSinceEpoch(0);
   double _reportedPosition = 0;
   double _listened = 0;
+  double _speedSaved = 0;
+  double _silenceSkipped = 0;
+  double _adsSkipped = 0;
+
+  /// Ranges the player skips in the tracked episode. A forward jump that
+  /// lands at the end of one is counted as skipped silence or ads.
+  List<SkipRange> skipRanges = const [];
+
+  /// How close to a range's end a jump has to land to be its skip.
+  static const skipLanding = 1.5;
 
   /// The latest position seen, for callers that need one between ticks.
   double? get position => _last?.position;
@@ -93,7 +117,8 @@ class ProgressTracker {
     _lastReport = now;
     _reportedPosition = sample.position;
     final listened = _listened;
-    _listened = 0;
+    final speedSaved = _speedSaved, silenceSkipped = _silenceSkipped, adsSkipped = _adsSkipped;
+    _clearCounts();
     return ProgressUpdate(
       episodeId: sample.episodeId,
       userId: sample.userId,
@@ -103,11 +128,36 @@ class ProgressTracker {
       listened: listened,
       duration: sample.duration.isFinite && sample.duration >= 1 ? sample.duration : null,
       finished: finished,
+      speedSaved: speedSaved,
+      silenceSkipped: silenceSkipped,
+      adsSkipped: adsSkipped,
     );
   }
 
+  void _clearCounts() {
+    _listened = 0;
+    _speedSaved = 0;
+    _silenceSkipped = 0;
+    _adsSkipped = 0;
+  }
+
+  /// A jump from [from] to [to] that is the player skipping a range.
+  void _countSkip(double from, double to) {
+    if (to <= from) return;
+    for (final r in skipRanges) {
+      if ((to - r.end).abs() <= skipLanding && from >= r.start - skipLanding && from < r.end) {
+        if (r.ad) {
+          _adsSkipped += r.end - from;
+        } else {
+          _silenceSkipped += r.end - from;
+        }
+        return;
+      }
+    }
+  }
+
   bool _unreported(PlaybackSample sample) =>
-      _listened >= 1 || (sample.position - _reportedPosition).abs() >= 1;
+      _listened >= 1 || _silenceSkipped + _adsSkipped >= 1 || (sample.position - _reportedPosition).abs() >= 1;
 
   /// Start following an episode from [sample]. Nothing is reported for the
   /// start itself: the starting position is what was last saved somewhere, not
@@ -117,13 +167,14 @@ class ProgressTracker {
     _lastTick = now;
     _lastReport = now;
     _reportedPosition = sample.position;
-    _listened = 0;
+    _clearCounts();
   }
 
   /// Stop following (the episode was closed, or playback is untracked).
   void reset() {
     _last = null;
-    _listened = 0;
+    _clearCounts();
+    skipRanges = const [];
   }
 
   /// Look at the player. Returns what to report, usually nothing.
@@ -139,10 +190,14 @@ class ProgressTracker {
     var expected = previous.position;
     if (previous.playing && awake) {
       final seconds = elapsed.inMilliseconds / 1000.0;
+      final rate = previous.rate > 0 ? previous.rate : 1.0;
       _listened += seconds;
-      expected += seconds * (previous.rate > 0 ? previous.rate : 1.0);
+      _speedSaved += seconds * (rate - 1);
+      expected += seconds * rate;
     }
     final seeked = awake && (sample.position - expected).abs() > seekSeconds;
+    // Skips of short silences move less than a seek does.
+    if (awake && sample.position - expected > 0.3) _countSkip(expected, sample.position);
     final paused = previous.playing && !sample.playing;
     final due = sample.playing && now.difference(_lastReport) >= reportEvery;
     _last = sample;

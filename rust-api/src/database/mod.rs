@@ -29,7 +29,7 @@ mod queue;
 mod saved;
 mod history;
 mod progress;
-pub use progress::{ListenClient, Observed, ProgressOutcome, ProgressWrite, WriteRule};
+pub use progress::{ListenClient, Observed, ProgressOutcome, ProgressWrite, TimeSaved, WriteRule};
 mod stats;
 mod home;
 mod playlists;
@@ -133,7 +133,10 @@ impl DatabasePool {
                     .database(&db.name)
                     // Port is still relevant for sockets: PG names the socket
                     // file `.s.PGSQL.<port>`.
-                    .port(db.port);
+                    .port(db.port)
+                    // Timestamps are stored and compared as UTC; a server set to another zone
+                    // would otherwise shift NOW() and every time derived from it.
+                    .options([("timezone", "UTC")]);
                 options = if host_is_socket {
                     options.socket(&db.host)
                 } else {

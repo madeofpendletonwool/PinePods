@@ -123,6 +123,9 @@ class OfflineActionQueue {
             'position': newer ? update.position : existing.position ?? update.position,
             'at': (newer ? update.at : existing.observedAt).millisecondsSinceEpoch,
             'listened': (existing?.listened ?? 0) + update.listened,
+            'speed_saved': (existing?.speedSaved ?? 0) + update.speedSaved,
+            'silence_skipped': (existing?.silenceSkipped ?? 0) + update.silenceSkipped,
+            'ads_skipped': (existing?.adsSkipped ?? 0) + update.adsSkipped,
             'finished': newer ? update.finished : existing.finished,
             if (duration != null) 'duration': duration,
           },
@@ -218,6 +221,9 @@ class OfflineActionQueue {
                 'at': a.observedAt.millisecondsSinceEpoch,
                 'listened': a.listened,
                 'finished': a.finished,
+                if (a.speedSaved != 0) 'speed_saved': a.speedSaved,
+                if (a.silenceSkipped != 0) 'silence_skipped': a.silenceSkipped,
+                if (a.adsSkipped != 0) 'ads_skipped': a.adsSkipped,
                 if (a.duration != null) 'duration': a.duration,
               },
           ]);
@@ -247,6 +253,8 @@ class OfflineActionQueue {
           await repository.deletePendingAction(current.id!);
         } else {
           final listened = current.listened - s.listened;
+          final silence = current.silenceSkipped - s.silenceSkipped;
+          final ads = current.adsSkipped - s.adsSkipped;
           await repository.savePendingAction(PendingAction(
             id: current.id,
             type: current.type,
@@ -254,7 +262,13 @@ class OfflineActionQueue {
             userId: current.userId,
             isYoutube: current.isYoutube,
             createdAt: current.createdAt,
-            payload: {...current.payload, 'listened': listened < 0 ? 0.0 : listened},
+            payload: {
+              ...current.payload,
+              'listened': listened < 0 ? 0.0 : listened,
+              'speed_saved': current.speedSaved - s.speedSaved,
+              'silence_skipped': silence < 0 ? 0.0 : silence,
+              'ads_skipped': ads < 0 ? 0.0 : ads,
+            },
           ));
         }
       }

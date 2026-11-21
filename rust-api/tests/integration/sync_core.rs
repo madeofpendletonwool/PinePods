@@ -527,6 +527,15 @@ async fn synced_plays_count_as_listening_time() {
     assert_eq!(log, Some(802));
     let stats = app.get("/api/data/get_stats").key(&user).query("user_id", user.id).send().await.ok_json();
     assert_eq!((stats["TimeListened"].as_i64(), stats["PodcastsPlayed"].as_i64()), (Some(13), Some(1)), "{stats}");
+
+    // A session that arrives after a newer local change: the position loses, the time counts.
+    progress(&app, &user, json!([{ "episode_id": e1, "position": 650.0 }])).await;
+    let late = sync::apply_episode_actions(app.db(), user.id, &[session(1, 500, 560, 120)], SyncOrigin::Client).await.unwrap();
+    assert_eq!(late.older, 1);
+    assert_eq!(position(&app, &user, e1).await, Some(650));
+    assert_eq!(listened(e1).await, Some(560));
+    let log = int(&app, &format!(r#"SELECT CAST(SUM(Seconds) AS INTEGER) FROM "ListeningLog" WHERE UserID = {} AND Client = 'sync'"#, user.id)).await;
+    assert_eq!(log, Some(862));
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -17965,6 +17965,21 @@
           "finished": {
             "type": "boolean",
             "description": "The episode was played to the end."
+          },
+          "speed_saved": {
+            "type": "number",
+            "format": "double",
+            "description": "Of the `listened` seconds: episode time gained by playing faster than 1x (negative when\nslower)."
+          },
+          "silence_skipped": {
+            "type": "number",
+            "format": "double",
+            "description": "Seconds of silence skipped since the previous report."
+          },
+          "ads_skipped": {
+            "type": "number",
+            "format": "double",
+            "description": "Seconds of ads skipped since the previous report."
           }
         }
       },

@@ -182,7 +182,36 @@ mod progress {
     }
 
     fn update(episode_id: i32, position: f64, at: f64, listened: f64) -> Update {
-        Update { episode_id, is_youtube: false, position, at, listened, duration: None, finished: false }
+        Update { episode_id, is_youtube: false, position, at, listened, duration: None, finished: false, speed_saved: 0.0, silence_skipped: 0.0, ads_skipped: 0.0 }
+    }
+
+    #[wasm_bindgen_test]
+    fn time_saved_by_speed_and_skips_is_reported() {
+        let mut t = Tracker::default();
+        let fast = |position: f64| Sample { rate: 1.5, ..playing(position) };
+        t.observe(T0, Some(fast(0.0)));
+        // 30s at 1.5x covers 45s of the episode: 15s saved.
+        let mut reports = Vec::new();
+        for s in 1..=30 {
+            if s == 10 {
+                t.skipped(Skipped::Silence, 2.5);
+                t.skipped(Skipped::Ad, 60.0);
+            }
+            reports.extend(t.observe(T0 + s as f64 * 1000.0, Some(fast(s as f64 * 1.5))));
+        }
+        let total = |f: fn(&Update) -> f64| reports.iter().map(f).sum::<f64>();
+        assert_eq!(total(|u| u.listened), 30.0);
+        assert!((total(|u| u.speed_saved) - 15.0).abs() < 1e-9);
+        assert_eq!((total(|u| u.silence_skipped), total(|u| u.ads_skipped)), (2.5, 60.0));
+
+        // Settling a sent entry that moved on keeps only what wasn't delivered.
+        let mut p = Pending::default();
+        let sent = Update { speed_saved: 5.0, ads_skipped: 30.0, ..update(1, 100.0, T0, 10.0) };
+        p.merge(sent.clone());
+        p.merge(Update { speed_saved: 2.0, ..update(1, 110.0, T0 + 10_000.0, 4.0) });
+        p.settle(&[sent]);
+        let left = p.get(1, false).unwrap();
+        assert_eq!((left.listened, left.speed_saved, left.ads_skipped), (4.0, 2.0, 0.0));
     }
 
     #[wasm_bindgen_test]

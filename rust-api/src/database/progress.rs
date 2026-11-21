@@ -31,6 +31,29 @@ pub enum WriteRule {
     /// A lower one, or exactly this position: the reporter's previous report, which means nobody
     /// else has written since and it is moving its own position back.
     ForwardOrOwn(i32),
+    /// None: only the listened time is credited. For plays that arrive after a newer change.
+    ListenOnly,
+}
+
+/// Seconds saved while playing, as reported by the app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TimeSaved {
+    /// By playing faster than 1x; negative when slower.
+    pub speed: i32,
+    /// By skipping silence.
+    pub silence: i32,
+    /// By skipping ads.
+    pub ads: i32,
+}
+
+impl TimeSaved {
+    fn clamped(self) -> Self {
+        Self { speed: self.speed.clamp(-86_400, 86_400), silence: self.silence.clamp(0, 86_400), ads: self.ads.clamp(0, 86_400) }
+    }
+
+    fn any(self) -> bool {
+        self != Self::default()
+    }
 }
 
 /// The app that played the audio, as recorded in `ListeningLog`.
@@ -86,11 +109,13 @@ pub struct ProgressWrite {
     pub duration: Option<i32>,
     /// Which app played it.
     pub client: ListenClient,
+    /// Time saved during the `listened` seconds.
+    pub saved: TimeSaved,
 }
 
 impl ProgressWrite {
     pub fn now(episode_id: i32, is_youtube: bool, position: i32, rule: WriteRule) -> Self {
-        Self { episode_id, is_youtube, position, observed: Observed::Ago(0), rule, listened: 0, finished: false, duration: None, client: ListenClient::Unknown }
+        Self { episode_id, is_youtube, position, observed: Observed::Ago(0), rule, listened: 0, finished: false, duration: None, client: ListenClient::Unknown, saved: TimeSaved::default() }
     }
 }
 
@@ -126,6 +151,9 @@ impl Stored {
     }
 
     fn accepts(&self, write: &ProgressWrite, at: NaiveDateTime) -> bool {
+        if write.rule == WriteRule::ListenOnly {
+            return false;
+        }
         if !self.has_row {
             return true;
         }
@@ -134,6 +162,7 @@ impl Stored {
             WriteRule::Newest => self.listen_date.is_none_or(|d| d <= at),
             WriteRule::Forward => write.position > stored,
             WriteRule::ForwardOrOwn(own) => write.position > stored || stored == own,
+            WriteRule::ListenOnly => false,
         }
     }
 }
@@ -157,7 +186,8 @@ impl DatabasePool {
     /// Record a position (and listened time) for one of the user's episodes. `None` when the
     /// episode isn't theirs.
     pub async fn write_progress(&self, user_id: i32, write: ProgressWrite, origin: SyncOrigin) -> AppResult<Option<ProgressOutcome>> {
-        let write = ProgressWrite { position: write.position.max(0), listened: write.listened.clamp(0, 86_400), ..write };
+        let write = ProgressWrite { position: write.position.max(0), listened: write.listened.clamp(0, 86_400), saved: write.saved.clamped(), ..write };
+        let logged = write.listened > 0 || write.saved.any();
         let yt = write.is_youtube;
         let log = !yt && events::should_log(self, user_id, origin).await;
 
@@ -235,13 +265,16 @@ impl DatabasePool {
                     .execute(&mut *tx)
                     .await?;
                 }
-                if write.listened > 0 {
+                if logged {
                     let (day, hour) = local_day_hour(at, stored.timezone.as_deref());
                     q::query(
-                        r#"INSERT INTO "ListeningLog" (userid, listenday, listenhour, itemkind, itemid, client, seconds)
-                           VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        r#"INSERT INTO "ListeningLog" (userid, listenday, listenhour, itemkind, itemid, client, seconds, speedsaved, silenceskipped, adsskipped)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                            ON CONFLICT (userid, listenday, listenhour, itemkind, itemid, client)
-                           DO UPDATE SET seconds = "ListeningLog".seconds + EXCLUDED.seconds"#,
+                           DO UPDATE SET seconds = "ListeningLog".seconds + EXCLUDED.seconds,
+                               speedsaved = "ListeningLog".speedsaved + EXCLUDED.speedsaved,
+                               silenceskipped = "ListeningLog".silenceskipped + EXCLUDED.silenceskipped,
+                               adsskipped = "ListeningLog".adsskipped + EXCLUDED.adsskipped"#,
                     )
                     .bind(user_id)
                     .bind(day)
@@ -250,8 +283,31 @@ impl DatabasePool {
                     .bind(write.episode_id)
                     .bind(write.client.as_str())
                     .bind(write.listened)
+                    .bind(write.saved.speed)
+                    .bind(write.saved.silence)
+                    .bind(write.saved.ads)
                     .execute(&mut *tx)
                     .await?;
+                    // What was played, kept for when the podcast is gone.
+                    let item = if yt {
+                        r#"INSERT INTO "ListeningLogItems" (userid, itemkind, itemid, podcastid, podcastname, feedurl, itemtitle, artwork)
+                           SELECT $1, 1, v.videoid, p.podcastid, p.podcastname, p.feedurl, v.videotitle, COALESCE(NULLIF(v.thumbnailurl, ''), p.artworkurl)
+                           FROM "YouTubeVideos" v JOIN "Podcasts" p ON p.podcastid = v.podcastid AND p.userid = $1
+                           WHERE v.videoid = $2
+                           ON CONFLICT (userid, itemkind, itemid) DO UPDATE SET
+                               podcastid = EXCLUDED.podcastid, podcastname = EXCLUDED.podcastname, feedurl = EXCLUDED.feedurl,
+                               itemtitle = EXCLUDED.itemtitle, artwork = EXCLUDED.artwork"#
+                    } else {
+                        r#"INSERT INTO "ListeningLogItems" (userid, itemkind, itemid, podcastid, podcastname, feedurl, itemtitle, artwork)
+                           SELECT $1, 0, e.episodeid, p.podcastid, p.podcastname, p.feedurl, e.episodetitle, COALESCE(NULLIF(e.episodeartwork, ''), p.artworkurl)
+                           FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid AND p.userid = $1
+                           WHERE e.episodeid = $2
+                           ORDER BY p.podcastid LIMIT 1
+                           ON CONFLICT (userid, itemkind, itemid) DO UPDATE SET
+                               podcastid = EXCLUDED.podcastid, podcastname = EXCLUDED.podcastname, feedurl = EXCLUDED.feedurl,
+                               itemtitle = EXCLUDED.itemtitle, artwork = EXCLUDED.artwork"#
+                    };
+                    q::query(item).bind(user_id).bind(write.episode_id).execute(&mut *tx).await?;
                 }
                 if log && applied && stored.position != Some(write.position) {
                     let event = EpisodeEvent::Progress { position: write.position, age: age(write.observed) };
@@ -333,12 +389,13 @@ impl DatabasePool {
                     .execute(&mut *tx)
                     .await?;
                 }
-                if write.listened > 0 {
+                if logged {
                     let (day, hour) = local_day_hour(at, stored.timezone.as_deref());
                     sqlx::query(
-                        "INSERT INTO ListeningLog (UserID, ListenDay, ListenHour, ItemKind, ItemID, Client, Seconds)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)
-                         ON DUPLICATE KEY UPDATE Seconds = Seconds + VALUES(Seconds)",
+                        "INSERT INTO ListeningLog (UserID, ListenDay, ListenHour, ItemKind, ItemID, Client, Seconds, SpeedSaved, SilenceSkipped, AdsSkipped)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         ON DUPLICATE KEY UPDATE Seconds = Seconds + VALUES(Seconds), SpeedSaved = SpeedSaved + VALUES(SpeedSaved),
+                             SilenceSkipped = SilenceSkipped + VALUES(SilenceSkipped), AdsSkipped = AdsSkipped + VALUES(AdsSkipped)",
                     )
                     .bind(user_id)
                     .bind(day)
@@ -347,8 +404,33 @@ impl DatabasePool {
                     .bind(write.episode_id)
                     .bind(write.client.as_str())
                     .bind(write.listened)
+                    .bind(write.saved.speed)
+                    .bind(write.saved.silence)
+                    .bind(write.saved.ads)
                     .execute(&mut *tx)
                     .await?;
+                    // Renamed source columns: the join has columns named like the target's.
+                    let item = if yt {
+                        "INSERT INTO ListeningLogItems (UserID, ItemKind, ItemID, PodcastID, PodcastName, FeedURL, ItemTitle, Artwork)
+                         SELECT * FROM (
+                             SELECT ? AS u, 1 AS k, v.VideoID AS i, p.PodcastID AS pid, p.PodcastName AS pname, p.FeedURL AS furl,
+                                    v.VideoTitle AS title, COALESCE(NULLIF(v.ThumbnailURL, ''), p.ArtworkURL) AS art
+                             FROM YouTubeVideos v JOIN Podcasts p ON p.PodcastID = v.PodcastID AND p.UserID = ?
+                             WHERE v.VideoID = ?
+                         ) src
+                         ON DUPLICATE KEY UPDATE PodcastID = src.pid, PodcastName = src.pname, FeedURL = src.furl, ItemTitle = src.title, Artwork = src.art"
+                    } else {
+                        "INSERT INTO ListeningLogItems (UserID, ItemKind, ItemID, PodcastID, PodcastName, FeedURL, ItemTitle, Artwork)
+                         SELECT * FROM (
+                             SELECT ? AS u, 0 AS k, e.EpisodeID AS i, p.PodcastID AS pid, p.PodcastName AS pname, p.FeedURL AS furl,
+                                    e.EpisodeTitle AS title, COALESCE(NULLIF(e.EpisodeArtwork, ''), p.ArtworkURL) AS art
+                             FROM Episodes e JOIN Podcasts p ON p.FeedID = e.FeedID AND p.UserID = ?
+                             WHERE e.EpisodeID = ?
+                             ORDER BY p.PodcastID LIMIT 1
+                         ) src
+                         ON DUPLICATE KEY UPDATE PodcastID = src.pid, PodcastName = src.pname, FeedURL = src.furl, ItemTitle = src.title, Artwork = src.art"
+                    };
+                    sqlx::query(item).bind(user_id).bind(user_id).bind(write.episode_id).execute(&mut *tx).await?;
                 }
                 if log && applied && stored.position != Some(write.position) {
                     let event = EpisodeEvent::Progress { position: write.position, age: age(write.observed) };

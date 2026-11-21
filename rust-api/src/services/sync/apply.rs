@@ -50,7 +50,7 @@ pub async fn apply_episode_actions(db: &DatabasePool, user_id: i32, actions: &[E
 /// - Only `play` and `new` change state; `download`/`delete` are ignored.
 /// - Per episode only the newest action (by action time) counts; on a tie the later one wins.
 /// - Last-write-wins: it's applied only if newer than the local `ListenDate` (progress or
-///   completion time). Positions can go backwards. An action dated in the future counts as
+///   completion time). Positions can go backwards. The time a losing play covers still counts. An action dated in the future counts as
 ///   happening now.
 /// - `play` at or past `total - AutoCompleteSeconds` (60s when that's off) completes the
 ///   episode; `total` is the action's, else the local duration. A local duration of 0 is
@@ -99,7 +99,20 @@ pub async fn apply_resolved(
         // A remote clock that runs ahead can't put a change in the future, where it would beat
         // every local write until the time came.
         let at = action.timestamp.min(received);
+        let listened = played.get(&episode_id).copied().unwrap_or(0).min(86_400);
         if state.listen_date.is_some_and(|local| at <= local) {
+            // The position loses to the newer local change; the time played still counts.
+            if listened > 0 {
+                use crate::database::{ListenClient, Observed, ProgressWrite, WriteRule};
+                let write = ProgressWrite {
+                    observed: Observed::At(at.naive_utc()),
+                    client: ListenClient::Sync,
+                    listened,
+                    ..ProgressWrite::now(episode_id, false, action.position.unwrap_or(0), WriteRule::ListenOnly)
+                };
+                db.write_progress(user_id, write, origin).await?;
+                db.add_listen_seconds(user_id, listened).await?;
+            }
             summary.older += 1;
             continue;
         }
@@ -113,7 +126,6 @@ pub async fn apply_resolved(
                 }
                 let total = action_total.or(local_duration);
                 let finished = total.is_some_and(|t| position >= t - complete_within);
-                let listened = played.get(&episode_id).copied().unwrap_or(0).min(86_400);
                 if !finished || listened > 0 {
                     use crate::database::{ListenClient, Observed, ProgressWrite, WriteRule};
                     let write = ProgressWrite {

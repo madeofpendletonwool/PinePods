@@ -157,22 +157,41 @@ impl DatabasePool {
         Ok(stats)
     }
 
-    /// Per-episode listen rows (last listen time, seconds played) plus library counts,
-    /// summarised in the user's timezone by [`activity_summary`].
+    /// Listening by local day and hour from `ListeningLog`, plus the per-episode history for the
+    /// time before the log began, summarised by [`activity_summary`]; library counts; time saved.
     async fn listening_activity(&self, user_id: i32) -> AppResult<serde_json::Value> {
-        let (tz, rows, library) = dialect_match!(self, {
+        let (tz, rows, logged, saved, library) = dialect_match!(self, {
             pg(pool) => {
                 let tz: Option<String> = q::query(r#"SELECT timezone FROM "Users" WHERE userid = $1"#)
                     .bind(user_id).fetch_optional(pool).await?
                     .and_then(|r| r.try_get::<Option<String>, _>("timezone").ok().flatten());
                 let rows: Vec<(chrono::NaiveDateTime, i64)> = q::query(r#"
-                    SELECT listendate, COALESCE(listenedseconds, 0)::bigint AS secs
+                    SELECT listendate, CAST(COALESCE(listenedseconds, 0) AS BIGINT) AS secs
                     FROM "UserEpisodeHistory"
+                    WHERE userid = $1 AND listendate IS NOT NULL
+                    UNION ALL
+                    SELECT listendate, CAST(COALESCE(listenedseconds, 0) AS BIGINT) AS secs
+                    FROM "UserVideoHistory"
                     WHERE userid = $1 AND listendate IS NOT NULL
                 "#).bind(user_id).fetch_all(pool).await?
                     .iter()
                     .filter_map(|r| Some((r.try_get::<chrono::NaiveDateTime, _>("listendate").ok()?, r.try_get::<i64, _>("secs").unwrap_or(0))))
                     .collect();
+                let logged: Vec<(String, i64, i64)> = q::query(r#"
+                    SELECT CAST(listenday AS TEXT) AS day, CAST(listenhour AS BIGINT) AS hour, CAST(SUM(seconds) AS BIGINT) AS secs
+                    FROM "ListeningLog" WHERE userid = $1
+                    GROUP BY listenday, listenhour
+                    HAVING SUM(seconds) > 0
+                "#).bind(user_id).fetch_all(pool).await?
+                    .iter()
+                    .filter_map(|r| Some((r.try_get("day").ok()?, r.try_get("hour").ok()?, r.try_get("secs").ok()?)))
+                    .collect();
+                let saved = q::query(r#"
+                    SELECT CAST(COALESCE(SUM(speedsaved), 0) AS BIGINT) AS speed, CAST(COALESCE(SUM(silenceskipped), 0) AS BIGINT) AS silence,
+                           CAST(COALESCE(SUM(adsskipped), 0) AS BIGINT) AS ads
+                    FROM "ListeningLog" WHERE userid = $1
+                "#).bind(user_id).fetch_one(pool).await?;
+                let saved = (saved.try_get("speed").unwrap_or(0i64), saved.try_get("silence").unwrap_or(0i64), saved.try_get("ads").unwrap_or(0i64));
                 let lib = q::query(r#"
                     SELECT
                         (SELECT COUNT(DISTINCT p.podcastid)
@@ -196,7 +215,7 @@ impl DatabasePool {
                     lib.try_get::<i64, _>("backlog_episodes").unwrap_or(0),
                     lib.try_get::<i64, _>("backlog_seconds").unwrap_or(0),
                 );
-                (tz, rows, library)
+                (tz, rows, logged, saved, library)
             },
             mysql(pool) => {
                 let tz: Option<String> = sqlx::query("SELECT TimeZone FROM Users WHERE UserID = ?")
@@ -205,8 +224,12 @@ impl DatabasePool {
                 let rows: Vec<(chrono::NaiveDateTime, i64)> = sqlx::query(
                     "SELECT ListenDate AS listendate, CAST(COALESCE(ListenedSeconds, 0) AS SIGNED) AS secs
                      FROM UserEpisodeHistory
+                     WHERE UserID = ? AND ListenDate IS NOT NULL
+                     UNION ALL
+                     SELECT ListenDate AS listendate, CAST(COALESCE(ListenedSeconds, 0) AS SIGNED) AS secs
+                     FROM UserVideoHistory
                      WHERE UserID = ? AND ListenDate IS NOT NULL"
-                ).bind(user_id).fetch_all(pool).await?
+                ).bind(user_id).bind(user_id).fetch_all(pool).await?
                     .iter()
                     .filter_map(|r| {
                         let when = r.try_get::<chrono::NaiveDateTime, _>("listendate").ok().or_else(|| {
@@ -238,13 +261,34 @@ impl DatabasePool {
                     lib.try_get::<i64, _>("backlog_episodes").unwrap_or(0),
                     lib.try_get::<i64, _>("backlog_seconds").unwrap_or(0),
                 );
-                (tz, rows, library)
+                let logged: Vec<(String, i64, i64)> = sqlx::query(
+                    "SELECT CAST(ListenDay AS CHAR) AS day, CAST(ListenHour AS SIGNED) AS hour, CAST(SUM(Seconds) AS SIGNED) AS secs
+                     FROM ListeningLog WHERE UserID = ?
+                     GROUP BY ListenDay, ListenHour
+                     HAVING SUM(Seconds) > 0"
+                ).bind(user_id).fetch_all(pool).await?
+                    .iter()
+                    .filter_map(|r| Some((r.try_get("day").ok()?, r.try_get("hour").ok()?, r.try_get("secs").ok()?)))
+                    .collect();
+                let saved = sqlx::query(
+                    "SELECT CAST(COALESCE(SUM(SpeedSaved), 0) AS SIGNED) AS speed, CAST(COALESCE(SUM(SilenceSkipped), 0) AS SIGNED) AS silence,
+                            CAST(COALESCE(SUM(AdsSkipped), 0) AS SIGNED) AS ads
+                     FROM ListeningLog WHERE UserID = ?"
+                ).bind(user_id).fetch_one(pool).await?;
+                let saved = (saved.try_get("speed").unwrap_or(0i64), saved.try_get("silence").unwrap_or(0i64), saved.try_get("ads").unwrap_or(0i64));
+                (tz, rows, logged, saved, library)
             },
         });
         let tz = tz.and_then(|t| t.parse::<Tz>().ok()).unwrap_or(Tz::UTC);
         let today = chrono::Utc::now().with_timezone(&tz).date_naive();
-        let mut summary = activity_summary(&rows, tz, today);
+        let logged: Vec<Listened> = logged
+            .into_iter()
+            .filter_map(|(day, hour, secs)| Some((chrono::NaiveDate::parse_from_str(day.get(..10)?, "%Y-%m-%d").ok()?, hour.clamp(0, 23) as u32, secs)))
+            .collect();
+        let entries = combine_listening(&logged, &rows, tz);
+        let mut summary = activity_summary(&entries, tz, today);
         if let Some(obj) = summary.as_object_mut() {
+            obj.insert("time_saved".into(), serde_json::json!({ "speed": saved.0, "silence": saved.1, "ads": saved.2 }));
             obj.insert("podcasts_listened".into(), library.0.into());
             obj.insert("backlog_episodes".into(), library.1.into());
             obj.insert("backlog_seconds".into(), library.2.into());
@@ -617,19 +661,39 @@ fn badge_from_avg_hour(avg_hour: Option<f64>) -> &'static str {
 /// Days of history the heatmap covers.
 const HEATMAP_DAYS: i64 = 182;
 
-/// Listening patterns from (last listen time in UTC, seconds played) per episode. Each
-/// episode counts once, on the day and hour it was last played, in `tz`.
-fn activity_summary(rows: &[(chrono::NaiveDateTime, i64)], tz: Tz, today: chrono::NaiveDate) -> serde_json::Value {
-    use chrono::{Datelike, Duration, TimeZone, Timelike};
+/// Seconds played on a local day, in an hour of it.
+type Listened = (chrono::NaiveDate, u32, i64);
+
+/// The log's entries, plus history rows (last listen time in UTC, seconds played) from before
+/// the log's first day. History keeps one row per episode, dated its last play, so after the
+/// log starts it would count an episode again, on one day, at one hour.
+fn combine_listening(logged: &[Listened], history: &[(chrono::NaiveDateTime, i64)], tz: Tz) -> Vec<Listened> {
+    use chrono::{TimeZone, Timelike};
+    let log_start = logged.iter().map(|(d, _, _)| *d).min();
+    let mut out = logged.to_vec();
+    for (utc, secs) in history {
+        let local = tz.from_utc_datetime(utc);
+        if log_start.is_none_or(|start| local.date_naive() < start) {
+            out.push((local.date_naive(), local.hour(), (*secs).max(0)));
+        }
+    }
+    out
+}
+
+/// Listening patterns from (local day, hour, seconds played) entries.
+fn activity_summary(entries: &[Listened], tz: Tz, today: chrono::NaiveDate) -> serde_json::Value {
+    use chrono::{Datelike, Duration};
     let mut by_hour = [0i64; 24];
     let mut by_day: std::collections::BTreeMap<chrono::NaiveDate, i64> = std::collections::BTreeMap::new();
-    let mut hour_sum = 0u64;
-    for (utc, secs) in rows {
-        let local = tz.from_utc_datetime(utc);
-        hour_sum += local.hour() as u64;
+    // Average hour, weighted by time played (an entry with none still counts a little).
+    let (mut hour_sum, mut weight) = (0f64, 0f64);
+    for (day, hour, secs) in entries {
         let secs = (*secs).max(0);
-        by_hour[local.hour() as usize] += secs;
-        *by_day.entry(local.date_naive()).or_insert(0) += secs;
+        let w = secs.max(1) as f64;
+        hour_sum += f64::from(*hour) * w;
+        weight += w;
+        by_hour[(*hour).min(23) as usize] += secs;
+        *by_day.entry(*day).or_insert(0) += secs;
     }
 
     // Longest run of consecutive days with any listening.
@@ -638,6 +702,20 @@ fn activity_summary(rows: &[(chrono::NaiveDateTime, i64)], tz: Tz, today: chrono
         run = if prev.and_then(|p| p.succ_opt()) == Some(*day) { run + 1 } else { 1 };
         longest = longest.max(run);
         prev = Some(*day);
+    }
+
+    // The run of days ending today, or yesterday when nothing was played yet today.
+    let mut current = 0i32;
+    let mut day = if by_day.contains_key(&today) { Some(today) } else { today.pred_opt() };
+    while let Some(d) = day.filter(|d| by_day.contains_key(d)) {
+        current += 1;
+        day = d.pred_opt();
+    }
+
+    // Sunday first.
+    let mut by_dow = [0i64; 7];
+    for (day, secs) in &by_day {
+        by_dow[day.weekday().num_days_from_sunday() as usize] += secs;
     }
 
     let heat_start = today - Duration::days(HEATMAP_DAYS - 1);
@@ -676,10 +754,13 @@ fn activity_summary(rows: &[(chrono::NaiveDateTime, i64)], tz: Tz, today: chrono
         "daily_listening": daily,
         "active_days": by_day.values().filter(|s| **s > 0).count(),
         "longest_streak": longest,
+        // Replace the base values, which used UTC days.
+        "current_streak": current,
+        "listening_by_dow": by_dow,
         "year_seconds": year_seconds,
         "peak_hour": peak_hour,
         // Replaces the base value, which averaged UTC hours.
-        "listening_badge": badge_from_avg_hour((!rows.is_empty()).then(|| hour_sum as f64 / rows.len() as f64)),
+        "listening_badge": badge_from_avg_hour((weight > 0.0).then(|| hour_sum / weight)),
         "timezone": tz.name(),
     })
 }
@@ -698,7 +779,7 @@ mod activity_tests {
         // 02:00 UTC on the 2nd is 21:00 on the 1st in New York.
         let rows = vec![(at(2026, 11, 2, 2), 600)];
         let tz: Tz = "America/New_York".parse().unwrap();
-        let v = activity_summary(&rows, tz, NaiveDate::from_ymd_opt(2026, 11, 20).unwrap());
+        let v = activity_summary(&combine_listening(&[], &rows, tz), tz, NaiveDate::from_ymd_opt(2026, 11, 20).unwrap());
         assert_eq!(v["listening_by_hour"][21], 600);
         assert_eq!(v["daily_listening"][0]["date"], "2026-11-01");
         assert_eq!(v["peak_hour"], 21);
@@ -715,8 +796,10 @@ mod activity_tests {
             (at(2025, 12, 5, 12), 120),
             (at(2024, 1, 1, 12), 999),
         ];
-        let v = activity_summary(&rows, Tz::UTC, NaiveDate::from_ymd_opt(2026, 11, 20).unwrap());
+        let v = activity_summary(&combine_listening(&[], &rows, Tz::UTC), Tz::UTC, NaiveDate::from_ymd_opt(2026, 11, 20).unwrap());
         assert_eq!(v["longest_streak"], 3);
+        assert_eq!(v["current_streak"], 0, "nothing since the 10th");
+        assert_eq!(v["listening_by_dow"][2], 120, "Tuesdays: 3 and 10 November");
         assert_eq!(v["active_days"], 6);
         assert_eq!(v["year_seconds"], 240);
         let months = v["listening_by_month"].as_array().unwrap();
@@ -727,6 +810,26 @@ mod activity_tests {
         assert_eq!(months[11]["seconds"], 240);
         // Only the last 182 days make the heatmap.
         assert_eq!(v["daily_listening"].as_array().unwrap().len(), 4);
+    }
+
+    #[test]
+    fn the_log_replaces_history_from_its_first_day() {
+        let day = |d| NaiveDate::from_ymd_opt(2026, 11, d).unwrap();
+        let logged = vec![(day(10), 8, 300), (day(11), 20, 200)];
+        // Before the log: kept. On or after its first day: the log has it already.
+        let history = vec![(at(2026, 11, 5, 12), 900), (at(2026, 11, 11, 20), 5000)];
+        let entries = combine_listening(&logged, &history, Tz::UTC);
+        assert_eq!(entries.len(), 3);
+        let v = activity_summary(&entries, Tz::UTC, day(12));
+        assert_eq!(v["current_streak"], 2, "the 10th and 11th, nothing yet on the 12th");
+        assert_eq!(v["listening_by_hour"][20], 200);
+        assert_eq!(v["listening_by_hour"][12], 900);
+        assert_eq!(v["active_days"], 3);
+        assert_eq!(v["year_seconds"], 1400);
+        // History in another zone is compared on its local day.
+        let ny: Tz = "America/New_York".parse().unwrap();
+        let late = vec![(at(2026, 11, 10, 3), 60)]; // 22:00 on the 9th in New York
+        assert_eq!(combine_listening(&logged, &late, ny).len(), 3);
     }
 
     #[test]

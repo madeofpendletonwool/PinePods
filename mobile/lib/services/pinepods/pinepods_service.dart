@@ -1144,6 +1144,13 @@ class PinepodsService {
           {'user_id': userId, 'podcast_id': podcastId}) !=
       null;
 
+  /// Which app this is, recorded with the listening time for stats.
+  static String get progressClient => switch (defaultTargetPlatform) {
+        TargetPlatform.iOS => 'ios',
+        TargetPlatform.android => 'android',
+        _ => '',
+      };
+
   /// Report listening progress: positions, time played and finished episodes,
   /// each with the moment it was observed. The server lets the newest
   /// observation of an episode win, whichever device made it, so a batch saved
@@ -1162,7 +1169,7 @@ class PinepodsService {
     final response = await _post(
       url,
       headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
-      body: jsonEncode({'sent_at': DateTime.now().millisecondsSinceEpoch, 'updates': updates}),
+      body: jsonEncode({'sent_at': DateTime.now().millisecondsSinceEpoch, 'client': progressClient, 'updates': updates}),
     );
     if (response.statusCode == 404 || response.statusCode == 405) {
       throw ProgressUnsupportedException();

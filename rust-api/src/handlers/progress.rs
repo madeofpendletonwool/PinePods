@@ -10,7 +10,7 @@ use axum::{extract::State, http::HeaderMap, Json};
 use serde::{Deserialize, Serialize};
 
 use super::extract_api_key;
-use crate::database::{ListenClient, Observed, ProgressWrite, WriteRule};
+use crate::database::{ListenClient, Observed, ProgressWrite, TimeSaved, WriteRule};
 use crate::error::{AppError, AppResult};
 use crate::services::sync::SyncOrigin;
 use crate::AppState;
@@ -52,6 +52,16 @@ pub struct ProgressUpdate {
     /// The episode was played to the end.
     #[serde(default)]
     pub finished: bool,
+    /// Of the `listened` seconds: episode time gained by playing faster than 1x (negative when
+    /// slower).
+    #[serde(default)]
+    pub speed_saved: f64,
+    /// Seconds of silence skipped since the previous report.
+    #[serde(default)]
+    pub silence_skipped: f64,
+    /// Seconds of ads skipped since the previous report.
+    #[serde(default)]
+    pub ads_skipped: f64,
 }
 
 /// The stored state of the episode after the update.
@@ -73,6 +83,15 @@ pub struct ProgressResult {
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct ProgressResponse {
     pub results: Vec<ProgressResult>,
+}
+
+/// Rounded to whole seconds, either sign.
+fn signed_seconds(value: f64) -> i32 {
+    if value.is_finite() {
+        value.round().clamp(i32::MIN as f64, i32::MAX as f64) as i32
+    } else {
+        0
+    }
 }
 
 fn whole_seconds(value: f64) -> i32 {
@@ -137,6 +156,11 @@ pub async fn record_progress(
             finished: update.finished,
             duration: update.duration.filter(|d| d.is_finite() && *d >= 1.0).map(|d| d.round() as i32),
             client,
+            saved: TimeSaved {
+                speed: signed_seconds(update.speed_saved),
+                silence: whole_seconds(update.silence_skipped.round()),
+                ads: whole_seconds(update.ads_skipped.round()),
+            },
         };
         let outcome = if update.episode_id > 0 { state.db_pool.write_progress(user_id, write, SyncOrigin::Pinepods).await? } else { None };
         if outcome.is_some() {

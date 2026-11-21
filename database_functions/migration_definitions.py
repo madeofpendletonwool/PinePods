@@ -7698,6 +7698,8 @@ def _repoint_merged_episodes(cursor, db_type: str) -> dict:
                 e.TranscriptsJSON = COALESCE(e.TranscriptsJSON, agg.transcripts)
         """)
 
+    moved["listening_log"] = _repoint_listening_log(cursor, db_type)
+
     cursor.execute(f"UPDATE {episodes} SET FeedID = NULL WHERE EpisodeID IN (SELECT OldEpisodeID FROM {aliases})")
     return moved
 
@@ -8129,6 +8131,176 @@ def migration_093_listening_log(conn, db_type: str) -> None:
                     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                 )
             """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+_LISTENING_LOG_SUMS = ("Seconds", "SpeedSaved", "SilenceSkipped", "AdsSkipped")
+
+
+def _repoint_listening_log(cursor, db_type: str) -> int:
+    """Fold ListeningLog rows (and their ListeningLogItems entry) of merged episode copies into
+    the episode each became, adding their seconds to any row already there. Does nothing before
+    the tables exist. Returns the log rows moved."""
+    pg, lite = db_type == "postgresql", db_type == "sqlite"
+
+    def q(table: str) -> str:
+        return f'"{table}"' if pg or lite else table
+
+    def exists(table: str) -> bool:
+        if lite:
+            cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", (table,))
+            return cursor.fetchone()[0] > 0
+        return _table_exists(cursor, db_type, table)
+
+    def has(table: str, column: str) -> bool:
+        if lite:
+            cursor.execute(f'PRAGMA table_info("{table}")')
+            return any(row[1].lower() == column.lower() for row in cursor.fetchall())
+        return _column_exists(cursor, db_type, table, column)
+
+    if not exists("ListeningLog") or not exists("EpisodeIDAliases"):
+        return 0
+    log, aliases = q("ListeningLog"), q("EpisodeIDAliases")
+    cursor.execute(f"SELECT COUNT(*) FROM {log} l JOIN {aliases} a ON a.OldEpisodeID = l.ItemID WHERE l.ItemKind = 0")
+    moved = cursor.fetchone()[0]
+    if moved:
+        sums = [c for c in _LISTENING_LOG_SUMS if has("ListeningLog", c)]
+        keys = "UserID, ListenDay, ListenHour, ItemKind, ItemID, Client"
+        cols = ", ".join(sums)
+        # Summed columns renamed (s_<name>) so MySQL's update clause can't confuse them with the target's.
+        summed = ", ".join(f"SUM(l.{c}) AS s_{c}" for c in sums)
+        select = f"""
+            SELECT * FROM (
+                SELECT l.UserID AS s_u, l.ListenDay AS s_d, l.ListenHour AS s_h, 0 AS s_k, a.EpisodeID AS s_i, l.Client AS s_c, {summed}
+                FROM {log} l JOIN {aliases} a ON a.OldEpisodeID = l.ItemID
+                WHERE l.ItemKind = 0
+                GROUP BY l.UserID, l.ListenDay, l.ListenHour, a.EpisodeID, l.Client
+            ) src WHERE 1 = 1
+        """
+        if pg or lite:
+            add = ", ".join(f"{c} = {log}.{c} + EXCLUDED.{c}" for c in sums)
+            cursor.execute(f"INSERT INTO {log} ({keys}, {cols}) {select} ON CONFLICT ({keys}) DO UPDATE SET {add}")
+        else:
+            add = ", ".join(f"{c} = {c} + src.s_{c}" for c in sums)
+            cursor.execute(f"INSERT INTO {log} ({keys}, {cols}) {select} ON DUPLICATE KEY UPDATE {add}")
+        cursor.execute(f"DELETE FROM {log} WHERE ItemKind = 0 AND ItemID IN (SELECT OldEpisodeID FROM {aliases})")
+    if exists("ListeningLogItems"):
+        items = q("ListeningLogItems")
+        cols = "UserID, ItemKind, ItemID, PodcastID, PodcastName, FeedURL, ItemTitle, Artwork"
+        select = f"""
+            SELECT i.UserID, 0, a.EpisodeID, i.PodcastID, i.PodcastName, i.FeedURL, i.ItemTitle, i.Artwork
+            FROM {items} i JOIN {aliases} a ON a.OldEpisodeID = i.ItemID WHERE i.ItemKind = 0
+        """
+        if pg or lite:
+            cursor.execute(f"INSERT INTO {items} ({cols}) {select} ON CONFLICT (UserID, ItemKind, ItemID) DO NOTHING")
+        else:
+            cursor.execute(f"INSERT IGNORE INTO {items} ({cols}) {select}")
+        cursor.execute(f"DELETE FROM {items} WHERE ItemKind = 0 AND ItemID IN (SELECT OldEpisodeID FROM {aliases})")
+    return moved
+
+
+@register_migration("094", "listening_log_items", "ListeningLog keeps the show and title it was played under, and the time saved by speed and skipped silence or ads", requires=["093"], sqlite=True)
+def migration_094_listening_log_items(conn, db_type: str) -> None:
+    """- ListeningLogItems: per user and item in ListeningLog, the podcast (id, name, feed URL),
+      title and artwork it had when played, so the log still says what was played after the
+      podcast is removed. Filled from the library for rows logged so far.
+    - ListeningLog.SpeedSaved / SilenceSkipped / AdsSkipped: seconds saved by playing faster
+      than 1x (negative when slower) and by skipping silence and ads.
+    - Rows of episodes merged into another are folded into it."""
+    cursor = conn.cursor()
+    pg, lite = db_type == "postgresql", db_type == "sqlite"
+
+    def has(table: str, column: str) -> bool:
+        if lite:
+            cursor.execute(f'PRAGMA table_info("{table}")')
+            return any(row[1].lower() == column.lower() for row in cursor.fetchall())
+        return _column_exists(cursor, db_type, table, column)
+
+    try:
+        log = '"ListeningLog"' if pg or lite else "ListeningLog"
+        for column in _LISTENING_LOG_SUMS[1:]:
+            if not has("ListeningLog", column):
+                col = column.lower() if lite else column
+                cursor.execute(f"ALTER TABLE {log} ADD COLUMN {col} INT NOT NULL DEFAULT 0")
+
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "ListeningLogItems" (
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    ItemKind SMALLINT NOT NULL,
+                    ItemID INT NOT NULL,
+                    PodcastID INT,
+                    PodcastName TEXT,
+                    FeedURL TEXT,
+                    ItemTitle TEXT,
+                    Artwork TEXT,
+                    PRIMARY KEY (UserID, ItemKind, ItemID)
+                )
+            """)
+        elif lite:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "ListeningLogItems" (
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    itemkind INTEGER NOT NULL,
+                    itemid INTEGER NOT NULL,
+                    podcastid INTEGER,
+                    podcastname TEXT,
+                    feedurl TEXT,
+                    itemtitle TEXT,
+                    artwork TEXT,
+                    PRIMARY KEY (userid, itemkind, itemid)
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ListeningLogItems (
+                    UserID INT NOT NULL,
+                    ItemKind SMALLINT NOT NULL,
+                    ItemID INT NOT NULL,
+                    PodcastID INT,
+                    PodcastName TEXT,
+                    FeedURL TEXT,
+                    ItemTitle TEXT,
+                    Artwork TEXT,
+                    PRIMARY KEY (UserID, ItemKind, ItemID),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+
+        _repoint_listening_log(cursor, db_type)
+
+        q = (lambda t: f'"{t}"') if pg or lite else (lambda t: t)
+        items, episodes, podcasts, videos = q("ListeningLogItems"), q("Episodes"), q("Podcasts"), q("YouTubeVideos")
+        insert = "INSERT INTO" if pg or lite else "INSERT IGNORE INTO"
+        conflict = "ON CONFLICT (UserID, ItemKind, ItemID) DO NOTHING" if pg or lite else ""
+        cols = "UserID, ItemKind, ItemID, PodcastID, PodcastName, FeedURL, ItemTitle, Artwork"
+        cursor.execute(f"""
+            {insert} {items} ({cols})
+            SELECT l.UserID, 0, l.ItemID, MIN(p.PodcastID), MIN(p.PodcastName), MIN(p.FeedURL), MIN(e.EpisodeTitle),
+                   MIN(COALESCE(NULLIF(e.EpisodeArtwork, ''), p.ArtworkURL))
+            FROM (SELECT DISTINCT UserID, ItemID FROM {log} WHERE ItemKind = 0) l
+            JOIN {episodes} e ON e.EpisodeID = l.ItemID
+            JOIN {podcasts} p ON p.FeedID = e.FeedID AND p.UserID = l.UserID
+            WHERE 1 = 1
+            GROUP BY l.UserID, l.ItemID
+            {conflict}
+        """)
+        cursor.execute(f"""
+            {insert} {items} ({cols})
+            SELECT l.UserID, 1, l.ItemID, MIN(p.PodcastID), MIN(p.PodcastName), MIN(p.FeedURL), MIN(v.VideoTitle),
+                   MIN(COALESCE(NULLIF(v.ThumbnailURL, ''), p.ArtworkURL))
+            FROM (SELECT DISTINCT UserID, ItemID FROM {log} WHERE ItemKind = 1) l
+            JOIN {videos} v ON v.VideoID = l.ItemID
+            JOIN {podcasts} p ON p.PodcastID = v.PodcastID AND p.UserID = l.UserID
+            WHERE 1 = 1
+            GROUP BY l.UserID, l.ItemID
+            {conflict}
+        """)
         conn.commit()
     except Exception:
         conn.rollback()

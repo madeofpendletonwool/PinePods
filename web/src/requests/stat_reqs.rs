@@ -85,6 +85,16 @@ pub struct ExtendedUserStats {
     pub episodes_listened: Option<i64>,
     #[serde(default)]
     pub timezone: Option<String>,
+    #[serde(default)]
+    pub time_saved: Option<TimeSaved>,
+}
+
+/// Seconds saved by playback speed (negative when slower than 1x) and by skipping.
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone, Default)]
+pub struct TimeSaved {
+    pub speed: i64,
+    pub silence: i64,
+    pub ads: i64,
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]

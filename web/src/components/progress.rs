@@ -55,6 +55,36 @@ pub struct Update {
     pub duration: Option<f64>,
     #[serde(default)]
     pub finished: bool,
+    /// Episode time gained by playing faster than 1x during `listened` (negative when slower).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub speed_saved: f64,
+    /// Seconds of silence skipped.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub silence_skipped: f64,
+    /// Seconds of ads skipped.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub ads_skipped: f64,
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
+impl Update {
+    /// The played and saved time, taken out of a later report of the same episode.
+    fn take_counts(&mut self, sent: &Update) {
+        self.listened = (self.listened - sent.listened).max(0.0);
+        self.speed_saved -= sent.speed_saved;
+        self.silence_skipped = (self.silence_skipped - sent.silence_skipped).max(0.0);
+        self.ads_skipped = (self.ads_skipped - sent.ads_skipped).max(0.0);
+    }
+
+    fn clear_counts(&mut self) {
+        self.listened = 0.0;
+        self.speed_saved = 0.0;
+        self.silence_skipped = 0.0;
+        self.ads_skipped = 0.0;
+    }
 }
 
 /// Unreported progress, one entry per episode.
@@ -71,6 +101,9 @@ impl Pending {
         match self.0.iter_mut().find(|u| u.episode_id == update.episode_id && u.is_youtube == update.is_youtube) {
             Some(entry) => {
                 entry.listened += update.listened;
+                entry.speed_saved += update.speed_saved;
+                entry.silence_skipped += update.silence_skipped;
+                entry.ads_skipped += update.ads_skipped;
                 if update.at >= entry.at {
                     entry.position = update.position;
                     entry.at = update.at;
@@ -90,7 +123,7 @@ impl Pending {
                 if self.0[i].at <= s.at {
                     self.0.remove(i);
                 } else {
-                    self.0[i].listened = (self.0[i].listened - s.listened).max(0.0);
+                    self.0[i].take_counts(s);
                 }
             }
         }
@@ -116,6 +149,16 @@ pub struct Tracker {
     last_report: f64,
     reported_position: f64,
     listened: f64,
+    speed_saved: f64,
+    silence_skipped: f64,
+    ads_skipped: f64,
+}
+
+/// What an automatic skip jumped over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Skipped {
+    Silence,
+    Ad,
 }
 
 impl Tracker {
@@ -130,12 +173,26 @@ impl Tracker {
             listened: std::mem::take(&mut self.listened),
             duration: (sample.duration.is_finite() && sample.duration >= 1.0).then_some(sample.duration),
             finished,
+            speed_saved: std::mem::take(&mut self.speed_saved),
+            silence_skipped: std::mem::take(&mut self.silence_skipped),
+            ads_skipped: std::mem::take(&mut self.ads_skipped),
         }
     }
 
     /// Whether the tracked episode has anything the server hasn't been told.
     fn unreported(&self, sample: &Sample) -> bool {
-        self.listened >= 1.0 || (sample.position - self.reported_position).abs() >= 1.0
+        self.listened >= 1.0 || self.silence_skipped + self.ads_skipped >= 1.0 || (sample.position - self.reported_position).abs() >= 1.0
+    }
+
+    /// The player skipped `seconds` of silence or ads in the tracked episode.
+    pub fn skipped(&mut self, kind: Skipped, seconds: f64) {
+        if self.last.is_none() || !seconds.is_finite() || seconds <= 0.0 {
+            return;
+        }
+        match kind {
+            Skipped::Silence => self.silence_skipped += seconds,
+            Skipped::Ad => self.ads_skipped += seconds,
+        }
     }
 
     /// Look at the player (`None`: nothing loaded) at `now` (unix ms). Returns what to report.
@@ -152,6 +209,9 @@ impl Tracker {
                 out.push(self.report(&p, now, false));
             }
             self.listened = 0.0;
+            self.speed_saved = 0.0;
+            self.silence_skipped = 0.0;
+            self.ads_skipped = 0.0;
             self.last = sample;
             self.last_tick = now;
             // Nothing is reported for the start itself: the starting position is what some
@@ -165,8 +225,10 @@ impl Tracker {
         let awake = elapsed <= MAX_TICK_MS;
         let mut expected = previous.position;
         if previous.playing && awake {
+            let rate = if previous.rate > 0.0 { previous.rate } else { 1.0 };
             self.listened += elapsed / 1000.0;
-            expected += elapsed / 1000.0 * if previous.rate > 0.0 { previous.rate } else { 1.0 };
+            self.speed_saved += elapsed / 1000.0 * (rate - 1.0);
+            expected += elapsed / 1000.0 * rate;
         }
         let seeked = awake && (sample.position - expected).abs() > SEEK_SECONDS;
         let paused = previous.playing && !sample.playing;
@@ -347,6 +409,11 @@ pub fn start() {
     send();
 }
 
+/// The player skipped `seconds` of silence or an ad.
+pub fn skipped(kind: Skipped, seconds: f64) {
+    TRACKER.with(|t| t.borrow_mut().skipped(kind, seconds));
+}
+
 /// The episode in the player ran to its end.
 pub fn finished() {
     tick();
@@ -376,9 +443,9 @@ fn leave() {
     let Ok(fetch) = Reflect::get(&window, &"fetch".into()).and_then(|f| f.dyn_into::<Function>()) else { return };
     let _ = fetch.call2(&window, &format!("{}/api/data/progress", creds.server).into(), &init);
     // The positions stay until a later request confirms them (sending one twice is harmless);
-    // the played time is taken as delivered so it can't be counted twice.
+    // the played and saved time is taken as delivered so it can't be counted twice.
     for update in &mut pending.0 {
-        update.listened = 0.0;
+        update.clear_counts();
     }
     save(&pending);
 }
