@@ -1763,6 +1763,7 @@
     "recorded_since": "Days, hours and sessions are recorded from {date}; listening before then counts only in All time.",
     "listened": "Listened",
     "episodes_count": "{count} episodes",
+    "episodes_count_one": "1 episode",
     "podcasts_count": "across {count} podcasts",
     "by_month_of": "Months of {year}",
     "highlights": "Highlights",

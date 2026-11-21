@@ -337,13 +337,17 @@ fn month_calendar(days: &[DayStat], first: NaiveDate, last: NaiveDate, dows: &[S
     }
 }
 
+fn episodes_label(n: i64, t: &dyn Fn(&str) -> String) -> String {
+    if n == 1 { t("episodes_count_one") } else { t("episodes_count").replace("{count}", &group(n)) }
+}
+
 fn top_podcast_rows(report: &ListeningReport, t: &dyn Fn(&str) -> String) -> Vec<Ranked> {
     report
         .top_podcasts
         .iter()
         .map(|p| Ranked {
             name: p.name.clone(),
-            sub: Some(t("episodes_count").replace("{count}", &group(p.episodes))),
+            sub: Some(episodes_label(p.episodes, t)),
             image: Some(p.artwork.clone()),
             person: false,
             seconds: p.seconds,
@@ -584,7 +588,7 @@ fn report_sections(r: &ListeningReport, t: &dyn Fn(&str) -> String) -> Html {
         .iter()
         .map(|p| Ranked {
             name: p.name.clone(),
-            sub: Some(t("episodes_count").replace("{count}", &group(p.episodes))),
+            sub: Some(episodes_label(p.episodes, t)),
             image: p.image.clone(),
             person: true,
             seconds: p.seconds,
