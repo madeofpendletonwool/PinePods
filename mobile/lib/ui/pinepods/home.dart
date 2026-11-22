@@ -13,12 +13,16 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/entities/pinepods_collection.dart';
+import 'package:pinepods_mobile/ui/icons/collection_icons.dart';
+import 'package:pinepods_mobile/ui/utils/artwork_colors.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/ui/pinepods/feed.dart';
 import 'package:pinepods_mobile/ui/pinepods/saved.dart';
 import 'package:pinepods_mobile/ui/pinepods/downloads.dart';
 import 'package:pinepods_mobile/ui/pinepods/queue.dart';
 import 'package:pinepods_mobile/ui/pinepods/history.dart';
+import 'package:pinepods_mobile/ui/pinepods/user_stats.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlists.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlist_episodes.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
@@ -53,6 +57,8 @@ class _PinepodsHomeState extends State<PinepodsHome> {
   String _errorMessage = '';
   HomeOverview? _homeData;
   PlaylistResponse? _playlistData;
+  List<PinepodsCollection> _collections = const [];
+  String? _heroAccentRequested;
   final PinepodsService _pinepodsService = PinepodsService();
 
   // Use global audio service instead of creating local instance
@@ -142,9 +148,31 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         _homeData = futures[0] as HomeOverview;
         _playlistData = futures[1] as PlaylistResponse;
       });
+      _loadCollections(settings.pinepodsUserId!);
     } catch (e) {
       // Best-effort background refresh - keep showing the last good snapshot.
     }
+  }
+
+  /// Collections other than Saved, for the home shelf. Best effort: older servers have none.
+  Future<void> _loadCollections(int userId) async {
+    try {
+      final cols = await _pinepodsService.getCollections(userId);
+      if (!mounted) return;
+      setState(() => _collections = cols.where((c) => !c.isDefault).toList());
+    } catch (_) {}
+  }
+
+  void _openCollection(PinepodsCollection? collection) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => Scaffold(
+          appBar: AppBar(title: Text(L.of(context)!.saved_and_collections)),
+          body: CustomScrollView(slivers: [PinepodsSaved(initialCollectionId: collection?.id)]),
+        ),
+      ),
+    ).then((_) => _refreshHomeContentSilently());
   }
 
   Future<void> _loadHomeContent() async {
@@ -209,18 +237,12 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         _pinepodsService.getPlaylists(settings.pinepodsUserId!),
       ]);
 
-      // TEMP-SCREENSHOT-HOOK
-      final _tmp = (futures[0] as HomeOverview).inProgressEpisodes;
-      if (_tmp.isNotEmpty && const String.fromEnvironment('SHOT_EP').isNotEmpty) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => Navigator.push(context, MaterialPageRoute(
-            builder: (context) => PinepodsEpisodeDetails(initialEpisode: _tmp[int.parse(const String.fromEnvironment('SHOT_EP'))].toPinepodsEpisode()))));
-      }
-      // END-TEMP-SCREENSHOT-HOOK
       setState(() {
         _homeData = futures[0] as HomeOverview;
         _playlistData = futures[1] as PlaylistResponse;
         _isLoading = false;
       });
+      _loadCollections(settings.pinepodsUserId!);
     } catch (e) {
       setState(() {
         _errorMessage = L.of(context)!.error_loading_home(e.toString());
@@ -886,6 +908,10 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               children: [
                 // Stats Overview Section
                 _buildStatsSection(),
+                if (_homeData!.weeklyStats.hasActivity) ...[
+                  const SizedBox(height: 12),
+                  _buildWeekSummary(),
+                ],
                 const SizedBox(height: 24),
 
                 // Continue Listening Section
@@ -907,9 +933,8 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                   const SizedBox(height: 24),
                 ],
 
-                // This Week listening stats (only when there is activity)
-                if (_homeData!.weeklyStats.hasActivity) ...[
-                  _buildWeeklyStatsSection(),
+                if (_collections.isNotEmpty) ...[
+                  _buildCollectionsSection(),
                   const SizedBox(height: 24),
                 ],
 
@@ -976,32 +1001,131 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     );
   }
 
+  void _openEpisode(HomeEpisode episode) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PinepodsEpisodeDetails(initialEpisode: episode.toPinepodsEpisode()),
+      ),
+    ).then((_) => _refreshHomeContentSilently());
+  }
+
+  /// The first in-progress episode, large, with a resume button.
+  Widget _buildContinueHero(HomeEpisode episode) {
+    final theme = Theme.of(context);
+    final duration = episode.episodeDuration;
+    final listened = (episode.listenDuration ?? 0).clamp(0, duration > 0 ? duration : 0);
+    final progress = duration > 0 ? listened / duration : 0.0;
+    final left = duration - listened;
+    final h = left ~/ 3600, m = (left % 3600) ~/ 60;
+    final leftText = h > 0 ? L.of(context)!.stats_hm('$h', '$m') : L.of(context)!.stats_m('$m');
+    // Tinted with the artwork's colour, like the episode cards, unless that's turned off.
+    Color? accent;
+    if (Provider.of<SettingsBloc>(context, listen: false).currentSettings.artworkAccentColors) {
+      accent = ArtworkColors.cached(episode.episodeArtwork, null, theme.brightness);
+      final key = '${theme.brightness.name}|${episode.episodeArtwork}';
+      if (accent == null && _heroAccentRequested != key) {
+        _heroAccentRequested = key;
+        ArtworkColors.resolve(episode.episodeArtwork, null, theme.brightness).then((c) {
+          if (mounted && c != null) setState(() {});
+        });
+      }
+    }
+    final primary = accent ?? theme.colorScheme.primary;
+
+    return Material(
+      color: primary.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(20),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _openEpisode(episode),
+        onLongPress: () => _showContextMenu(0, true),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              LazyNetworkImage(
+                imageUrl: episode.episodeArtwork,
+                width: 96,
+                height: 96,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(episode.podcastName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(color: primary, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(episode.episodeTitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, height: 1.2)),
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: progress.toDouble(),
+                        minHeight: 4,
+                        backgroundColor: primary.withValues(alpha: 0.18),
+                        valueColor: AlwaysStoppedAnimation(primary),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        if (duration > 0)
+                          Expanded(
+                            child: Text(L.of(context)!.home_time_left(leftText),
+                                style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                          )
+                        else
+                          const Spacer(),
+                        FilledButton.icon(
+                          onPressed: () => _playEpisode(episode),
+                          icon: const Icon(PhosphorIconsFill.play, size: 16),
+                          label: Text(L.of(context)!.home_resume),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: primary,
+                            foregroundColor: onColor(primary),
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildContinueListeningSection() {
+    final episodes = _homeData!.inProgressEpisodes.take(3).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SoftSectionHeader(title: L.of(context)!.continue_listening, padding: const EdgeInsets.only(bottom: 10)),
-        ...(_homeData!.inProgressEpisodes.take(3).map((episode) =>
+        _buildContinueHero(episodes.first),
+        const SizedBox(height: 12),
+        for (var i = 1; i < episodes.length; i++)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: PinepodsEpisodeCard(
-              episode: episode.toPinepodsEpisode(),
+              episode: episodes[i].toPinepodsEpisode(),
               margin: EdgeInsets.zero,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => PinepodsEpisodeDetails(
-                      initialEpisode: episode.toPinepodsEpisode(),
-                    ),
-                  ),
-                ).then((_) => _refreshHomeContentSilently());
-              },
-              onLongPress: () => _showContextMenu(_homeData!.inProgressEpisodes.indexOf(episode), true),
-              onPlayPressed: () => _playEpisode(episode),
+              onTap: () => _openEpisode(episodes[i]),
+              onLongPress: () => _showContextMenu(i, true),
+              onPlayPressed: () => _playEpisode(episodes[i]),
             ),
           ),
-        )),
       ],
     );
   }
@@ -1060,32 +1184,95 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     );
   }
 
-  Widget _buildWeeklyStatsSection() {
+  /// One line: this week's listening and completions.
+  Widget _buildWeekSummary() {
+    final theme = Theme.of(context);
     final stats = _homeData!.weeklyStats;
+    return Material(
+      color: softFill(theme),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const PinepodsUserStats())),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Icon(PhosphorIconsRegular.chartBar, size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  L.of(context)!.home_week_summary(stats.formattedListened, '${stats.episodesCompleted}'),
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(PhosphorIconsRegular.caretRight, size: 16, color: theme.hintColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCollectionsSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SoftSectionHeader(title: L.of(context)!.this_week, padding: const EdgeInsets.only(bottom: 10)),
-        Row(
-          children: [
-            Expanded(
-              child: _StatTile(
-                title: L.of(context)!.listened,
-                value: stats.formattedListened,
-                icon: PhosphorIconsRegular.headphones,
-                color: Colors.purple,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _StatTile(
-                title: L.of(context)!.completed,
-                value: stats.episodesCompleted.toString(),
-                icon: PhosphorIconsFill.checkCircle,
-                color: Colors.green,
-              ),
-            ),
+        SoftSectionHeader(
+          title: L.of(context)!.collections_title,
+          padding: const EdgeInsets.only(bottom: 10),
+          trailing: [
+            TextButton(onPressed: () => _openCollection(null), child: Text(L.of(context)!.see_all)),
           ],
+        ),
+        SizedBox(
+          height: 96,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _collections.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final c = _collections[index];
+              final theme = Theme.of(context);
+              return SizedBox(
+                width: 180,
+                child: Material(
+                  color: softFill(theme),
+                  borderRadius: BorderRadius.circular(16),
+                  child: InkWell(
+                    onTap: () => _openCollection(c),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(collectionIcon(c.icon), color: theme.colorScheme.primary, size: 22),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(c.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(L.of(context)!.episodes_count(c.episodeCount),
+                              style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ],
     );

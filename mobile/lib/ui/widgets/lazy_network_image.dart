@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/utils/thumbnail.dart';
 
 class LazyNetworkImage extends StatefulWidget {
   final String imageUrl;
@@ -41,6 +42,9 @@ class _LazyNetworkImageState extends State<LazyNetworkImage> {
   /// is too slow for list rows that rebuild on each playback state change.
   File? _localFile;
   String? _checkedPath;
+
+  /// The server thumbnail failed for this URL: load the original instead.
+  String? _thumbFailedFor;
 
   @override
   void initState() {
@@ -97,8 +101,10 @@ class _LazyNetworkImageState extends State<LazyNetworkImage> {
     } else if (widget.imageUrl.isEmpty) {
       image = widget.placeholder ?? _box(PhosphorIconsRegular.microphoneStage);
     } else {
+      final thumb = _thumbFailedFor == widget.imageUrl ? widget.imageUrl : thumbnailUrl(widget.imageUrl, cacheWidth.toDouble());
+      final isThumb = thumb != widget.imageUrl;
       image = ExtendedImage.network(
-        widget.imageUrl,
+        thumb,
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
@@ -109,6 +115,13 @@ class _LazyNetworkImageState extends State<LazyNetworkImage> {
             case LoadState.loading:
               return widget.placeholder ?? _box(PhosphorIconsRegular.microphoneStage);
             case LoadState.failed:
+              if (isThumb) {
+                final original = widget.imageUrl;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && widget.imageUrl == original) setState(() => _thumbFailedFor = original);
+                });
+                return widget.placeholder ?? _box(PhosphorIconsRegular.microphoneStage);
+              }
               return widget.errorWidget ?? _box(PhosphorIconsRegular.microphoneStage);
             case LoadState.completed:
               return null;
