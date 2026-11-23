@@ -651,6 +651,8 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     NextRefreshAt TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '5 minutes'),
                     RefreshIntervalMinutes INT,
                     EditedMetadata VARCHAR(255),
+                    Subscribed BOOLEAN NOT NULL DEFAULT TRUE,
+                    UnsubscribedSince TIMESTAMP NULL,
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                 )
             """)
@@ -733,6 +735,8 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     NextRefreshAt DATETIME NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL 5 MINUTE),
                     RefreshIntervalMinutes INT,
                     EditedMetadata VARCHAR(255),
+                    Subscribed TINYINT(1) NOT NULL DEFAULT 1,
+                    UnsubscribedSince DATETIME NULL DEFAULT NULL,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )
             """)
@@ -8394,6 +8398,35 @@ def migration_095_listening_sessions(conn, db_type: str) -> None:
             UPDATE {items} SET Categories = (SELECT p.Categories FROM {podcasts} p WHERE p.PodcastID = {items}.PodcastID)
             WHERE Categories IS NULL AND PodcastID IS NOT NULL
         """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("096", "podcast_subscribed_flag", "Podcasts.Subscribed/UnsubscribedSince: a podcast row can exist for episodes the user played, queued or downloaded without subscribing", requires=["005"], sqlite=True)
+def migration_096_podcast_subscribed_flag(conn, db_type: str) -> None:
+    """Rows with Subscribed = FALSE hold a show the user hasn't subscribed to, so its episodes can be
+    played, queued, downloaded or transcribed. They stay out of the library, sync and refreshes;
+    subscribing flips the flag. UnsubscribedSince is when the row was last used, for cleanup."""
+    cursor = conn.cursor()
+    try:
+        if db_type == "sqlite":
+            cursor.execute('PRAGMA table_info("Podcasts")')
+            existing = {row[1].lower() for row in cursor.fetchall()}
+        else:
+            existing = {c.lower() for c in ("Subscribed", "UnsubscribedSince") if _column_exists(cursor, db_type, "Podcasts", c)}
+        table = "Podcasts" if db_type == "mysql" else '"Podcasts"'
+        # SQLite reports a column by its declared name, and its schema is all lowercase.
+        names = {"sqlite": ("subscribed", "unsubscribedsince")}.get(db_type, ("Subscribed", "UnsubscribedSince"))
+        timestamp = "DATETIME" if db_type == "mysql" else "TIMESTAMP"
+        if "subscribed" not in existing:
+            boolean = "TINYINT(1) NOT NULL DEFAULT 1" if db_type == "mysql" else "BOOLEAN NOT NULL DEFAULT TRUE"
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {names[0]} {boolean}")
+        if "unsubscribedsince" not in existing:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {names[1]} {timestamp} NULL")
         conn.commit()
     except Exception:
         conn.rollback()

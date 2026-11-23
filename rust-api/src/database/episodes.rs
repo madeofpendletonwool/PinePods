@@ -105,7 +105,7 @@ impl DatabasePool {
                             AND "DownloadedEpisodes".userid = $1
                         WHERE "Episodes".episodepubdate >= NOW() - INTERVAL '30 days'
                         AND "Episodes".episodepubdate > $6
-                        AND "Podcasts".userid = $1
+                        AND "Podcasts".userid = $1 AND "Podcasts".subscribed = TRUE
 
                         UNION ALL
 
@@ -238,7 +238,7 @@ impl DatabasePool {
                             AND DownloadedEpisodes.UserID = ?
                         WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                         AND Episodes.EpisodePubDate > ?
-                        AND Podcasts.UserID = ?
+                        AND Podcasts.UserID = ? AND Podcasts.Subscribed = 1
 
                         UNION ALL
 

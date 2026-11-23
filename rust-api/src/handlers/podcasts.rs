@@ -635,6 +635,101 @@ pub async fn check_episode_in_db(
     Ok(Json(crate::models::EpisodeInDbResponse { episode_in_db }))
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct ResolveFeedEpisodeRequest {
+    pub user_id: i32,
+    /// The podcast's feed address.
+    pub feed_url: String,
+    /// The episode's audio address, as the feed lists it.
+    pub episode_url: String,
+    pub episode_title: String,
+    /// The podcast's Podcast Index ID, when known.
+    pub podcast_index_id: Option<i64>,
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct ResolveFeedEpisodeResponse {
+    pub episode_id: i32,
+    pub podcast_id: i32,
+    /// Whether the user subscribes to the podcast.
+    pub subscribed: bool,
+}
+
+/// The server's ID for an episode of any feed, so it can be played with progress kept, queued,
+/// saved, downloaded or transcribed without subscribing. A podcast the user doesn't subscribe to
+/// gets a row that stays out of their library, sync and refreshes; subscribing later keeps it.
+#[utoipa::path(
+    post,
+    path = "/resolve_feed_episode",
+    tag = "podcasts",
+    summary = "Resolve an episode of any feed",
+    request_body = ResolveFeedEpisodeRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = ResolveFeedEpisodeResponse),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Not your user"),
+        (status = 404, description = "The feed has no such episode"),
+    ),
+)]
+pub async fn resolve_feed_episode(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<ResolveFeedEpisodeRequest>,
+) -> Result<Json<ResolveFeedEpisodeResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+    if !check_user_access(&state, &api_key, request.user_id).await? {
+        return Err(AppError::forbidden("You can only resolve episodes for yourself!"));
+    }
+    let user_id = request.user_id;
+    let feed_url = request.feed_url.trim();
+    if feed_url.is_empty() || (request.episode_url.is_empty() && request.episode_title.is_empty()) {
+        return Err(AppError::bad_request("feed_url and the episode's url or title are required"));
+    }
+    if feed_url.starts_with("local://") {
+        return Err(AppError::not_found("Episode not found"));
+    }
+
+    let db = &state.db_pool;
+    let existing = db.podcast_row_for_feed(user_id, feed_url).await?;
+    let podcast_id = match existing {
+        Some(id) => {
+            db.mark_subscription_use(id, user_id, false, crate::services::sync::SyncOrigin::Pinepods).await?;
+            id
+        }
+        None => {
+            let (values, body) = db.get_podcast_values_with_body(feed_url, user_id, None, None).await?;
+            let get = |k: &str| values.get(k).cloned().unwrap_or_default();
+            let podcast_values = PodcastValues {
+                user_id,
+                pod_title: get("podcastname"),
+                pod_artwork: get("artworkurl"),
+                pod_author: get("author"),
+                categories: serde_json::from_str(values.get("categories").map(String::as_str).unwrap_or("{}")).unwrap_or_default(),
+                pod_description: get("description"),
+                pod_episode_count: get("episodecount").parse().unwrap_or(0),
+                pod_feed_url: feed_url.to_string(),
+                pod_website: get("websiteurl"),
+                pod_explicit: get("explicit") == "True",
+            };
+            db.add_unsubscribed_podcast(&podcast_values, request.podcast_index_id.unwrap_or(0), Some(&body)).await?
+        }
+    };
+
+    let mut episode_id = db.find_podcast_episode(podcast_id, &request.episode_url, &request.episode_title).await?;
+    if episode_id.is_none() && existing.is_some() {
+        // The feed may have published it since the row was made: read the feed once more.
+        let (values, body) = db.get_podcast_values_with_body(feed_url, user_id, None, None).await?;
+        let artwork = values.get("artworkurl").cloned().unwrap_or_default();
+        db.add_episodes(podcast_id, feed_url, &artwork, false, None, None, Some(&body)).await?;
+        episode_id = db.find_podcast_episode(podcast_id, &request.episode_url, &request.episode_title).await?;
+    }
+    let episode_id = episode_id.ok_or_else(|| AppError::not_found("Episode not found"))?;
+    let subscribed = db.podcast_subscribed(podcast_id).await?;
+    Ok(Json(ResolveFeedEpisodeResponse { episode_id, podcast_id, subscribed }))
+}
+
 /// Where an added episode lands. Bottom is last. Top is under the episode playing: the
 /// client's own hint when it sent one, else what any of the user's devices is playing,
 /// else the very top. `position` falls back to the user's setting.

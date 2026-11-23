@@ -72,10 +72,48 @@ pub struct EpisodeListItemProps {
     /// Show the podcast name above the title. Off on a podcast's own page.
     #[prop_or(true)]
     pub show_podcast: bool,
+    /// Set by [`EpisodeListItem`] once an episode straight from a feed has its server id: open
+    /// the actions menu right away (it was what the user asked for).
+    #[prop_or(false)]
+    pub open_menu: bool,
+    /// Set by [`EpisodeListItem`]: an episode straight from a feed got its server id; the flag
+    /// asks to open the actions menu.
+    #[prop_or_default]
+    pub on_resolved: Callback<(Episode, bool)>,
 }
 
+/// An episode row. An episode straight from the feed of a podcast the user doesn't subscribe to
+/// is resolved to its server id when it's first played or its menu opened, and from then on
+/// shown as that episode, so its progress is kept and every action works.
 #[function_component(EpisodeListItem)]
 pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
+    let resolved = use_state(|| None::<(Episode, bool)>);
+    {
+        // The row being reused for another episode drops the old resolution.
+        let resolved = resolved.clone();
+        use_effect_with(props.episode.episodeurl.clone(), move |url| {
+            if resolved.as_ref().is_some_and(|(e, _)| &e.episodeurl != url) {
+                resolved.set(None);
+            }
+        });
+    }
+    let mut body = props.clone();
+    if let Some((episode, open_menu)) = (*resolved).clone() {
+        if episode.episodeurl == props.episode.episodeurl {
+            body.episode = episode;
+            body.open_menu = open_menu;
+        }
+    }
+    body.on_resolved = {
+        let resolved = resolved.clone();
+        Callback::from(move |r: (Episode, bool)| resolved.set(Some(r)))
+    };
+    let key = body.episode.episodeid.to_string();
+    html! { <EpisodeListItemBody {key} ..body /> }
+}
+
+#[function_component(EpisodeListItemBody)]
+fn episode_list_item_body(props: &EpisodeListItemProps) -> Html {
     let (i18n, _) = use_translation();
     let i18n_completed = i18n.t("episode_list_item.completed").to_string();
     // Use selective subscriptions to only re-render when relevant state changes
@@ -230,6 +268,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 
     let on_play_pause = {
         let episode = props.episode.clone();
+        let on_resolved = props.on_resolved.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
@@ -252,6 +291,21 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                 // element's play/pause event listeners keep `audio_playing` in sync afterwards.
                 audio_dispatch.reduce_mut(|state| {
                     state.toggle_playback();
+                });
+            } else if crate::requests::pod_req::is_resolvable_feed_episode(&episode) {
+                let (episode, api_key, server_name) = (episode.clone(), api_key.clone(), server_name.clone());
+                let on_resolved = on_resolved.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let episode = match crate::requests::pod_req::resolve_feed_episode(&server_name, &api_key, user_id, &episode).await {
+                        Ok(resolved) => {
+                            on_resolved.emit((resolved.clone(), false));
+                            resolved
+                        }
+                        Err(_) => episode,
+                    };
+                    let audio_dispatch = Dispatch::<UIState>::global();
+                    let state = audio_dispatch.get();
+                    on_play_click(episode, api_key, user_id, server_name, audio_dispatch, state, false, false, None).emit(e);
                 });
             } else {
                 let episode_id = episode.episodeid;
@@ -347,18 +401,70 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     // Episodes with episodeid <= 0 come from external feeds (unsubscribed podcasts).
     // Only show the context menu for episodes the user can actually interact with.
     let can_use_context_menu = props.episode.episodeid > 0;
+    // An episode straight from a feed gets its server id when its menu is first opened.
+    let resolvable = crate::requests::pod_req::is_resolvable_feed_episode(&props.episode);
+    let resolving = use_state(|| false);
+    let resolve_for_menu = {
+        let episode = props.episode.clone();
+        let on_resolved = props.on_resolved.clone();
+        let resolving = resolving.clone();
+        let (server_name, api_key) = (server_name.clone(), api_key.clone());
+        let failed = i18n.t("episode_list_item.resolve_failed").to_string();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            if *resolving {
+                return;
+            }
+            resolving.set(true);
+            let (episode, on_resolved, resolving) = (episode.clone(), on_resolved.clone(), resolving.clone());
+            let (server_name, api_key, failed) = (server_name.clone(), api_key.clone(), failed.clone());
+            wasm_bindgen_futures::spawn_local(async move {
+                match crate::requests::pod_req::resolve_feed_episode(&server_name, &api_key, user_id, &episode).await {
+                    Ok(resolved) => on_resolved.emit((resolved, true)),
+                    Err(_) => {
+                        resolving.set(false);
+                        Dispatch::<crate::components::context::NotificationState>::global()
+                            .reduce_mut(|s| s.error_message = Some(failed));
+                    }
+                }
+            });
+        })
+    };
 
     let show_context_menu = use_state(|| false);
     let context_menu_position = use_state(|| (0, 0));
 
     // Long press handler - simulate clicking the context button
     let context_button_ref = use_node_ref();
+    {
+        // Resolved from a feed episode because its menu was asked for: open it now.
+        let context_button_ref = context_button_ref.clone();
+        use_effect_with(props.open_menu, move |open| {
+            if *open {
+                if let Some(button) = context_button_ref
+                    .cast::<web_sys::Element>()
+                    .and_then(|div| div.query_selector("button").ok().flatten())
+                    .and_then(|b| wasm_bindgen::JsCast::dyn_into::<web_sys::HtmlElement>(b).ok())
+                {
+                    button.click();
+                }
+            }
+        });
+    }
     let on_long_press = {
         let context_button_ref = context_button_ref.clone();
         let show_context_menu = show_context_menu.clone();
         let context_menu_position = context_menu_position.clone();
 
+        let resolve_for_menu = resolve_for_menu.clone();
         Callback::from(move |event: TouchEvent| {
+            if resolvable {
+                event.prevent_default();
+                if let Ok(click) = MouseEvent::new("click") {
+                    resolve_for_menu.emit(click);
+                }
+                return;
+            }
             if !can_use_context_menu { return; }
             if let Some(touch) = event.touches().get(0) {
                 event.prevent_default();
@@ -666,6 +772,17 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                                 }
                             }
                         </button>
+                        if resolvable {
+                            <div class="context-button-wrapper">
+                                <button class="ico" onclick={resolve_for_menu.clone()} disabled={*resolving}>
+                                    if *resolving {
+                                        <i class="ph ph-spinner" style="animation: spin 1s linear infinite;"></i>
+                                    } else {
+                                        <i class="ph ph-dots-three"></i>
+                                    }
+                                </button>
+                            </div>
+                        }
                         if can_use_context_menu {
                             <div ref={context_button_ref.clone()}>
                                 <ContextMenuButton

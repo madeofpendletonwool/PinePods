@@ -175,7 +175,7 @@ impl DatabasePool {
         let podcasts = dialect_match!(self, {
             pg(pool) => {
                 let rows = q::query(
-                    r#"SELECT podcastname, feedurl FROM "Podcasts" WHERE userid = $1 AND (username IS NULL OR username = '') AND (password IS NULL OR password = '')"#
+                    r#"SELECT podcastname, feedurl FROM "Podcasts" WHERE userid = $1 AND subscribed = TRUE AND (username IS NULL OR username = '') AND (password IS NULL OR password = '')"#
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -192,7 +192,7 @@ impl DatabasePool {
             },
             mysql(pool) => {
                 let rows = sqlx::query(
-                    "SELECT PodcastName, FeedURL FROM Podcasts WHERE UserID = ? AND (Username IS NULL OR Username = '') AND (Password IS NULL OR Password = '')"
+                    "SELECT PodcastName, FeedURL FROM Podcasts WHERE UserID = ? AND Subscribed = 1 AND (Username IS NULL OR Username = '') AND (Password IS NULL OR Password = '')"
                 )
                 .bind(user_id)
                 .fetch_all(pool)

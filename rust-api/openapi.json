@@ -8930,6 +8930,51 @@
         }
       }
     },
+    "/api/data/resolve_feed_episode": {
+      "post": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Resolve an episode of any feed",
+        "operationId": "resolve_feed_episode",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveFeedEpisodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveFeedEpisodeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Not your user"
+          },
+          "404": {
+            "description": "The feed has no such episode"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/restore_backup_file": {
       "post": {
         "tags": [
@@ -19030,6 +19075,62 @@
         "properties": {
           "code_created": {
             "type": "boolean"
+          }
+        }
+      },
+      "ResolveFeedEpisodeRequest": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "feed_url",
+          "episode_url",
+          "episode_title"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "feed_url": {
+            "type": "string",
+            "description": "The podcast's feed address."
+          },
+          "episode_url": {
+            "type": "string",
+            "description": "The episode's audio address, as the feed lists it."
+          },
+          "episode_title": {
+            "type": "string"
+          },
+          "podcast_index_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The podcast's Podcast Index ID, when known."
+          }
+        }
+      },
+      "ResolveFeedEpisodeResponse": {
+        "type": "object",
+        "required": [
+          "episode_id",
+          "podcast_id",
+          "subscribed"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "podcast_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "subscribed": {
+            "type": "boolean",
+            "description": "Whether the user subscribes to the podcast."
           }
         }
       },

@@ -920,7 +920,7 @@ impl DatabasePool {
                     FROM "Episodes" e
                     JOIN "Podcasts" pp ON e.feedid = pp.feedid
                     LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid
-                    WHERE pp.userid = $3
+                    WHERE pp.userid = $3 AND pp.subscribed = TRUE
                 "#.to_string();
 
                 let mut param_count = 3;
@@ -1027,7 +1027,7 @@ impl DatabasePool {
                     FROM Episodes e
                     JOIN Podcasts pp ON e.FeedID = pp.FeedID
                     LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID
-                    WHERE pp.UserID = ?
+                    WHERE pp.UserID = ? AND pp.Subscribed = 1
                 "#.to_string();
 
                 if podcast_filter && !podcast_ids.is_empty() {

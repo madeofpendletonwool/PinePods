@@ -303,7 +303,7 @@ pub async fn episodes_for_user(db: &DatabasePool, person_id: i32, user_id: i32, 
                   x.episodeduration AS episodeduration, x.role AS role
            FROM "PersonExternalEpisodes" x
            WHERE x.personid = $1
-             AND NOT EXISTS (SELECT 1 FROM "Podcasts" p WHERE p.userid = $2 AND p.feedurl = x.feedurl)
+             AND NOT EXISTS (SELECT 1 FROM "Podcasts" p WHERE p.userid = $2 AND p.subscribed = TRUE AND p.feedurl = x.feedurl)
            ORDER BY x.episodepubdate DESC
            LIMIT $3"#,
         [person_id, user_id, limit],

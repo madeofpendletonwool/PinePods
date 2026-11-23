@@ -1224,7 +1224,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
       List<PinepodsEpisode> episodes = [];
       
-      if (_isFollowing && userId != null) {
+      // A podcast with a server id but no subscription is one the user played, queued or
+      // downloaded from: its server episodes carry their progress.
+      if ((_isFollowing || _podcast.id > 0) && userId != null) {
         try {
           print('Loading episodes for followed podcast: ${_podcast.title}');
           
@@ -1580,6 +1582,51 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
   PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
 
+  /// [episode] from the feed of a podcast the user doesn't follow, with its server id, so it
+  /// can be played with progress kept, queued, saved and downloaded; it replaces the feed copy
+  /// in the list. Null (with a message unless [quiet]) if the server couldn't resolve it.
+  Future<PinepodsEpisode?> _resolveFeedEpisode(PinepodsEpisode episode, {bool quiet = false}) async {
+    if (episode.episodeId > 0) return episode;
+    final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    final userId = settings.pinepodsUserId;
+    if (userId == null || settings.pinepodsServer == null || settings.pinepodsApiKey == null) return null;
+    _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+    final ids = await _pinepodsService.resolveFeedEpisode(
+      userId: userId,
+      feedUrl: _podcast.url,
+      episodeUrl: episode.episodeUrl,
+      episodeTitle: episode.episodeTitle,
+    );
+    if (!mounted) return null;
+    if (ids == null) {
+      if (!quiet) _showSnackBar(L.current.episode_resolve_failed, Colors.red);
+      return null;
+    }
+    final resolved = PinepodsEpisode(
+      podcastName: episode.podcastName,
+      episodeTitle: episode.episodeTitle,
+      episodePubDate: episode.episodePubDate,
+      episodeDescription: episode.episodeDescription,
+      episodeArtwork: episode.episodeArtwork,
+      episodeUrl: episode.episodeUrl,
+      episodeDuration: episode.episodeDuration,
+      listenDuration: episode.listenDuration,
+      episodeId: ids.episodeId,
+      completed: episode.completed,
+      saved: episode.saved,
+      queued: episode.queued,
+      downloaded: episode.downloaded,
+      isYoutube: episode.isYoutube,
+      podcastId: ids.podcastId,
+    );
+    setState(() {
+      final i = _episodes.indexOf(episode);
+      if (i >= 0) _episodes[i] = resolved;
+      _filterEpisodes();
+    });
+    return resolved;
+  }
+
   Future<void> _playEpisode(PinepodsEpisode episode) async {
     if (_audioService == null) {
       _showSnackBar(L.of(context)!.audio_service_not_available, Colors.red);
@@ -1589,6 +1636,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     setState(() => _pendingEpisode = episode);
 
     try {
+      if (episode.episodeId <= 0 && !episode.isYoutube) {
+        // Plays untracked if the server can't resolve it.
+        episode = await _resolveFeedEpisode(episode, quiet: true) ?? episode;
+        if (!mounted) return;
+      }
       await playPinepodsEpisodeWithOptionalFullScreen(
         context,
         _audioService!,
@@ -2593,20 +2645,28 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       );
     }
 
+    // Feed episodes of a podcast the user doesn't follow get their server id first.
+    final canResolve = hasServerId || !episode.isYoutube;
     return PinepodsEpisodeCard(
       episode: episode,
-      onTap: _isFollowing && hasServerId
-          ? () {
+      onTap: canResolve
+          ? () async {
+              final resolved = hasServerId ? episode : await _resolveFeedEpisode(episode);
+              if (resolved == null || !context.mounted) return;
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => PinepodsEpisodeDetails(initialEpisode: episode),
+                  builder: (context) => PinepodsEpisodeDetails(initialEpisode: resolved),
                 ),
               );
             }
           : null,
-      onLongPress: _isFollowing && hasServerId ? () => _showEpisodeContextMenu(originalIndex) : null,
-      // Unfollowed (feed) episodes play untracked.
+      onLongPress: canResolve
+          ? () async {
+              if (!hasServerId && await _resolveFeedEpisode(episode) == null) return;
+              if (mounted) _showEpisodeContextMenu(originalIndex);
+            }
+          : null,
       onPlayPressed: () => _playEpisode(episode),
     );
   }

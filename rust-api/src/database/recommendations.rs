@@ -98,7 +98,7 @@ impl DatabasePool {
                     FROM "Podcasts" p
                     LEFT JOIN "Episodes" e ON p.feedid = e.feedid
                     LEFT JOIN "UserEpisodeHistory" ueh ON e.episodeid = ueh.episodeid AND ueh.userid = $1
-                    WHERE p.userid = $1 AND COALESCE(p.displaypodcast, TRUE) = TRUE
+                    WHERE p.userid = $1 AND COALESCE(p.displaypodcast, TRUE) = TRUE AND p.subscribed = TRUE
                     GROUP BY p.podcastid, p.podcastname, p.author, p.description, p.categories,
                              p.podcastindexid, p.feedurl, p.isfavorite
                 "#)
@@ -128,7 +128,7 @@ impl DatabasePool {
                     FROM Podcasts p
                     LEFT JOIN Episodes e ON p.FeedID = e.FeedID
                     LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
-                    WHERE p.UserID = ? AND COALESCE(p.DisplayPodcast, TRUE) = TRUE
+                    WHERE p.UserID = ? AND COALESCE(p.DisplayPodcast, TRUE) = TRUE AND p.Subscribed = 1
                     GROUP BY p.PodcastID, p.PodcastName, p.Author, p.Description, p.Categories,
                              p.PodcastIndexID, p.FeedURL, p.IsFavorite
                 "#)

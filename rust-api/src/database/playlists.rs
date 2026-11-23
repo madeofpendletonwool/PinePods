@@ -813,7 +813,7 @@ impl DatabasePool {
         let episodes = sqlx::query("
             SELECT e.EpisodeID
             FROM Episodes e
-            JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = (SELECT UserID FROM Playlists WHERE PlaylistID = ?)
+            JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = (SELECT UserID FROM Playlists WHERE PlaylistID = ?) AND (p.Subscribed = 1 OR EXISTS (SELECT 1 FROM UserEpisodeHistory hx WHERE hx.EpisodeID = e.EpisodeID AND hx.UserID = p.UserID))
             WHERE e.EpisodeDuration >= 1
             AND e.EpisodeDuration <= 900
             AND COALESCE((SELECT ues.Completed FROM UserEpisodeState ues WHERE ues.EpisodeID = e.EpisodeID AND ues.UserID = p.UserID), 0) = FALSE
@@ -871,7 +871,7 @@ impl DatabasePool {
             let episodes = sqlx::query("
                 SELECT e.EpisodeID
                 FROM Episodes e
-                JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ?
+                JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ? AND (p.Subscribed = 1 OR EXISTS (SELECT 1 FROM UserEpisodeHistory hx WHERE hx.EpisodeID = e.EpisodeID AND hx.UserID = p.UserID))
                 WHERE CONVERT_TZ(e.EpisodePubDate, 'UTC', ?) >
                       DATE_SUB(CONVERT_TZ(NOW(), 'UTC', ?), INTERVAL 24 HOUR)
                 ORDER BY e.EpisodePubDate DESC
@@ -1059,7 +1059,7 @@ impl DatabasePool {
                     JOIN Podcasts p ON e.FeedID = p.FeedID
                     LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = ?
                     JOIN Users u ON u.UserID = ?
-                    WHERE p.UserID = u.UserID
+                    WHERE p.UserID = u.UserID AND (p.Subscribed = 1 OR EXISTS (SELECT 1 FROM UserEpisodeHistory hx WHERE hx.EpisodeID = e.EpisodeID AND hx.UserID = p.UserID))
                 ".to_string(), vec![user_id, user_id])
             } else {
                 // System playlist without user history filtering (Fresh Releases, etc.)
@@ -1070,7 +1070,7 @@ impl DatabasePool {
                     JOIN Podcasts p ON e.FeedID = p.FeedID
                     LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = ?
                     JOIN Users u ON u.UserID = ?
-                    WHERE p.UserID = u.UserID
+                    WHERE p.UserID = u.UserID AND (p.Subscribed = 1 OR EXISTS (SELECT 1 FROM UserEpisodeHistory hx WHERE hx.EpisodeID = e.EpisodeID AND hx.UserID = p.UserID))
                 ".to_string(), vec![user_id, user_id])
             }
         } else {
@@ -1081,7 +1081,7 @@ impl DatabasePool {
                 JOIN Podcasts p ON e.FeedID = p.FeedID
                 LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = ?
                 JOIN Users u ON u.UserID = ?
-                WHERE p.UserID = ?
+                WHERE p.UserID = ? AND (p.Subscribed = 1 OR EXISTS (SELECT 1 FROM UserEpisodeHistory hx WHERE hx.EpisodeID = e.EpisodeID AND hx.UserID = p.UserID))
             ".to_string(), vec![user_id, user_id, user_id])
         };
         
@@ -2256,7 +2256,7 @@ impl DatabasePool {
                 query_parts.push(format!(r#"
                     SELECT COUNT(DISTINCT e.episodeid)
                     FROM "Episodes" e
-                    JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = {}
+                    JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = {} AND (p.subscribed = TRUE OR EXISTS (SELECT 1 FROM "UserEpisodeHistory" hx WHERE hx.episodeid = e.episodeid AND hx.userid = p.userid))
                     LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}"#, 
                     user_id, user_id
                 ));
@@ -2371,7 +2371,7 @@ impl DatabasePool {
                 query_parts.push(format!(r#"
                     SELECT COUNT(DISTINCT e.EpisodeID)
                     FROM Episodes e
-                    JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = {}
+                    JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = {} AND (p.Subscribed = 1 OR EXISTS (SELECT 1 FROM UserEpisodeHistory hx WHERE hx.EpisodeID = e.EpisodeID AND hx.UserID = p.UserID))
                     LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}"#, 
                     user_id, user_id
                 ));
@@ -2662,7 +2662,7 @@ impl DatabasePool {
                         -- Progress percentage for debugging
                         ROUND(((COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) * 100)::numeric, 2) as progress_percent
                     FROM "Episodes" e
-                    JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = {}
+                    JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = {} AND (p.subscribed = TRUE OR EXISTS (SELECT 1 FROM "UserEpisodeHistory" hx WHERE hx.episodeid = e.episodeid AND hx.userid = p.userid))
                     LEFT JOIN "Users" u ON p.userid = u.userid
                     LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}"#,
                     user_timezone, user_id, user_id, user_id, user_id, user_id
@@ -2794,7 +2794,7 @@ impl DatabasePool {
                 let max_eps_opt = playlist.try_get::<Option<i32>, _>("maxepisodes")?;
                 let count_query = format!(
                     r#"SELECT COUNT(DISTINCT e.episodeid) FROM "Episodes" e
-                    JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = {}
+                    JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = {} AND (p.subscribed = TRUE OR EXISTS (SELECT 1 FROM "UserEpisodeHistory" hx WHERE hx.episodeid = e.episodeid AND hx.userid = p.userid))
                     LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}{}"#,
                     user_id, user_id, where_clause
                 );
@@ -2945,7 +2945,7 @@ impl DatabasePool {
                         p.PodcastID as podcastid,
                         ROUND((COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) * 100, 2) as progress_percent
                     FROM Episodes e
-                    JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = {}
+                    JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = {} AND (p.Subscribed = 1 OR EXISTS (SELECT 1 FROM UserEpisodeHistory hx WHERE hx.EpisodeID = e.EpisodeID AND hx.UserID = p.UserID))
                     LEFT JOIN Users u ON p.UserID = u.UserID
                     LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}"#,
                     user_timezone, user_id, user_id, user_id, user_id, user_id
@@ -3083,7 +3083,7 @@ impl DatabasePool {
                 let max_eps_opt = playlist.try_get::<Option<i32>, _>("MaxEpisodes")?;
                 let count_query = format!(
                     "SELECT COUNT(DISTINCT e.EpisodeID) FROM Episodes e
-                    JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = {}
+                    JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = {} AND (p.Subscribed = 1 OR EXISTS (SELECT 1 FROM UserEpisodeHistory hx WHERE hx.EpisodeID = e.EpisodeID AND hx.UserID = p.UserID))
                     LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}{}",
                     user_id, user_id, where_clause
                 );
@@ -3240,7 +3240,7 @@ dialect_method!([update_fresh_releases_playlist_postgres, update_fresh_releases_
         let episodes = q::query(r#"
             SELECT e.episodeid
             FROM "Episodes" e
-            JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = $2
+            JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = $2 AND (p.subscribed = TRUE OR EXISTS (SELECT 1 FROM "UserEpisodeHistory" hx WHERE hx.episodeid = e.episodeid AND hx.userid = p.userid))
             WHERE e.episodepubdate AT TIME ZONE 'UTC' AT TIME ZONE $1 >
                   (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' AT TIME ZONE $1 - INTERVAL '24 hours')
             ORDER BY e.episodepubdate DESC
@@ -3389,7 +3389,7 @@ dialect_method!([update_quick_listens_playlist_postgres, update_quick_listens_pl
     let episodes = q::query(r#"
         SELECT e.episodeid
         FROM "Episodes" e
-        JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = (SELECT userid FROM "Playlists" WHERE playlistid = $1)
+        JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = (SELECT userid FROM "Playlists" WHERE playlistid = $1) AND (p.subscribed = TRUE OR EXISTS (SELECT 1 FROM "UserEpisodeHistory" hx WHERE hx.episodeid = e.episodeid AND hx.userid = p.userid))
         WHERE e.episodeduration >= 1
         AND e.episodeduration <= 900
         AND COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = p.userid), FALSE) = FALSE
@@ -3450,7 +3450,7 @@ dialect_method!([build_and_execute_playlist_query_postgres, build_and_execute_pl
                 JOIN "Podcasts" p ON e.feedid = p.feedid
                 LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
                 JOIN "Users" u ON u.userid = $3
-                WHERE p.userid = u.userid
+                WHERE p.userid = u.userid AND (p.subscribed = TRUE OR EXISTS (SELECT 1 FROM "UserEpisodeHistory" hx WHERE hx.episodeid = e.episodeid AND hx.userid = p.userid))
             "#.to_string(), vec![user_id, user_id])
         } else {
             // System playlist without user history filtering (Fresh Releases, etc.)  
@@ -3461,7 +3461,7 @@ dialect_method!([build_and_execute_playlist_query_postgres, build_and_execute_pl
                 JOIN "Podcasts" p ON e.feedid = p.feedid
                 LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
                 JOIN "Users" u ON u.userid = $3
-                WHERE p.userid = u.userid
+                WHERE p.userid = u.userid AND (p.subscribed = TRUE OR EXISTS (SELECT 1 FROM "UserEpisodeHistory" hx WHERE hx.episodeid = e.episodeid AND hx.userid = p.userid))
             "#.to_string(), vec![user_id, user_id])
         }
     } else {
@@ -3472,7 +3472,7 @@ dialect_method!([build_and_execute_playlist_query_postgres, build_and_execute_pl
             JOIN "Podcasts" p ON e.feedid = p.feedid
             LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
             JOIN "Users" u ON u.userid = $3
-            WHERE p.userid = $4
+            WHERE p.userid = $4 AND (p.subscribed = TRUE OR EXISTS (SELECT 1 FROM "UserEpisodeHistory" hx WHERE hx.episodeid = e.episodeid AND hx.userid = p.userid))
         "#.to_string(), vec![user_id, user_id, user_id])
     };
     

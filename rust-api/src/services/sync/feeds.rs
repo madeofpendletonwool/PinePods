@@ -70,15 +70,17 @@ impl DatabasePool {
     async fn subscription_addresses(&self, user_id: i32) -> AppResult<Vec<(i32, String)>> {
         Ok(dialect_match!(self, {
             pg(pool) => q::query_as(
-                r#"SELECT podcastid, feedurl FROM "Podcasts" WHERE userid = $1 AND feedurl IS NOT NULL
-                   UNION ALL SELECT podcastid, feedurl FROM "PodcastFeedAliases" WHERE userid = $1"#,
+                r#"SELECT podcastid, feedurl FROM "Podcasts" WHERE userid = $1 AND feedurl IS NOT NULL AND subscribed = TRUE
+                   UNION ALL SELECT a.podcastid, a.feedurl FROM "PodcastFeedAliases" a
+                   JOIN "Podcasts" p ON p.podcastid = a.podcastid WHERE a.userid = $1 AND p.subscribed = TRUE"#,
             )
             .bind(user_id)
             .fetch_all(pool)
             .await?,
             mysql(pool) => sqlx::query_as(
-                "SELECT PodcastID, FeedURL FROM Podcasts WHERE UserID = ? AND FeedURL IS NOT NULL
-                 UNION ALL SELECT PodcastID, FeedURL FROM PodcastFeedAliases WHERE UserID = ?",
+                "SELECT PodcastID, FeedURL FROM Podcasts WHERE UserID = ? AND FeedURL IS NOT NULL AND Subscribed = 1
+                 UNION ALL SELECT a.PodcastID, a.FeedURL FROM PodcastFeedAliases a
+                 JOIN Podcasts p ON p.PodcastID = a.PodcastID WHERE a.UserID = ? AND p.Subscribed = 1",
             )
             .bind(user_id)
             .bind(user_id)
@@ -99,11 +101,11 @@ impl DatabasePool {
         let all = self.subscription_addresses(user_id).await?;
         let ids: HashSet<i32> = all.iter().filter(|(_, u)| named.contains(&feed_url_key(u))).map(|(id, _)| *id).collect();
         let own: Vec<(i32, String)> = dialect_match!(self, {
-            pg(pool) => q::query_as(r#"SELECT podcastid, feedurl FROM "Podcasts" WHERE userid = $1 AND feedurl IS NOT NULL"#)
+            pg(pool) => q::query_as(r#"SELECT podcastid, feedurl FROM "Podcasts" WHERE userid = $1 AND feedurl IS NOT NULL AND subscribed = TRUE"#)
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?,
-            mysql(pool) => sqlx::query_as("SELECT PodcastID, FeedURL FROM Podcasts WHERE UserID = ? AND FeedURL IS NOT NULL")
+            mysql(pool) => sqlx::query_as("SELECT PodcastID, FeedURL FROM Podcasts WHERE UserID = ? AND FeedURL IS NOT NULL AND Subscribed = 1")
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?,
@@ -166,14 +168,14 @@ impl DatabasePool {
         let podcasts: Vec<(i32, Option<String>, Option<String>, i64)> = dialect_match!(self, {
             pg(pool) => q::query_as(
                 r#"SELECT p.podcastid, p.podcastname, p.podcastguid, (SELECT COUNT(*) FROM "Episodes" e WHERE e.feedid = p.feedid)
-                   FROM "Podcasts" p WHERE p.userid = $1 AND NOT COALESCE(p.isyoutubechannel, FALSE)"#,
+                   FROM "Podcasts" p WHERE p.userid = $1 AND p.subscribed = TRUE AND NOT COALESCE(p.isyoutubechannel, FALSE)"#,
             )
             .bind(user_id)
             .fetch_all(pool)
             .await?,
             mysql(pool) => sqlx::query_as(
                 "SELECT p.PodcastID, p.PodcastName, p.PodcastGUID, CAST((SELECT COUNT(*) FROM Episodes e WHERE e.FeedID = p.FeedID) AS SIGNED)
-                 FROM Podcasts p WHERE p.UserID = ? AND COALESCE(p.IsYouTubeChannel, 0) = 0",
+                 FROM Podcasts p WHERE p.UserID = ? AND p.Subscribed = 1 AND COALESCE(p.IsYouTubeChannel, 0) = 0",
             )
             .bind(user_id)
             .fetch_all(pool)

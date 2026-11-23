@@ -1731,7 +1731,40 @@ pub fn on_play_pause(
     })
 }
 
+/// Play `episode`. One straight from a feed is resolved to its server id first, so its
+/// progress is kept and it can be queued like any other; if that fails it plays untracked.
 pub fn on_play_click(
+    episode: Episode,
+    api_key: String,
+    user_id: i32,
+    server_name: String,
+    audio_dispatch: Dispatch<UIState>,
+    audio_state: Rc<UIState>,
+    is_local: bool,
+    skip_queue: bool,
+    playlist_id: Option<i32>,
+) -> Callback<MouseEvent> {
+    if !crate::requests::pod_req::is_resolvable_feed_episode(&episode) {
+        return play_episode(episode, api_key, user_id, server_name, audio_dispatch, audio_state, is_local, skip_queue, playlist_id);
+    }
+    Callback::from(move |e: MouseEvent| {
+        let (episode, api_key, server_name) = (episode.clone(), api_key.clone(), server_name.clone());
+        let (audio_dispatch, audio_state) = (audio_dispatch.clone(), audio_state.clone());
+        spawn_local(async move {
+            let episode = match crate::requests::pod_req::resolve_feed_episode(&server_name, &api_key, user_id, &episode).await {
+                Ok(resolved) => resolved,
+                Err(err) => {
+                    web_sys::console::log_1(&format!("Playing without keeping progress: {err}").into());
+                    episode
+                }
+            };
+            play_episode(episode, api_key, user_id, server_name, audio_dispatch, audio_state, is_local, skip_queue, playlist_id).emit(e);
+        });
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn play_episode(
     mut episode: Episode,
     api_key: String,
     user_id: i32,

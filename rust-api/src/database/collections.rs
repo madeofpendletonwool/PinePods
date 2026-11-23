@@ -371,7 +371,7 @@ impl DatabasePool {
             pg(pool) => {
                 q::query_scalar(
                     r#"SELECT categories FROM "Podcasts"
-                       WHERE userid = $1 AND categories IS NOT NULL AND categories <> ''"#,
+                       WHERE userid = $1 AND subscribed = TRUE AND categories IS NOT NULL AND categories <> ''"#,
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -380,7 +380,7 @@ impl DatabasePool {
             mysql(pool) => {
                 sqlx::query_scalar(
                     "SELECT Categories FROM Podcasts
-                     WHERE UserID = ? AND Categories IS NOT NULL AND Categories <> ''",
+                     WHERE UserID = ? AND Subscribed = 1 AND Categories IS NOT NULL AND Categories <> ''",
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -465,7 +465,7 @@ impl DatabasePool {
                        FROM "Episodes" e
                        JOIN "Podcasts" p ON e.feedid = p.feedid
                        WHERE ({cat_clause})
-                         AND p.userid = ${owner_param}
+                         AND p.userid = ${owner_param} AND p.subscribed = TRUE
                          AND NOT EXISTS (
                              SELECT 1 FROM "CollectionEpisodes" ce
                              WHERE ce.collectionid = $1 AND ce.episodeid = e.episodeid
@@ -493,7 +493,7 @@ impl DatabasePool {
                      FROM Episodes e
                      JOIN Podcasts p ON e.FeedID = p.FeedID
                      WHERE ({cat_clause})
-                       AND p.UserID = ?
+                       AND p.UserID = ? AND p.Subscribed = 1
                        AND NOT EXISTS (
                            SELECT 1 FROM CollectionEpisodes ce
                            WHERE ce.CollectionID = ? AND ce.EpisodeID = e.EpisodeID
@@ -531,7 +531,7 @@ impl DatabasePool {
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?,
-                q::query_scalar(r#"SELECT categories FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                q::query_scalar(r#"SELECT categories FROM "Podcasts" WHERE podcastid = $1 AND userid = $2 AND subscribed = TRUE"#)
                     .bind(podcast_id)
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -546,7 +546,7 @@ impl DatabasePool {
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?,
-                sqlx::query_scalar("SELECT Categories FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                sqlx::query_scalar("SELECT Categories FROM Podcasts WHERE PodcastID = ? AND UserID = ? AND Subscribed = 1")
                     .bind(podcast_id)
                     .bind(user_id)
                     .fetch_optional(pool)

@@ -638,13 +638,13 @@ impl DatabasePool {
     pub async fn sync_shareable_feed_urls(&self, user_id: i32) -> AppResult<Vec<String>> {
         let rows: Vec<(Option<String>, Option<String>, Option<String>, Option<bool>)> = dialect_match!(self, {
             pg(pool) => q::query_as(
-                r#"SELECT feedurl, username, password, isyoutubechannel FROM "Podcasts" WHERE userid = $1 ORDER BY podcastid"#,
+                r#"SELECT feedurl, username, password, isyoutubechannel FROM "Podcasts" WHERE userid = $1 AND subscribed = TRUE ORDER BY podcastid"#,
             )
             .bind(user_id)
             .fetch_all(pool)
             .await?,
             mysql(pool) => sqlx::query_as(
-                "SELECT FeedURL, Username, Password, IsYouTubeChannel FROM Podcasts WHERE UserID = ? ORDER BY PodcastID",
+                "SELECT FeedURL, Username, Password, IsYouTubeChannel FROM Podcasts WHERE UserID = ? AND Subscribed = 1 ORDER BY PodcastID",
             )
             .bind(user_id)
             .fetch_all(pool)

@@ -2337,6 +2337,40 @@ class PinepodsService {
     }
   }
 
+  /// The server's id for an episode of any feed, subscribed or not, so it can be played with
+  /// progress kept, queued, saved or downloaded. Returns (episodeId, podcastId), or null if the
+  /// server couldn't find it (or predates this).
+  Future<({int episodeId, int podcastId})?> resolveFeedEpisode({
+    required int userId,
+    required String feedUrl,
+    required String episodeUrl,
+    required String episodeTitle,
+  }) async {
+    if (_server == null || _apiKey == null) return null;
+    final url = Uri.parse('$_server/api/data/resolve_feed_episode');
+    try {
+      final response = await _post(
+        url,
+        headers: {'Content-Type': 'application/json', 'Api-Key': _apiKey!},
+        body: jsonEncode({
+          'user_id': userId,
+          'feed_url': feedUrl,
+          'episode_url': episodeUrl,
+          'episode_title': episodeTitle,
+        }),
+      );
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body);
+      final episodeId = data['episode_id'];
+      final podcastId = data['podcast_id'];
+      if (episodeId is! int || podcastId is! int) return null;
+      return (episodeId: episodeId, podcastId: podcastId);
+    } catch (e) {
+      _devLog('Error resolving feed episode: $e');
+      return null;
+    }
+  }
+
   // Add a podcast to the server
   Future<bool> addPodcast(UnifiedPinepodsPodcast podcast, int userId) async {
     if (_server == null || _apiKey == null) {

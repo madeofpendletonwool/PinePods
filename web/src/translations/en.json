@@ -440,6 +440,7 @@
   "failed_to_find_podcast_metadata": "Failed to find podcast's metadata.",
   "episode_list_item": {
     "completed": "Completed",
+    "resolve_failed": "Couldn't load this episode from its feed",
     "time_left": "{time} left",
     "play": "Play",
     "pause": "Pause",
