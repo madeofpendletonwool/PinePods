@@ -83,6 +83,16 @@ final class PlaybackIntentTests: XCTestCase {
         XCTAssertTrue(intent.canResumeLoadedEpisode)
     }
 
+    func testLoadThatNeverFinishesIsStalledAfterTimeout() {
+        var intent = PlaybackIntent()
+        XCTAssertFalse(intent.loadStalled(now: 1_000))
+        let generation = intent.beginEpisode(now: 1_000)
+        XCTAssertFalse(intent.loadStalled(now: 1_000 + PlaybackIntent.loadTimeout - 1))
+        XCTAssertTrue(intent.loadStalled(now: 1_000 + PlaybackIntent.loadTimeout + 1))
+        intent.completeLoad(generation: generation)
+        XCTAssertFalse(intent.loadStalled(now: 5_000))
+    }
+
     func testManualPauseDuringInterruptionCancelsAutomaticResume() {
         var intent = PlaybackIntent()
         intent.play()
