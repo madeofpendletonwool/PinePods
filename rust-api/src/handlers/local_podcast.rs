@@ -208,8 +208,7 @@ pub fn scan_local_directory(dir: &Path, known: &HashSet<String>) -> Result<Vec<L
 
                 let track_num = tag.track();
 
-                let duration = crate::handlers::youtube::get_mp3_duration(&path_str)
-                    .unwrap_or(0);
+                let duration = crate::services::audio_duration::audio_duration(&path).unwrap_or(0);
 
                 let episode_artwork = extract_id3_artwork(&tag, &artwork_dir);
 
@@ -234,8 +233,7 @@ pub fn scan_local_directory(dir: &Path, known: &HashSet<String>) -> Result<Vec<L
                     })
                     .unwrap_or_else(|| Utc::now().naive_utc());
 
-                let duration = crate::handlers::youtube::get_mp3_duration(&path_str)
-                    .unwrap_or(0);
+                let duration = crate::services::audio_duration::audio_duration(&path).unwrap_or(0);
 
                 (title, String::new(), pub_date, duration, None, None)
             };
