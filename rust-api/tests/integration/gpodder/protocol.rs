@@ -58,6 +58,87 @@ async fn play_action_round_trips_for_antennapod() {
     .await;
 }
 
+/// A first sync (`since=0`) gets the newest action of each kind per episode, not the history of
+/// positions behind it; an incremental sync still gets every action since its cursor.
+#[tokio::test(flavor = "multi_thread")]
+async fn full_sync_sends_only_the_newest_action_of_each_kind() {
+    conformance("full sync collapse", async {
+        let s = GpodderScene::start().await;
+        if !s.has_library() {
+            return;
+        }
+        let phone = s.device("phone").await;
+        let minute = chrono::Duration::minutes(1);
+        phone
+            .upload_episode_actions(&[
+                play_action(POD, EP, t0(), 0, 100, 1800),
+                play_action(POD, EP, t0() + minute, 100, 200, 1800),
+                simple_action(POD, EP, "download", t0() + minute * 2),
+                play_action(POD, EP, t0() + minute * 3, 200, 300, 1800),
+            ])
+            .await;
+
+        let tablet = s.device("tablet").await;
+        let full = tablet.episode_actions(0).await.ok_json();
+        assert_episode_actions_response(&full);
+        let got = actions_for(&full, EP);
+        assert_eq!(got.len(), 2, "{full}");
+        let plays: Vec<_> = got.iter().filter(|a| a["action"] == "play").collect();
+        assert_eq!(plays.len(), 1, "{full}");
+        assert_eq!(play_position(plays[0]), Some(300), "{}", plays[0]);
+        assert!(got.iter().any(|a| a["action"] == "download"), "{full}");
+
+        let since_start = tablet.episode_actions(1).await.ok_json();
+        assert_eq!(actions_for(&since_start, EP).len(), 4, "{since_start}");
+
+        let aggregated = tablet.get(&format!("/api/2/episodes/{}.json?since=0&aggregated=true", tablet.username)).await.ok_json();
+        let got = actions_for(&aggregated, EP);
+        assert_eq!(got.len(), 1, "{aggregated}");
+        assert_eq!(play_position(got[0]), Some(300), "{}", got[0]);
+    })
+    .await;
+}
+
+/// A history longer than one page of the log comes back whole and parseable, newest positions
+/// included.
+#[tokio::test(flavor = "multi_thread")]
+async fn full_sync_of_a_long_history_returns_every_episode() {
+    conformance("long history", async {
+        let s = GpodderScene::start().await;
+        let phone = s.device("phone").await;
+        let episodes = 4500;
+        let mut actions = Vec::new();
+        for i in 0..episodes {
+            let ep = format!("https://cdn.example.test/show/long-{i}.mp3");
+            actions.push(play_action(POD, &ep, t0(), 0, 10, 600));
+            if i % 3 == 0 {
+                actions.push(play_action(POD, &ep, t0() + chrono::Duration::minutes(1), 10, 20 + i as i64, 600));
+            }
+        }
+        for batch in actions.chunks(500) {
+            phone.upload_episode_batch(batch).await.assert_ok();
+        }
+
+        let body = s.device("tablet").await.episode_actions(0).await.ok_json();
+        assert_episode_actions_response(&body);
+        assert!(body["timestamp"].as_i64().is_some(), "no timestamp");
+        let list = body["actions"].as_array().unwrap();
+        let mut newest: std::collections::HashMap<&str, Vec<i64>> = std::collections::HashMap::new();
+        for a in list {
+            newest.entry(a["episode"].as_str().unwrap()).or_default().push(play_position(a).unwrap());
+        }
+        assert_eq!(newest.len(), episodes, "episodes missing from the full sync");
+        if s.has_library() {
+            assert_eq!(list.len(), episodes, "superseded positions sent");
+            for i in (0..episodes).step_by(3) {
+                let ep = format!("https://cdn.example.test/show/long-{i}.mp3");
+                assert_eq!(newest[ep.as_str()], vec![20 + i as i64], "{ep}");
+            }
+        }
+    })
+    .await;
+}
+
 /// gPodder desktop and other clients send `play` with only a position; AntennaPod must still
 /// resume there rather than reset to 0 (#636).
 #[tokio::test(flavor = "multi_thread")]
