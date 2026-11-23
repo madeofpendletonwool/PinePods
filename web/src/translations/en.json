@@ -1632,7 +1632,22 @@
     "custom_themes": "Custom Themes",
     "transcription": "Transcription",
     "ai": "AI",
-    "ytdlp_management": "YouTube (yt-dlp)"
+    "ytdlp_management": "YouTube (yt-dlp)",
+    "custom_themes_description": "Create your own themes with custom colors",
+    "search_placeholder": "Search settings",
+    "search_no_results": "No settings match your search",
+    "group_personal": "Personal",
+    "group_server": "Server",
+    "page_account": "Account & security",
+    "page_appearance": "Appearance",
+    "page_playback": "Playback",
+    "page_notifications": "Notifications",
+    "page_podcasts": "Podcasts & feeds",
+    "page_sync": "Sync, import & export",
+    "page_sharing": "Sharing",
+    "page_users": "Users & sign-in",
+    "page_downloads": "Downloads",
+    "page_backup": "Backup & restore"
   },
   "shared_episode": {
     "episode_transcript": "Episode Transcript",
@@ -1916,7 +1931,9 @@
     "done": "Done",
     "failed": "Failed",
     "section_ad_detection": "Ad detection",
-    "view_queue": "View AI job queue"
+    "view_queue": "View AI job queue",
+    "enable_ai": "AI features",
+    "enable_ai_desc": "When off, every AI feature is hidden for all users and no AI work runs, even with the AI container connected."
   },
   "ytdlp_settings": {
     "intro": "YouTube support relies on yt-dlp, which Google's changes break regularly. The bundled binary updates itself so YouTube fixes don't have to wait for a PinePods release.",

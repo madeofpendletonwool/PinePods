@@ -360,8 +360,8 @@ pub async fn transcribe_episode(
     prefer_user: Option<i32>,
     on_progress: impl FnMut(f64),
 ) -> Result<(), String> {
-    if ai_client::ai_base_url().is_none() {
-        return Err("AI service not configured".to_string());
+    if !ai_client::ai_active(db_pool).await {
+        return Err("AI features are off or not configured".to_string());
     }
     if !force && has_complete_transcript(db_pool, episode_id).await {
         debug!("Episode {} already transcribed; skipping", episode_id);
@@ -691,6 +691,9 @@ pub fn maybe_transcribe_new_episode(db_pool: DatabasePool, episode_id: i32) {
         return; // AI features disabled — nothing to do
     }
     tokio::spawn(async move {
+        if !ai_client::ai_active(&db_pool).await {
+            return;
+        }
         let (opted_in, downloads) = auto_transcribe_opt_in(&db_pool, episode_id).await;
         if opted_in && !downloads {
             let job = || transcribe_episode(&db_pool, episode_id, false, None, |_| {});
@@ -709,6 +712,9 @@ pub fn after_download(db_pool: DatabasePool, episode_id: i32, user_id: i32) {
         return;
     }
     tokio::spawn(async move {
+        if !ai_client::ai_active(&db_pool).await {
+            return;
+        }
         let (opted_in, _) = auto_transcribe_opt_in(&db_pool, episode_id).await;
         let analyzed = analyzed_audio(&db_pool, episode_id).await;
         let had_ads = crate::services::ad_detection::has_ad_segments(&db_pool, episode_id).await;

@@ -3954,6 +3954,39 @@ pub struct AiStatus {
     pub ad_removal_ready: bool,
     #[serde(default)]
     pub downloads_enabled: bool,
+    /// Admin switch; when off every AI feature is hidden and `available` is false.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// The AI container answers, whatever the admin switch says.
+    #[serde(default)]
+    pub connected: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+pub async fn call_set_ai_enabled(
+    server_name: &str,
+    api_key: &Option<String>,
+    enabled: bool,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/ai_enabled", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(serde_json::json!({ "enabled": enabled }).to_string())?
+        .send()
+        .await?;
+    if response.ok() {
+        Ok(())
+    } else {
+        let text = response.text().await.unwrap_or_default();
+        Err(Error::msg(text))
+    }
 }
 
 pub async fn call_get_ai_status_full(
