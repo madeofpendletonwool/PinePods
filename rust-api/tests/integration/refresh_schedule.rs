@@ -87,7 +87,7 @@ async fn the_tick_refreshes_a_shared_feed_once_when_any_subscriber_is_due() {
     let a = subscribe(&app, &alice, &url, 5).await;
     let b = subscribe(&app, &bob, &url, 5).await;
     let o = subscribe(&app, &alice, &other, 2).await;
-    assert_eq!(interval(&app, a).await, Some(180), "a daily show: every 3 hours");
+    assert_eq!(interval(&app, a).await, Some(60), "a daily show: hourly, the ceiling");
 
     app.feed("daily.xml", &daily(6));
     make_due(&app, a).await;
@@ -98,8 +98,8 @@ async fn the_tick_refreshes_a_shared_feed_once_when_any_subscriber_is_due() {
     app.episode_id(&alice, a, "Episode 6").await;
     app.episode_id(&bob, b, "Episode 6").await;
     for pod in [a, b] {
-        assert_eq!(interval(&app, pod).await, Some(180));
-        assert_about(due_in(&app, pod).await, 180);
+        assert_eq!(interval(&app, pod).await, Some(60));
+        assert_about(due_in(&app, pod).await, 60);
     }
     assert!(due_in(&app, o).await > 0);
 }
@@ -110,23 +110,23 @@ async fn the_feed_and_its_host_can_slow_refreshes_down() {
     let user = app.user("listener").await;
     let hourly = Feed::with_episodes("Syndicated", 5).extra("<sy:updatePeriod>daily</sy:updatePeriod>");
     let pod = subscribe(&app, &user, &app.feed("sy.xml", &hourly), 5).await;
-    assert_eq!(interval(&app, pod).await, Some(360), "daily, capped at 6 hours for a live feed");
+    assert_eq!(interval(&app, pod).await, Some(60), "daily, capped at an hour for a live feed");
 
     // The host's max-age is seen on the refresh after adding, even when the body is unchanged.
     let xml = Feed::with_episodes("Cached", 5).to_xml();
-    let url = app.fixtures().serve("cached.xml", Fixture::new("application/rss+xml", xml).header("Cache-Control", "public, max-age=7200"));
+    let url = app.fixtures().serve("cached.xml", Fixture::new("application/rss+xml", xml).header("Cache-Control", "public, max-age=2400"));
     let cached = subscribe(&app, &user, &url, 5).await;
     assert_eq!(interval(&app, cached).await, Some(15));
     make_due(&app, cached).await;
     tick(&app).await;
-    assert_eq!(interval(&app, cached).await, Some(120));
+    assert_eq!(interval(&app, cached).await, Some(40));
 
     // An announced publishing time pulls the next refresh in to just after it.
     let soon = (Utc::now() + Duration::minutes(20)).format("%Y-%m-%dT%H:%M:%SZ");
     let weekly = spaced("Announced", 5, Duration::days(1), Duration::weeks(1))
         .extra(&format!(r#"<podcast:updateFrequency rrule="FREQ=WEEKLY" dtstart="{soon}">Weekly</podcast:updateFrequency>"#));
     let announced = subscribe(&app, &user, &app.feed("announced.xml", &weekly), 5).await;
-    assert_eq!(interval(&app, announced).await, Some(360));
+    assert_eq!(interval(&app, announced).await, Some(60));
     let secs = due_in(&app, announced).await;
     assert!((29 * 60..=30 * 60 + 5).contains(&secs), "{secs}s: 10 minutes after the announced time");
 }
@@ -228,4 +228,22 @@ async fn upgrading_backfills_intervals_and_spreads_the_first_refreshes() {
     let secs = due_in(&app, new).await;
     assert!((4 * 60..=5 * 60 + 5).contains(&secs), "{secs}s");
     assert_eq!(interval(&app, new).await, None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_interval_stored_under_a_higher_ceiling_is_clamped() {
+    let app = TestApp::new().await;
+    let user = app.user("listener").await;
+    let weekly = spaced("Weekly", 5, Duration::days(2), Duration::weeks(1));
+    let url = app.feed("weekly.xml", &weekly);
+    let pod = subscribe(&app, &user, &url, 5).await;
+    set_refresh_state(&app, pod, "RefreshIntervalMinutes = 360").await;
+
+    // The feed hasn't changed, so it would keep the interval it had.
+    make_due(&app, pod).await;
+    let hits = app.fixtures().hits("weekly.xml").len();
+    assert_eq!(tick(&app).await, 1);
+    assert_eq!(app.fixtures().hits("weekly.xml").len(), hits + 1);
+    assert_eq!(interval(&app, pod).await, Some(60));
+    assert_about(due_in(&app, pod).await, 60);
 }
