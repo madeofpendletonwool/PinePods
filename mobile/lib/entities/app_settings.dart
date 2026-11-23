@@ -107,6 +107,9 @@ class AppSettings {
   /// When an episode ends, start the next one in the queue.
   final bool autoPlayQueue;
 
+  /// Android: pause, rather than lower the volume, for another app's short sounds.
+  final bool pauseForInterruptions;
+
   /// UI language code (e.g. en, pt-BR, zh-Hans); empty follows the device.
   final String language;
 
@@ -142,6 +145,7 @@ class AppSettings {
     this.playButtonStyle = 'ring',
     this.artworkAccentColors = true,
     this.autoPlayQueue = true,
+    this.pauseForInterruptions = true,
     this.language = '',
   });
 
@@ -177,6 +181,7 @@ class AppSettings {
         playButtonStyle = 'ring',
         artworkAccentColors = true,
         autoPlayQueue = true,
+        pauseForInterruptions = true,
         language = '';
 
   AppSettings copyWith({
@@ -211,6 +216,7 @@ class AppSettings {
     String? playButtonStyle,
     bool? artworkAccentColors,
     bool? autoPlayQueue,
+    bool? pauseForInterruptions,
     String? language,
   }) =>
       AppSettings(
@@ -245,6 +251,7 @@ class AppSettings {
         playButtonStyle: playButtonStyle ?? this.playButtonStyle,
         artworkAccentColors: artworkAccentColors ?? this.artworkAccentColors,
         autoPlayQueue: autoPlayQueue ?? this.autoPlayQueue,
+        pauseForInterruptions: pauseForInterruptions ?? this.pauseForInterruptions,
         language: language ?? this.language,
       );
 }

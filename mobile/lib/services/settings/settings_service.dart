@@ -113,6 +113,11 @@ abstract class SettingsService {
   bool get autoPlayQueue;
   set autoPlayQueue(bool value);
 
+  /// Android: pause (rather than lower the volume) when another app plays a
+  /// short sound such as a notification.
+  bool get pauseForInterruptions;
+  set pauseForInterruptions(bool value);
+
   /// UI language code (e.g. en, pt-BR, zh-Hans); empty follows the device.
   String get language;
   set language(String value);

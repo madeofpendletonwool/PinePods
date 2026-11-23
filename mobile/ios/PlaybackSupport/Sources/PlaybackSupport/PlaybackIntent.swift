@@ -1,9 +1,15 @@
+import Foundation
+
 struct PlaybackIntent {
+    /// Seconds after which an episode load that never finished counts as stuck.
+    static let loadTimeout: TimeInterval = 30
+
     private(set) var rate: Float = 1
     private(set) var generation: UInt64 = 0
     private var requested = false
     private var interrupted = false
     private var loadedGeneration: UInt64?
+    private var loadStartedAt: TimeInterval?
 
     var canPlay: Bool { requested && !interrupted }
     var canResumeLoadedEpisode: Bool { canPlay && loadedGeneration == generation }
@@ -17,8 +23,9 @@ struct PlaybackIntent {
 
     // An explicit play or episode load clears any interruption: iOS often never
     // sends an interruption-ended notification, which would leave play dead.
-    mutating func beginEpisode() -> UInt64 {
+    mutating func beginEpisode(now: TimeInterval = Date().timeIntervalSince1970) -> UInt64 {
         generation &+= 1
+        loadStartedAt = now
         requested = true
         interrupted = false
         return generation
@@ -32,6 +39,7 @@ struct PlaybackIntent {
 
     mutating func stop() {
         requested = false
+        loadStartedAt = nil
         generation &+= 1
     }
 
@@ -47,6 +55,13 @@ struct PlaybackIntent {
         interrupted = false
         requested = resume
         return resume
+    }
+
+    /// The current episode started loading long ago and never finished (its
+    /// start seek never completed), so play would otherwise wait on it forever.
+    func loadStalled(now: TimeInterval = Date().timeIntervalSince1970) -> Bool {
+        guard let started = loadStartedAt, !isLoaded else { return false }
+        return now - started > Self.loadTimeout
     }
 
     func canStart(generation: UInt64) -> Bool {
