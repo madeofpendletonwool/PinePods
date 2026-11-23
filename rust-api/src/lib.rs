@@ -224,6 +224,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::podcasts::get_time_info))
         .routes(routes!(handlers::podcasts::check_podcast))
         .routes(routes!(handlers::podcasts::check_episode_in_db))
+        .routes(routes!(handlers::podcasts::resolve_feed_episode))
         .routes(routes!(handlers::podcasts::queue_episode))
         .routes(routes!(handlers::podcasts::queue_episode_to_top))
         .routes(routes!(handlers::nowplaying::now_playing_devices))

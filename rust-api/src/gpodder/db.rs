@@ -521,7 +521,7 @@ impl DatabasePool {
             pg(pool) => (
                 q::query_as(
                     r#"SELECT feedurl, username, password, COALESCE(isyoutubechannel, FALSE)
-                       FROM "Podcasts" WHERE userid = $1 ORDER BY podcastid"#,
+                       FROM "Podcasts" WHERE userid = $1 AND subscribed = TRUE ORDER BY podcastid"#,
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -538,7 +538,7 @@ impl DatabasePool {
             ),
             mysql(pool) => (
                 sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>, Option<bool>)>(
-                    "SELECT FeedURL, Username, Password, IsYouTubeChannel FROM Podcasts WHERE UserID = ? ORDER BY PodcastID",
+                    "SELECT FeedURL, Username, Password, IsYouTubeChannel FROM Podcasts WHERE UserID = ? AND Subscribed = 1 ORDER BY PodcastID",
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -887,7 +887,7 @@ impl DatabasePool {
                           e.episodepubdate AS released, p.podcastname AS ptitle, p.feedurl AS purl, p.websiteurl AS website,
                           p.username, p.password, COALESCE(p.isyoutubechannel, FALSE) AS yt
                    FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid
-                   WHERE p.userid = $1 AND e.episodepubdate >= $2
+                   WHERE p.userid = $1 AND p.subscribed = TRUE AND e.episodepubdate >= $2
                    ORDER BY e.episodepubdate DESC LIMIT $3"#,
             )
             .bind(user_id)
@@ -903,7 +903,7 @@ impl DatabasePool {
                         e.EpisodePubDate AS released, p.PodcastName AS ptitle, p.FeedURL AS purl, p.WebsiteURL AS website,
                         p.Username AS username, p.Password AS password, p.IsYouTubeChannel AS yt
                  FROM Episodes e JOIN Podcasts p ON p.FeedID = e.FeedID
-                 WHERE p.UserID = ? AND e.EpisodePubDate >= ?
+                 WHERE p.UserID = ? AND p.Subscribed = 1 AND e.EpisodePubDate >= ?
                  ORDER BY e.EpisodePubDate DESC LIMIT ?",
             )
             .bind(user_id)

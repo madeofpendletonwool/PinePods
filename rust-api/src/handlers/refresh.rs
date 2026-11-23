@@ -619,7 +619,7 @@ async fn load_refresh_items(
                           isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified, feedcontenthash,
                           refreshintervalminutes
                    FROM "Podcasts"
-                   WHERE COALESCE(refreshpodcast, TRUE) = TRUE
+                   WHERE COALESCE(refreshpodcast, TRUE) = TRUE AND subscribed = TRUE
                      AND (refreshnotbefore IS NULL OR refreshnotbefore <= NOW())
                      AND ($1 OR COALESCE(consecutivefailures, 0) = 0
                           OR lastrefreshattempt IS NULL
@@ -667,7 +667,7 @@ async fn load_refresh_items(
                         IsYouTubeChannel, UserID, FeedCutoffDays, FeedETag, FeedLastModified, FeedContentHash,
                         RefreshIntervalMinutes
                  FROM Podcasts
-                 WHERE COALESCE(RefreshPodcast, 1) = 1
+                 WHERE COALESCE(RefreshPodcast, 1) = 1 AND Subscribed = 1
                    AND (RefreshNotBefore IS NULL OR RefreshNotBefore <= NOW())
                    AND (? OR COALESCE(ConsecutiveFailures, 0) = 0
                         OR LastRefreshAttempt IS NULL

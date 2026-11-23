@@ -164,7 +164,7 @@ impl DatabasePool {
                         (refreshnotbefore IS NOT NULL AND refreshnotbefore > NOW()) as throttled,
                         COALESCE(refreshpodcast, TRUE) as auto_refresh
                     FROM "Podcasts" 
-                    WHERE userid = $1"#
+                    WHERE userid = $1 AND subscribed = TRUE"#
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -219,7 +219,7 @@ impl DatabasePool {
                         (RefreshNotBefore IS NOT NULL AND RefreshNotBefore > NOW()) as throttled,
                         COALESCE(RefreshPodcast, 1) as auto_refresh
                     FROM Podcasts 
-                    WHERE UserID = ?"
+                    WHERE UserID = ? AND Subscribed = 1"
                 )
                 .bind(user_id)
                 .fetch_all(pool)
