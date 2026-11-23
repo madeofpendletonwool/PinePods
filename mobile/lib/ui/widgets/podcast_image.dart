@@ -5,6 +5,7 @@
 import 'package:pinepods_mobile/core/environment.dart';
 import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
+import 'package:pinepods_mobile/ui/utils/thumbnail.dart';
 
 /// This class handles rendering of podcast images from a url.
 /// Images will be cached for quicker fetching on subsequent requests. An optional placeholder
@@ -49,10 +50,14 @@ class _PodcastImageState extends State<PodcastImage> with TickerProviderStateMix
   /// be re-fetched if headers have been set. We'll leave headers for now.
   final headers = <String, String>{'User-Agent': Environment.userAgent()};
 
+  /// The server thumbnail failed for this URL: load the original instead.
+  String? _thumbFailedFor;
+
   @override
   Widget build(BuildContext context) {
+    final thumb = _thumbFailedFor == widget.url ? widget.url : thumbnailUrl(widget.url, cacheWidth.toDouble());
     return ExtendedImage.network(
-      widget.url,
+      thumb,
       key: widget.key,
       width: widget.height,
       height: widget.width,
@@ -62,7 +67,13 @@ class _PodcastImageState extends State<PodcastImage> with TickerProviderStateMix
       loadStateChanged: (ExtendedImageState state) {
         Widget renderWidget;
 
-        if (state.extendedImageLoadState == LoadState.failed) {
+        if (state.extendedImageLoadState == LoadState.failed && thumb != widget.url) {
+          final original = widget.url;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && widget.url == original) setState(() => _thumbFailedFor = original);
+          });
+          renderWidget = widget.placeholder ?? SizedBox(width: widget.width, height: widget.height);
+        } else if (state.extendedImageLoadState == LoadState.failed) {
           renderWidget = ClipRRect(
             borderRadius: BorderRadius.all(Radius.circular(widget.borderRadius)),
             child: widget.errorPlaceholder ??

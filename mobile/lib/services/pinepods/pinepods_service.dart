@@ -8,6 +8,7 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_collection.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/user_stats.dart';
+import 'package:pinepods_mobile/entities/listening_report.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
 import 'package:pinepods_mobile/entities/people.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
@@ -1418,10 +1419,42 @@ class PinepodsService {
         return data
             .cast<Map<String, dynamic>>()
             .map(DownloadTask.fromJson)
-            .where((t) => t.taskType == 'download_episode' || t.taskType == 'podcast_download' || t.taskType == 'download_all_episodes')
+            .where((t) => const {'download_episode', 'podcast_download', 'download_all_episodes', 'transcribe_episode'}.contains(t.taskType))
             .toList();
       }
       return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<bool> _taskAction(String path) async {
+    if (_server == null || _apiKey == null) return false;
+    try {
+      final response = await _post(Uri.parse('$_server/api/tasks/$path'), headers: {'Api-Key': _apiKey!});
+      return response.statusCode == 200;
+    } catch (e) {
+      _devLog('Task action $path failed: $e');
+      return false;
+    }
+  }
+
+  /// Remove a finished task from the activity list on the server.
+  Future<bool> dismissTask(String taskId) => _taskAction('${Uri.encodeComponent(taskId)}/dismiss');
+
+  /// Cancel a task that is still queued, such as a transcription.
+  Future<bool> cancelTask(String taskId) => _taskAction('${Uri.encodeComponent(taskId)}/cancel');
+
+  /// Remove every finished task from the activity list on the server.
+  Future<bool> clearFinishedTasks() => _taskAction('clear_finished');
+
+  /// The user's server tasks of every type.
+  Future<List<DownloadTask>> getUserTasks(int userId) async {
+    if (_server == null || _apiKey == null) return [];
+    try {
+      final response = await _get(Uri.parse('$_server/api/tasks/user/$userId'), headers: {'Api-Key': _apiKey!});
+      if (response.statusCode != 200) return [];
+      return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>().map(DownloadTask.fromJson).toList();
     } catch (e) {
       return [];
     }
@@ -2696,6 +2729,39 @@ class PinepodsService {
     } catch (e) {
       _devLog('Error getting user stats: $e');
       rethrow;
+    }
+  }
+
+  /// All-time listening figures. Null on servers without the endpoint.
+  Future<ExtendedStats?> getExtendedStats(int userId) async {
+    if (_server == null || _apiKey == null) return null;
+    final url = Uri.parse('$_server/api/data/get_extended_stats')
+        .replace(queryParameters: {'user_id': userId.toString()});
+    try {
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
+      if (response.statusCode != 200) return null;
+      return ExtendedStats.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    } catch (e) {
+      _devLog('Error getting extended stats: $e');
+      return null;
+    }
+  }
+
+  /// Listening for local days [start]..[end] (`YYYY-MM-DD`), or all time when both are null.
+  /// Null on servers without the listening record.
+  Future<ListeningReport?> getListeningReport(int userId, {String? start, String? end}) async {
+    if (_server == null || _apiKey == null) return null;
+    final url = Uri.parse('$_server/api/data/listening_report').replace(queryParameters: {
+      'user_id': userId.toString(),
+      if (start != null && end != null) ...{'start': start, 'end': end},
+    });
+    try {
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
+      if (response.statusCode != 200) return null;
+      return ListeningReport.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    } catch (e) {
+      _devLog('Error getting listening report: $e');
+      return null;
     }
   }
 
@@ -4089,6 +4155,10 @@ class DownloadTask {
   bool get isCompleted => status == 'SUCCESS';
   bool get isFailed => status == 'FAILED';
   bool get isActive => status == 'PENDING' || status == 'DOWNLOADING';
+  bool get isTranscription => taskType == 'transcribe_episode';
+
+  /// A transcription still waiting its turn; the server can cancel it.
+  bool get isCancellable => isTranscription && status == 'PENDING';
 }
 
 /// The server is older than `POST /api/data/progress`.

@@ -2368,5 +2368,226 @@
     }
   },
   "collection_empty_body": "Long-press an episode and choose Add to Collection, or select several on a podcast's page.",
-  "new_collection_chip": "New"
+  "new_collection_chip": "New",
+  "stats_hm": "{hours}h {minutes}m",
+  "@stats_hm": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_m": "{minutes}m",
+  "@stats_m": {
+    "placeholders": {
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_h": "{hours}h",
+  "@stats_h": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_listening_since": "Listening since {date}",
+  "@stats_listening_since": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_badge_night_owl": "Night Owl",
+  "stats_badge_evening_listener": "Evening Listener",
+  "stats_badge_afternoon_listener": "Afternoon Listener",
+  "stats_badge_morning_listener": "Morning Listener",
+  "stats_period_all": "All time",
+  "stats_period_whole_year": "Whole year",
+  "stats_period_empty": "No listening in this period.",
+  "stats_recorded_since": "Days, hours and sessions are recorded from {date}; listening before then counts only in All time.",
+  "@stats_recorded_since": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_this_year": "Listened in {year}",
+  "@stats_this_year": {
+    "placeholders": {
+      "year": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_episodes_finished": "Episodes finished",
+  "stats_completion_of": "{rate}% of started episodes",
+  "@stats_completion_of": {
+    "placeholders": {
+      "rate": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_current_streak": "Day streak",
+  "stats_longest_streak": "Best streak: {days}",
+  "@stats_longest_streak": {
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_active_days": "Days listened",
+  "stats_episodes_played": "Episodes played",
+  "stats_backlog": "Left to hear",
+  "stats_backlog_episodes": "{count} unplayed episodes",
+  "@stats_backlog_episodes": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_time_saved": "Time saved",
+  "stats_time_saved_detail": "{speed} by speed, {skipped} skipped",
+  "@stats_time_saved_detail": {
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      },
+      "skipped": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_activity": "Activity",
+  "stats_activity_note": "Last 6 months",
+  "stats_by_hour": "Time of day",
+  "stats_peak_hour": "Most around {hour}",
+  "@stats_peak_hour": {
+    "placeholders": {
+      "hour": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_by_dow": "Day of week",
+  "stats_by_month": "Last 12 months",
+  "stats_by_month_of": "Months of {year}",
+  "@stats_by_month_of": {
+    "placeholders": {
+      "year": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_top_podcasts": "Top podcasts",
+  "stats_categories": "Favorite categories",
+  "stats_longest_episode": "Longest episode listened",
+  "stats_listened": "Listened",
+  "stats_podcasts_count": "across {count} podcasts",
+  "@stats_podcasts_count": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_highlights": "Highlights",
+  "stats_biggest_day": "Biggest day",
+  "stats_busiest_week": "Busiest week",
+  "stats_week_of": "Week of {date}",
+  "@stats_week_of": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_longest_session": "Longest session",
+  "stats_sessions": "Sessions",
+  "stats_average_session": "{time} on average",
+  "@stats_average_session": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_average_speed": "Average speed",
+  "stats_played_offline": "Played from downloads",
+  "stats_of_listening": "{pct}% of your listening",
+  "@stats_of_listening": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_release_lag": "After release",
+  "stats_same_day": "Same day",
+  "stats_days_after": "{days} days",
+  "@stats_days_after": {
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_within_a_day": "{pct}% heard within a day",
+  "@stats_within_a_day": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "stats_top_episodes": "Top episodes",
+  "stats_top_people": "Most heard voices",
+  "stats_top_people_note": "Hosts and guests credited on what you played",
+  "stats_by_app": "Listening by app",
+  "stats_client_web": "Web",
+  "stats_client_desktop": "Desktop",
+  "stats_client_sync": "Podcast sync",
+  "stats_client_other": "Other apps",
+  "stats_most_ads": "Most ads skipped",
+  "stats_most_ads_note": "Time skipped per podcast",
+  "stats_library": "Library",
+  "stats_less": "Less",
+  "stats_more": "More",
+  "stats_about": "About",
+  "home_resume": "Resume",
+  "home_time_left": "{time} left",
+  "@home_time_left": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "home_week_summary": "This week: {time} listened · {count} completed",
+  "@home_week_summary": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "collections_title": "Collections",
+  "clear_finished_tasks": "Clear finished",
+  "cancel_queued_task": "Cancel",
+  "transcription_cancelled": "Transcription cancelled",
+  "see_all": "See all",
+  "could_not_cancel_task": "Couldn't cancel. It may have already started."
 }
