@@ -346,7 +346,8 @@ pub fn maybe_detect_ads_after_transcript(db_pool: DatabasePool, episode_id: i32,
         });
 
         if any_opted_in || redetect {
-            if let Err(e) = detect_episode_ads(&db_pool, episode_id, false, None, |_| {}).await {
+            let job = || detect_episode_ads(&db_pool, episode_id, false, None, |_| {});
+            if let Err(e) = ai_client::retry_if_interrupted(job).await {
                 warn!("Auto ad-detection failed for episode {}: {}", episode_id, e);
             }
         }

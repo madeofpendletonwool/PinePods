@@ -885,9 +885,11 @@ fn spawn_transcribe(
     started_msg: String,
     error_msg: String,
 ) {
+    // Regenerating replaces a finished transcript, which the server only does when forced.
+    let force = transcript.as_ref().is_some_and(|t| t.status == "complete");
     submitting.set(true);
     wasm_bindgen_futures::spawn_local(async move {
-        match call_transcribe_episode(&server_name, &api_key, episode_id, user_id, false).await {
+        match call_transcribe_episode(&server_name, &api_key, episode_id, user_id, force).await {
             Ok(_) => {
                 Dispatch::<NotificationState>::global()
                     .reduce_mut(|s| s.info_message = Some(started_msg));
