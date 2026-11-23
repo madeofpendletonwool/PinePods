@@ -113,6 +113,10 @@ pub struct PodcastEpisode {
     pub downloaded: bool,
     pub is_youtube: bool,
     pub is_video: bool,
+    /// With a search: 0 when every term is in the title, 1 when some are, 2 when it matched on
+    /// the description alone. Results come in this order. Absent without a search.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_rank: Option<i32>,
 }
 
 #[derive(Serialize, utoipa::ToSchema)]
@@ -1495,7 +1499,9 @@ pub struct PodcastEpisodesQuery {
     pub offset: Option<i64>,
     pub sort_by: Option<String>,    // "date" | "duration" | "title"
     pub sort_order: Option<String>, // "asc" | "desc"
-    pub search: Option<String>,     // free-text term, matched against title and description
+    /// Words (or "quoted phrases") that must each appear in the title or the description's text.
+    /// Episodes with them in the title come first.
+    pub search: Option<String>,
     pub filter: Option<String>,     // "all" | "completed" | "in_progress"
 }
 
@@ -1548,6 +1554,16 @@ pub async fn podcast_episodes(
             filter,
         )
         .await?;
+
+    let terms = crate::services::search_text::SearchTerms::parse(search);
+    let episodes = if terms.is_empty() {
+        episodes
+    } else {
+        episodes
+            .into_iter()
+            .map(|e| PodcastEpisode { match_rank: Some(terms.title_rank(&e.episodetitle)), ..e })
+            .collect()
+    };
 
     Ok(Json(PodcastEpisodesResponse { episodes, total }))
 }

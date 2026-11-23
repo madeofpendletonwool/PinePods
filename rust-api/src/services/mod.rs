@@ -17,6 +17,7 @@ pub mod podping;
 pub mod recommendations;
 pub mod refresh_schedule;
 pub mod scheduler;
+pub mod search_text;
 pub mod sync;
 pub mod task_manager;
 pub mod tasks;

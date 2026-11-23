@@ -70,6 +70,9 @@ pub struct Episode {
     pub downloadedlocation: Option<String>,
     pub listendate: Option<String>,
     pub savedate: Option<String>,
+    /// Set on search results from one podcast: 0/1 when the title matched, 2 when only the
+    /// description did.
+    pub match_rank: Option<i32>,
 }
 
 impl Episode {

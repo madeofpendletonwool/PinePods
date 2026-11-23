@@ -625,6 +625,8 @@
   "follow_podcast_prompt": "Follow this podcast to add it to your library and view episodes",
   "no_episodes_match_filter": "No episodes match this filter",
   "search_episodes": "Search episodes",
+  "search_title_matches": "Title matches",
+  "search_description_matches": "Mentioned in the description",
   "sort_newest_first": "Newest first",
   "sort_oldest_first": "Oldest first",
   "sort_shortest_first": "Shortest first",

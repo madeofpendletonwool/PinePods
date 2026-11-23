@@ -8402,6 +8402,35 @@ def migration_095_listening_sessions(conn, db_type: str) -> None:
         cursor.close()
 
 
+@register_migration("097", "episode_description_text", "Episodes.DescriptionText and YouTubeVideos.DescriptionText: the visible words of a description, without markup or links, for episode search", requires=["005"], sqlite=True)
+def migration_097_episode_description_text(conn, db_type: str) -> None:
+    """NULL until the server fills it: new and refreshed episodes get it when written, existing
+    ones from a background pass at startup. Search reads the raw description while it is NULL."""
+    cursor = conn.cursor()
+    try:
+        for table in ("Episodes", "YouTubeVideos"):
+            if db_type == "sqlite":
+                cursor.execute(f'PRAGMA table_info("{table}")')
+                exists = any(row[1].lower() == "descriptiontext" for row in cursor.fetchall())
+            else:
+                exists = _column_exists(cursor, db_type, table, "DescriptionText")
+            if exists:
+                continue
+            # SQLite reports a column by its declared name, and its schema is all lowercase.
+            if db_type == "postgresql":
+                cursor.execute(f'ALTER TABLE "{table}" ADD COLUMN DescriptionText TEXT')
+            elif db_type == "sqlite":
+                cursor.execute(f'ALTER TABLE "{table}" ADD COLUMN descriptiontext TEXT')
+            else:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN DescriptionText MEDIUMTEXT NULL")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("118", "gpodder_actions_follow_merged_episodes", "Episode actions point at the shared episode their merged copy became; the copies are deleted", requires=["082", "111"])
 def migration_118_gpodder_actions_follow_merged_episodes(conn, db_type: str) -> None:
     """GpodderSyncEpisodeActions.EpisodeID of actions on an episode copy merged by 082 now points
