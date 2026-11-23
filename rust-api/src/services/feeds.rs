@@ -260,6 +260,49 @@ impl DatabasePool {
         Ok(deleted)
     }
 
+    /// Remove the rows of podcasts a user never subscribed to once nothing of theirs uses them:
+    /// no listen, played mark, save, queue entry, download or collection entry for any of its
+    /// episodes, and no use in the last 30 days.
+    pub async fn cleanup_unused_unsubscribed_podcasts(&self) -> AppResult<usize> {
+        const UNUSED: &str = r#"SELECT p.podcastid, p.userid FROM "Podcasts" p
+            WHERE p.subscribed = FALSE
+              AND (p.unsubscribedsince IS NULL OR p.unsubscribedsince < NOW() - INTERVAL '30 days')
+              AND NOT EXISTS (SELECT 1 FROM "Episodes" e WHERE e.feedid = p.feedid AND (
+                    EXISTS (SELECT 1 FROM "UserEpisodeHistory" x WHERE x.episodeid = e.episodeid AND x.userid = p.userid)
+                 OR EXISTS (SELECT 1 FROM "UserEpisodeState" x WHERE x.episodeid = e.episodeid AND x.userid = p.userid)
+                 OR EXISTS (SELECT 1 FROM "SavedEpisodes" x WHERE x.episodeid = e.episodeid AND x.userid = p.userid)
+                 OR EXISTS (SELECT 1 FROM "EpisodeQueue" x WHERE x.episodeid = e.episodeid AND x.userid = p.userid AND x.is_youtube = FALSE)
+                 OR EXISTS (SELECT 1 FROM "DownloadedEpisodes" x WHERE x.episodeid = e.episodeid AND x.userid = p.userid)
+                 OR EXISTS (SELECT 1 FROM "CollectionEpisodes" x JOIN "Collections" c ON c.collectionid = x.collectionid
+                            WHERE x.episodeid = e.episodeid AND c.userid = p.userid)))"#;
+        const UNUSED_MYSQL: &str = "SELECT p.PodcastID, p.UserID FROM Podcasts p
+            WHERE p.Subscribed = 0
+              AND (p.UnsubscribedSince IS NULL OR p.UnsubscribedSince < NOW() - INTERVAL 30 DAY)
+              AND NOT EXISTS (SELECT 1 FROM Episodes e WHERE e.FeedID = p.FeedID AND (
+                    EXISTS (SELECT 1 FROM UserEpisodeHistory x WHERE x.EpisodeID = e.EpisodeID AND x.UserID = p.UserID)
+                 OR EXISTS (SELECT 1 FROM UserEpisodeState x WHERE x.EpisodeID = e.EpisodeID AND x.UserID = p.UserID)
+                 OR EXISTS (SELECT 1 FROM SavedEpisodes x WHERE x.EpisodeID = e.EpisodeID AND x.UserID = p.UserID)
+                 OR EXISTS (SELECT 1 FROM EpisodeQueue x WHERE x.EpisodeID = e.EpisodeID AND x.UserID = p.UserID AND x.is_youtube = 0)
+                 OR EXISTS (SELECT 1 FROM DownloadedEpisodes x WHERE x.EpisodeID = e.EpisodeID AND x.UserID = p.UserID)
+                 OR EXISTS (SELECT 1 FROM CollectionEpisodes x JOIN Collections c ON c.CollectionID = x.CollectionID
+                            WHERE x.EpisodeID = e.EpisodeID AND c.UserID = p.UserID)))";
+        let rows: Vec<(i32, i32)> = dialect_match!(self, {
+            pg(pool) => q::query_as(UNUSED).fetch_all(pool).await?,
+            mysql(pool) => sqlx::query_as(UNUSED_MYSQL).fetch_all(pool).await?,
+        });
+        let mut removed = 0;
+        for (podcast_id, user_id) in rows {
+            match self.remove_podcast_id(podcast_id, user_id, crate::services::sync::SyncOrigin::Unlogged).await {
+                Ok(()) => removed += 1,
+                Err(e) => warn!("Removing unused podcast row {} of user {} failed: {}", podcast_id, user_id, e),
+            }
+        }
+        if removed > 0 {
+            debug!("Removed {} unused rows of podcasts nobody subscribed to", removed);
+        }
+        Ok(removed)
+    }
+
     /// Feeds due for a scheduled refresh, the longest overdue first. A feed needs a subscriber
     /// that still wants it refreshed; feeds in failure backoff or under a host's Retry-After hold
     /// wait.
@@ -269,7 +312,7 @@ impl DatabasePool {
             pg(pool) => {
                 q::query(sqlx::AssertSqlSafe(format!(
                     r#"SELECT f.feedid FROM "Feeds" f
-                       WHERE EXISTS (SELECT 1 FROM "Podcasts" p WHERE p.feedid = f.feedid AND COALESCE(p.refreshpodcast, TRUE))
+                       WHERE EXISTS (SELECT 1 FROM "Podcasts" p WHERE p.feedid = f.feedid AND p.subscribed = TRUE AND COALESCE(p.refreshpodcast, TRUE))
                          AND (f.nextrefreshat IS NULL OR f.nextrefreshat <= NOW())
                          AND (f.refreshnotbefore IS NULL OR f.refreshnotbefore <= NOW())
                          AND (f.consecutivefailures = 0 OR f.lastrefreshattempt IS NULL
@@ -287,7 +330,7 @@ impl DatabasePool {
             mysql(pool) => {
                 sqlx::query(sqlx::AssertSqlSafe(format!(
                     "SELECT f.FeedID FROM Feeds f
-                     WHERE EXISTS (SELECT 1 FROM Podcasts p WHERE p.FeedID = f.FeedID AND COALESCE(p.RefreshPodcast, 1) = 1)
+                     WHERE EXISTS (SELECT 1 FROM Podcasts p WHERE p.FeedID = f.FeedID AND p.Subscribed = 1 AND COALESCE(p.RefreshPodcast, 1) = 1)
                        AND (f.NextRefreshAt IS NULL OR f.NextRefreshAt <= NOW())
                        AND (f.RefreshNotBefore IS NULL OR f.RefreshNotBefore <= NOW())
                        AND (f.ConsecutiveFailures = 0 OR f.LastRefreshAttempt IS NULL

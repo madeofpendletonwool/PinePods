@@ -835,6 +835,65 @@ pub async fn call_check_episode_in_db(
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResolvedFeedEpisode {
+    pub episode_id: i32,
+    pub podcast_id: i32,
+    pub subscribed: bool,
+}
+
+/// The server's id for an episode of any feed, subscribed or not, so it can be played with
+/// progress kept, queued, saved, downloaded or transcribed.
+pub async fn call_resolve_feed_episode(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+    feed_url: &str,
+    episode_url: &str,
+    episode_title: &str,
+) -> Result<ResolvedFeedEpisode, anyhow::Error> {
+    let body = serde_json::json!({
+        "user_id": user_id,
+        "feed_url": feed_url,
+        "episode_url": episode_url,
+        "episode_title": episode_title,
+    });
+    let resp = Request::post(&format!("{}/api/data/resolve_feed_episode", server))
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())?
+        .send()
+        .await
+        .context("Network Request Error")?;
+    if resp.ok() {
+        Ok(resp.json::<ResolvedFeedEpisode>().await.context("Response Parsing Error")?)
+    } else {
+        Err(anyhow::anyhow!("Error resolving episode: {}", resp.status_text()))
+    }
+}
+
+/// Whether `episode` comes straight from a feed (no server id yet) and can be resolved.
+pub fn is_resolvable_feed_episode(episode: &crate::requests::episode::Episode) -> bool {
+    episode.episodeid <= 0
+        && !episode.is_youtube
+        && !episode.feedurl.is_empty()
+        && !episode.feedurl.starts_with("local://")
+}
+
+/// `episode` with its server ids filled in, for an episode straight from a feed.
+pub async fn resolve_feed_episode(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+    episode: &crate::requests::episode::Episode,
+) -> Result<crate::requests::episode::Episode, anyhow::Error> {
+    let r = call_resolve_feed_episode(server, api_key, user_id, &episode.feedurl, &episode.episodeurl, &episode.episodetitle).await?;
+    let mut resolved = episode.clone();
+    resolved.episodeid = r.episode_id;
+    resolved.podcastid = r.podcast_id;
+    Ok(resolved)
+}
+
 // Queue calls
 
 #[derive(Serialize, Deserialize, Debug)]

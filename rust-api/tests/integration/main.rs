@@ -55,5 +55,6 @@ mod timers;
 mod translations;
 mod transcript_search;
 mod transcript_export;
+mod unsubscribed_episodes;
 mod user_episode_state;
 mod youtube;

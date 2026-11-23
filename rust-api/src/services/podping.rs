@@ -262,12 +262,12 @@ impl DatabasePool {
         let mut found = HashSet::new();
         for chunk in wanted.chunks(500) {
             let rows: Vec<String> = dialect_match!(self, {
-                pg(pool) => q::query_scalar(r#"SELECT DISTINCT feedurl FROM "Podcasts" WHERE feedurl = ANY($1)"#)
+                pg(pool) => q::query_scalar(r#"SELECT DISTINCT feedurl FROM "Podcasts" WHERE feedurl = ANY($1) AND subscribed = TRUE"#)
                     .bind(chunk)
                     .fetch_all(pool)
                     .await?,
                 mysql(pool) => {
-                    let sql = format!("SELECT DISTINCT FeedURL FROM Podcasts WHERE FeedURL IN ({})", vec!["?"; chunk.len()].join(", "));
+                    let sql = format!("SELECT DISTINCT FeedURL FROM Podcasts WHERE FeedURL IN ({}) AND Subscribed = 1", vec!["?"; chunk.len()].join(", "));
                     let mut q = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()));
                     for u in chunk {
                         q = q.bind(u);

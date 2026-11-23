@@ -39,7 +39,7 @@ impl DatabasePool {
                     // UserStats, which miss podcasts and plays that arrived through sync.
                     let counted = q::query(r#"
                         SELECT
-                            (SELECT COUNT(*) FROM "Podcasts" WHERE userid = $1)::bigint AS podcasts,
+                            (SELECT COUNT(*) FROM "Podcasts" WHERE userid = $1 AND subscribed = TRUE)::bigint AS podcasts,
                             (SELECT COUNT(DISTINCT pid) FROM (
                                 SELECT p.podcastid AS pid FROM "UserEpisodeHistory" h
                                   JOIN "Episodes" e ON h.episodeid = e.episodeid
@@ -107,7 +107,7 @@ impl DatabasePool {
                     // Counted from the library and history; see the PostgreSQL branch.
                     let counted = sqlx::query(
                         "SELECT
-                            CAST((SELECT COUNT(*) FROM Podcasts WHERE UserID = ?) AS SIGNED) AS podcasts,
+                            CAST((SELECT COUNT(*) FROM Podcasts WHERE UserID = ? AND Subscribed = 1) AS SIGNED) AS podcasts,
                             CAST((SELECT COUNT(DISTINCT pid) FROM (
                                 SELECT p.PodcastID AS pid FROM UserEpisodeHistory h
                                   JOIN Episodes e ON h.EpisodeID = e.EpisodeID
@@ -201,12 +201,12 @@ impl DatabasePool {
                           WHERE h.userid = $1)::bigint AS podcasts_listened,
                         (SELECT COUNT(*)
                            FROM "Episodes" e
-                           JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = $1
+                           JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = $1 AND p.subscribed = TRUE
                            LEFT JOIN "UserEpisodeHistory" h ON h.episodeid = e.episodeid AND h.userid = $1
                           WHERE h.episodeid IS NULL)::bigint AS backlog_episodes,
                         (SELECT COALESCE(SUM(e.episodeduration), 0)
                            FROM "Episodes" e
-                           JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = $1
+                           JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = $1 AND p.subscribed = TRUE
                            LEFT JOIN "UserEpisodeHistory" h ON h.episodeid = e.episodeid AND h.userid = $1
                           WHERE h.episodeid IS NULL)::bigint AS backlog_seconds
                 "#).bind(user_id).fetch_one(pool).await?;
@@ -247,12 +247,12 @@ impl DatabasePool {
                           WHERE h.UserID = ?) AS SIGNED) AS podcasts_listened,
                         CAST((SELECT COUNT(*)
                            FROM Episodes e
-                           JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ?
+                           JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ? AND p.Subscribed = 1
                            LEFT JOIN UserEpisodeHistory h ON h.EpisodeID = e.EpisodeID AND h.UserID = ?
                           WHERE h.EpisodeID IS NULL) AS SIGNED) AS backlog_episodes,
                         CAST((SELECT COALESCE(SUM(e.EpisodeDuration), 0)
                            FROM Episodes e
-                           JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ?
+                           JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ? AND p.Subscribed = 1
                            LEFT JOIN UserEpisodeHistory h ON h.EpisodeID = e.EpisodeID AND h.UserID = ?
                           WHERE h.EpisodeID IS NULL) AS SIGNED) AS backlog_seconds"
                 ).bind(user_id).bind(user_id).bind(user_id).bind(user_id).bind(user_id).fetch_one(pool).await?;

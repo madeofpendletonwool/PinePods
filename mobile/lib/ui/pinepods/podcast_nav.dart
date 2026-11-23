@@ -78,7 +78,8 @@ Future<void> navigateToPodcastById(
         settings: const RouteSettings(name: 'pinepods_podcast_details'),
         builder: (context) => PinepodsPodcastDetails(
           podcast: podcast,
-          isFollowing: true, // Assume following since we have a podcast ID
+          // A podcast row can exist for episodes the user used without subscribing.
+          isFollowing: podcastDetails?['subscribed'] != false,
         ),
       ),
     );

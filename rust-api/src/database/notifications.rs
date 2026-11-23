@@ -40,7 +40,7 @@ impl DatabasePool {
                            uns.gotifyurl, uns.gotifytoken, uns.httpurl, uns.httptoken, uns.httpmethod
                     FROM "Podcasts" p
                     JOIN "UserNotificationSettings" uns ON p.userid = uns.userid
-                    WHERE p.podcastid = $1 AND p.notificationsenabled = true AND uns.enabled = true"#
+                    WHERE p.podcastid = $1 AND p.notificationsenabled = true AND p.subscribed = TRUE AND uns.enabled = true"#
                 )
                 .bind(podcast_id)
                 .fetch_all(pool)
@@ -69,7 +69,7 @@ impl DatabasePool {
                             uns.GotifyUrl, uns.GotifyToken, uns.HttpUrl, uns.HttpToken, uns.HttpMethod
                      FROM Podcasts p
                      JOIN UserNotificationSettings uns ON p.UserID = uns.UserID
-                     WHERE p.PodcastID = ? AND p.NotificationsEnabled = true AND uns.Enabled = true"
+                     WHERE p.PodcastID = ? AND p.NotificationsEnabled = true AND p.Subscribed = 1 AND uns.Enabled = true"
                 )
                 .bind(podcast_id)
                 .fetch_all(pool)

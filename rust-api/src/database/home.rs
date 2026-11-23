@@ -63,6 +63,8 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid AND de.userid = $2
                         WHERE p.userid = $2
                           AND e.episodeid IS NOT NULL
+                          AND (p.subscribed = TRUE OR h.episodeid IS NOT NULL OR se.episodeid IS NOT NULL
+                               OR eq.episodeid IS NOT NULL OR de.episodeid IS NOT NULL)
                           AND (LOWER(p.podcastname) LIKE LOWER($1)
                                OR LOWER(e.episodetitle) LIKE LOWER($1)
                                OR LOWER(e.episodedescription) LIKE LOWER($1))
@@ -186,6 +188,8 @@ impl DatabasePool {
                         LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
                         WHERE p.UserID = ?
                           AND e.EpisodeID IS NOT NULL
+                          AND (p.Subscribed = 1 OR h.EpisodeID IS NOT NULL OR se.EpisodeID IS NOT NULL
+                               OR eq.EpisodeID IS NOT NULL OR de.EpisodeID IS NOT NULL)
                           AND (LOWER(p.PodcastName) LIKE LOWER(?)
                                OR LOWER(e.EpisodeTitle) LIKE LOWER(?)
                                OR LOWER(e.EpisodeDescription) LIKE LOWER(?))
@@ -327,7 +331,7 @@ impl DatabasePool {
                     LEFT JOIN "DownloadedEpisodes" ON
                         "Episodes".episodeid = "DownloadedEpisodes".episodeid
                         AND "DownloadedEpisodes".userid = $4
-                    WHERE "Podcasts".userid = $5
+                    WHERE "Podcasts".userid = $5 AND "Podcasts".subscribed = TRUE
                         AND "Episodes".episodepubdate >= NOW() - INTERVAL '7 days'
                     ORDER BY "Episodes".episodepubdate DESC
                     LIMIT 10
@@ -490,7 +494,7 @@ impl DatabasePool {
                         WHERE "UserEpisodeHistory".userid = $1
                         GROUP BY "Episodes".feedid
                     ) stats ON "Podcasts".feedid = stats.feedid
-                    WHERE "Podcasts".userid = $2
+                    WHERE "Podcasts".userid = $2 AND "Podcasts".subscribed = TRUE
                     ORDER BY stats.total_listen_time DESC NULLS LAST
                     LIMIT 6
                 "#;
@@ -668,7 +672,7 @@ impl DatabasePool {
                     LEFT JOIN DownloadedEpisodes ON
                         Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
                         AND DownloadedEpisodes.UserID = ?
-                    WHERE Podcasts.UserID = ?
+                    WHERE Podcasts.UserID = ? AND Podcasts.Subscribed = 1
                         AND Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 7 DAY)
                     ORDER BY Episodes.EpisodePubDate DESC
                     LIMIT 10
@@ -830,7 +834,7 @@ impl DatabasePool {
                         WHERE UserEpisodeHistory.UserID = ?
                         GROUP BY Episodes.FeedID
                     ) stats ON Podcasts.FeedID = stats.FeedID
-                    WHERE Podcasts.UserID = ?
+                    WHERE Podcasts.UserID = ? AND Podcasts.Subscribed = 1
                     ORDER BY stats.total_listen_time DESC
                     LIMIT 5
                 "#;

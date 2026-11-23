@@ -619,6 +619,7 @@
   "videos_available_after_subscribing": "Videos available after subscribing",
   "no_episodes_found": "No episodes found",
   "episodes_available_after_following": "Episodes available after following",
+  "episode_resolve_failed": "Couldn't load this episode from your server",
   "channel_videos_still_adding": "Your server is still adding this channel's videos, or none match its video settings",
   "subscribe_channel_prompt": "Subscribe to add this channel to your library and play its videos",
   "library_episodes_appear_here": "Episodes from your PinePods library will appear here",
