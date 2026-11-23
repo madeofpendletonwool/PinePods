@@ -419,6 +419,13 @@ impl BackgroundScheduler {
             }
         });
 
+        // Transcriptions the previous process was running died with it.
+        match crate::services::transcription::fail_interrupted(&state.db_pool).await {
+            Ok(0) => {}
+            Ok(n) => info!("Marked {} interrupted transcription(s) as failed", n),
+            Err(e) => warn!("⚠️ Clearing interrupted transcriptions failed: {}", e),
+        }
+
         info!("✅ Startup tasks completed");
         Ok(())
     }

@@ -5,8 +5,9 @@ It is modeled on Immich's `immich-machine-learning` container: a separate servic
 the main PinePods API talks to over HTTP. If it isn't running, PinePods simply
 hides/disables the AI features — nothing else breaks.
 
-Currently it provides **speech-to-text transcription** (GitHub #726) using
-[faster-whisper](https://github.com/SYSTRAN/faster-whisper). It holds no database
+It provides **speech-to-text transcription** (GitHub #726) using
+[faster-whisper](https://github.com/SYSTRAN/faster-whisper) and **ad detection** (#790)
+with a local GGUF model or a remote LLM endpoint. It holds no database
 access and stores nothing persistent (aside from cached model weights).
 
 ## How it fits in
@@ -40,15 +41,33 @@ skipping, turn on server auto-download for podcasts with auto ad detection; the
 
 ## Configuration (env)
 
+Models are chosen in PinePods under Settings → AI and sent with each request. The
+variables below describe the hardware and limits.
+
 | Var | Default | Notes |
 |-----|---------|-------|
-| `WHISPER_MODEL` | `base` | `tiny`/`base`/`small`/`medium`/`large-v3` — bigger = slower + more accurate |
-| `WHISPER_DEVICE` | `cpu` | `cuda` if you build a GPU image |
+| `WHISPER_DEVICE` | `cpu` | `cuda` with the `-cuda` image on an NVIDIA GPU |
 | `WHISPER_COMPUTE_TYPE` | `int8` | e.g. `int8`, `float16` (GPU) |
 | `WHISPER_BEAM_SIZE` | `5` | |
+| `PINEPODS_AI_IDLE_UNLOAD` | `300` | free a model's RAM/VRAM after this many idle seconds; `0` keeps models loaded |
+| `PINEPODS_AI_MAX_TRANSCRIBE_JOBS` | `1` | transcriptions run at once; the rest queue. Local LLM ad detection always runs one at a time |
+| `AI_LLM_N_CTX` | `8192` | local LLM context window |
+| `AI_LLM_MAX_TOKENS` | `1024` | |
 | `PINEPODS_AI_PORT` | `8100` | |
 | `PINEPODS_AI_MEDIA_BASE` | `/opt/pinepods/downloads` | transcription is confined to this dir |
 | `PINEPODS_AI_TOKEN` | *(unset)* | if set, callers must send it as `X-AI-Token` |
+
+`WHISPER_MODEL` and `AI_LLM_MODEL` only apply to direct API calls that name no model;
+PinePods always names one.
+
+## Images
+
+- `latest` / `<version>`: CPU, amd64 + arm64. Local LLM ad detection needs AVX2 on x86-64
+  (most Intel/AMD CPUs since 2013–2015, but not Atom or Celeron/Pentium J and N models);
+  arm64 targets plain ARMv8. Transcription and remote LLM backends work on any CPU.
+- `latest-cuda` / `<version>-cuda`: amd64, adds the CUDA 12 cuBLAS and cuDNN 9 libraries
+  faster-whisper needs for `WHISPER_DEVICE=cuda`. Local LLM ad detection still runs on the CPU.
+  Build it yourself with `docker build --build-arg GPU=cuda`.
 
 ## Run
 

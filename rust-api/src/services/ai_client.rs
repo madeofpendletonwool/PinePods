@@ -149,6 +149,33 @@ pub async fn check_health() -> bool {
     }
 }
 
+// Error prefixes for a job the sidecar never finished, matched by [`is_interrupted`].
+const UNREACHABLE: &str = "AI service unreachable";
+const DROPPED: &str = "AI service connection dropped mid-job";
+const CLOSED: &str = "AI service closed the stream before finishing";
+
+/// Whether a job failed because the sidecar went away (restart, crash) rather than on its own.
+pub fn is_interrupted(error: &str) -> bool {
+    [UNREACHABLE, DROPPED, CLOSED].iter().any(|p| error.starts_with(p))
+}
+
+/// Run an automatic AI job, once more after a pause if the sidecar went away mid-job, so a
+/// sidecar restart doesn't silently drop work nobody is watching.
+pub async fn retry_if_interrupted<T, F, Fut>(mut job: F) -> Result<T, String>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    match job().await {
+        Err(e) if is_interrupted(&e) => {
+            warn!("AI job interrupted ({}); retrying in 2 minutes", e);
+            tokio::time::sleep(Duration::from_secs(120)).await;
+            job().await
+        }
+        result => result,
+    }
+}
+
 /// POST `body` to `{base}{path}` and consume the sidecar's NDJSON stream, invoking
 /// `on_progress` with each 0.0–1.0 fraction and returning the final `result` line's JSON.
 /// Shared by `/transcribe`, `/detect_ads`, and `/models/pull`. No overall timeout — long
@@ -167,7 +194,7 @@ async fn post_ndjson(
     if let Some(token) = ai_token() {
         req = req.header("X-AI-Token", token);
     }
-    let mut resp = req.send().await.map_err(|e| format!("AI request failed: {}", e))?;
+    let mut resp = req.send().await.map_err(|e| format!("{} ({})", UNREACHABLE, e))?;
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
@@ -179,9 +206,9 @@ async fn post_ndjson(
     let mut result: Option<serde_json::Value> = None;
     while let Some(chunk) = resp.chunk().await.map_err(|e| {
         format!(
-            "AI service connection dropped mid-job ({}) — the pinepods-ai container likely crashed \
-             or ran out of memory (OOM). Check its logs (docker logs pinepods-ai).",
-            e
+            "{} ({}) — the pinepods-ai container likely crashed, restarted, or ran out of memory \
+             (OOM). Check its logs (docker logs pinepods-ai).",
+            DROPPED, e
         )
     })? {
         buf.extend_from_slice(&chunk);
@@ -213,9 +240,11 @@ async fn post_ndjson(
         }
     }
     result.ok_or_else(|| {
-        "AI service closed the stream before finishing — it likely crashed or ran out of memory \
-         (OOM). Check the pinepods-ai container logs (docker logs pinepods-ai)."
-            .to_string()
+        format!(
+            "{} — it likely crashed, restarted, or ran out of memory (OOM). Check the pinepods-ai \
+             container logs (docker logs pinepods-ai).",
+            CLOSED
+        )
     })
 }
 
