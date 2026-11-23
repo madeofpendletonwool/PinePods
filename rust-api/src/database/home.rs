@@ -65,7 +65,7 @@ impl DatabasePool {
                           AND e.episodeid IS NOT NULL
                           AND (LOWER(p.podcastname) LIKE LOWER($1)
                                OR LOWER(e.episodetitle) LIKE LOWER($1)
-                               OR LOWER(e.episodedescription) LIKE LOWER($1))
+                               OR LOWER(COALESCE(e.descriptiontext, e.episodedescription)) LIKE LOWER($1))
                           {}
                         ORDER BY p.podcastname, e.episodepubdate DESC
                     ) inner_q
@@ -188,7 +188,7 @@ impl DatabasePool {
                           AND e.EpisodeID IS NOT NULL
                           AND (LOWER(p.PodcastName) LIKE LOWER(?)
                                OR LOWER(e.EpisodeTitle) LIKE LOWER(?)
-                               OR LOWER(e.EpisodeDescription) LIKE LOWER(?))
+                               OR LOWER(COALESCE(e.DescriptionText, e.EpisodeDescription)) LIKE LOWER(?))
                           {}
                         ORDER BY p.PodcastName, e.EpisodePubDate DESC
                     ) inner_q

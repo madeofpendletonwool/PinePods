@@ -12098,3 +12098,9 @@ button.ep-modal-podcast:hover { text-decoration: underline; }
     .us-fact-value { font-size: 17px; }
 }
 @media (prefers-reduced-motion: reduce) { .us-bar-fill, .us-chip { transition: none; } }
+
+/* Podcast episode search: where title and description matches start */
+.episode-group-heading {
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text-secondary-color); padding: 12px 4px 6px;
+}

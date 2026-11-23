@@ -52,6 +52,7 @@ mod sqlite_backup;
 mod shared_episodes;
 mod recommendations;
 mod local_podcasts;
+mod description_text;
 
 pub use mfa::*;
 pub use oidc::*;

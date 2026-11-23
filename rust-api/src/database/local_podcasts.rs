@@ -111,6 +111,7 @@ impl DatabasePool {
         for (index, candidate) in candidates.iter().enumerate() {
             let episode_url = format!("local://{}", candidate.file_path);
             let artwork = candidate.artwork_url.as_deref().unwrap_or("");
+            let text = crate::services::search_text::plain_text(&candidate.description);
 
             let episode_id = dialect_match!(self, {
                 pg(pool) => {
@@ -125,8 +126,8 @@ impl DatabasePool {
                     } else {
                         let row = q::query(
                             r#"INSERT INTO "Episodes"
-                               (podcastid, feedid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration)
-                               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                               (podcastid, feedid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration, descriptiontext)
+                               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                                RETURNING episodeid"#,
                         )
                         .bind(podcast_id)
@@ -137,6 +138,7 @@ impl DatabasePool {
                         .bind(artwork)
                         .bind(candidate.pub_date)
                         .bind(candidate.duration)
+                        .bind(&text)
                         .fetch_one(pool)
                         .await?;
                         let id = row.try_get::<i32, _>("episodeid")?;
@@ -156,8 +158,8 @@ impl DatabasePool {
                     } else {
                         let result = sqlx::query(
                             "INSERT INTO Episodes
-                             (PodcastID, FeedID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                             (PodcastID, FeedID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration, DescriptionText)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         )
                         .bind(podcast_id)
                         .bind(feed_id)
@@ -167,6 +169,7 @@ impl DatabasePool {
                         .bind(artwork)
                         .bind(candidate.pub_date)
                         .bind(candidate.duration)
+                        .bind(&text)
                         .execute(pool)
                         .await?;
                         let id = result.last_insert_id() as i32;

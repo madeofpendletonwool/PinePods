@@ -583,6 +583,8 @@
     "save_changes": "Save Changes",
     "save_episodes": "Save",
     "search_episodes_placeholder": "Search podcast episodes...",
+    "search_title_matches": "Title matches",
+    "search_description_matches": "Mentioned in the description",
     "select": "Select",
     "select_all": "Select All",
     "select_podcasts_to_merge": "Select Podcasts to Merge",
