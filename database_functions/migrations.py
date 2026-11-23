@@ -510,6 +510,14 @@ def default_db_type() -> str:
     return (os.environ.get("DB_TYPE") or "").strip() or ("postgresql" if (os.environ.get("DB_HOST") or "").strip() else "sqlite")
 
 
+def mysql_server_params(host: str, port: int) -> Dict[str, Any]:
+    """Connector arguments that reach a MySQL/MariaDB server: a DB_HOST starting with '/' is its
+    Unix socket (a directory means the usual mysqld.sock inside it), anything else a hostname."""
+    if host.startswith('/'):
+        return {'unix_socket': os.path.join(host, 'mysqld.sock') if os.path.isdir(host) else host}
+    return {'host': host, 'port': port}
+
+
 def get_migration_manager() -> DatabaseMigrationManager:
     """Get the global migration manager instance"""
     global _migration_manager
@@ -530,8 +538,7 @@ def get_migration_manager() -> DatabaseMigrationManager:
             }
         else:  # mysql/mariadb
             connection_params = {
-                'host': os.environ.get("DB_HOST", "127.0.0.1"),
-                'port': int(os.environ.get("DB_PORT", "3306")),
+                **mysql_server_params(os.environ.get("DB_HOST", "127.0.0.1"), int(os.environ.get("DB_PORT", "3306"))),
                 'user': os.environ.get("DB_USER", "root"),
                 'password': os.environ.get("DB_PASSWORD", "password"),
                 'database': os.environ.get("DB_NAME", "pinepods_database"),

@@ -1841,8 +1841,7 @@ async fn backup_server_streaming(
             let username = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
             
             let mut cmd = Command::new("mysqldump");
-            cmd.arg("--host").arg(&host)
-               .arg("--port").arg(&port)
+            cmd.args(crate::database::mysql_cli_target(&host, &port))
                .arg("--user").arg(&username)
                .arg(format!("--password={}", database_pass))
                .arg("--skip-ssl")
