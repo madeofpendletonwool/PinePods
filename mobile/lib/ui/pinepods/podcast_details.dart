@@ -10,6 +10,7 @@ import 'package:pinepods_mobile/core/html_text.dart';
 import 'package:pinepods_mobile/services/auto_download/download_cleanup_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
+import 'package:pinepods_mobile/services/podcast/episode_search.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/people.dart';
@@ -91,6 +92,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   List<PinepodsEpisode> _filteredEpisodes = [];
   // Index into [_episodes] for each filtered entry, for the context menu.
   List<int> _filteredIndexes = [];
+  // With a search: where the title matches and the description-only matches start.
+  int? _titleGroupStart;
+  int? _descriptionGroupStart;
   final Expando<_EpisodeKeys> _episodeKeys = Expando<_EpisodeKeys>();
   int? _contextMenuEpisodeIndex;
   // Use global audio service instead of creating local instance
@@ -1007,13 +1011,15 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   _EpisodeKeys _keysFor(PinepodsEpisode e) => _episodeKeys[e] ??= _EpisodeKeys(e);
 
   void _filterEpisodes() {
-    final query = _searchQuery.trim().toLowerCase();
+    final search = EpisodeSearch.parse(_searchQuery);
+    final ranks = <int, int>{};
     final indexes = <int>[];
     for (var i = 0; i < _episodes.length; i++) {
       final e = _episodes[i];
-      if (query.isNotEmpty) {
+      if (!search.isEmpty) {
         final keys = _keysFor(e);
-        if (!keys.title.contains(query) && !keys.description.contains(query)) continue;
+        if (!search.matches(keys.title, keys.description)) continue;
+        ranks[i] = search.titleRank(keys.title);
       }
       if (_showInProgress) {
         if (e.completed || (e.listenDuration ?? 0) <= 0) continue;
@@ -1026,6 +1032,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     }
 
     indexes.sort((ia, ib) {
+      // Title matches first, then the chosen order.
+      final byRank = (ranks[ia] ?? 0).compareTo(ranks[ib] ?? 0);
+      if (byRank != 0) return byRank;
       final a = _episodes[ia];
       final b = _episodes[ib];
       switch (_sortDirection) {
@@ -1046,6 +1055,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
     _filteredIndexes = indexes;
     _filteredEpisodes = [for (final i in indexes) _episodes[i]];
+    _titleGroupStart = indexes.isNotEmpty && ranks.isNotEmpty && ranks[indexes.first]! < 2 ? 0 : null;
+    final firstDescription = indexes.indexWhere((i) => ranks[i] == 2);
+    _descriptionGroupStart = firstDescription >= 0 ? firstDescription : null;
   }
 
   void _initializeCredentials() {
@@ -2594,53 +2606,89 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
-          final episode = _filteredEpisodes[index];
-          final originalIndex = _filteredIndexes[index];
-          // RSS fallback episodes have no server id, so no details or actions.
-          final hasServerId = episode.episodeId > 0;
-
-          if (_selecting) {
-            final ticked = _selected.contains(episode.episodeId);
-            return PinepodsEpisodeCard(
-              episode: episode,
-              leading: Padding(
-                padding: const EdgeInsets.only(right: 10),
-                child: Icon(
-                  ticked ? PhosphorIconsFill.checkSquare : PhosphorIconsRegular.square,
-                  color: ticked ? Theme.of(context).primaryColor : Theme.of(context).hintColor,
-                ),
-              ),
-              onTap: hasServerId ? () => _toggleSelected(episode) : null,
-              onLongPress: hasServerId ? () => _toggleSelected(episode) : null,
-            );
-          }
-
-          // Feed episodes of a podcast the user doesn't follow get their server id first.
-          final canResolve = hasServerId || !episode.isYoutube;
-          return PinepodsEpisodeCard(
-            episode: episode,
-            onTap: canResolve
-                ? () async {
-                    final resolved = hasServerId ? episode : await _resolveFeedEpisode(episode);
-                    if (resolved == null || !context.mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => PinepodsEpisodeDetails(initialEpisode: resolved),
-                      ),
-                    );
-                  }
-                : null,
-            onLongPress: canResolve
-                ? () async {
-                    if (!hasServerId && await _resolveFeedEpisode(episode) == null) return;
-                    if (mounted) _showEpisodeContextMenu(originalIndex);
-                  }
-                : null,
-            onPlayPressed: () => _playEpisode(episode),
+          final heading = index == _titleGroupStart
+              ? L.of(context)!.search_title_matches
+              : index == _descriptionGroupStart
+                  ? L.of(context)!.search_description_matches
+                  : null;
+          final card = _buildEpisodeRow(context, index);
+          if (heading == null) return card;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [_SearchGroupHeading(heading), card],
           );
         },
         childCount: _filteredEpisodes.length,
+      ),
+    );
+  }
+
+  Widget _buildEpisodeRow(BuildContext context, int index) {
+    final episode = _filteredEpisodes[index];
+    final originalIndex = _filteredIndexes[index];
+    // RSS fallback episodes have no server id, so no details or actions.
+    final hasServerId = episode.episodeId > 0;
+
+    if (_selecting) {
+      final ticked = _selected.contains(episode.episodeId);
+      return PinepodsEpisodeCard(
+        episode: episode,
+        leading: Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: Icon(
+            ticked ? PhosphorIconsFill.checkSquare : PhosphorIconsRegular.square,
+            color: ticked ? Theme.of(context).primaryColor : Theme.of(context).hintColor,
+          ),
+        ),
+        onTap: hasServerId ? () => _toggleSelected(episode) : null,
+        onLongPress: hasServerId ? () => _toggleSelected(episode) : null,
+      );
+    }
+
+    // Feed episodes of a podcast the user doesn't follow get their server id first.
+    final canResolve = hasServerId || !episode.isYoutube;
+    return PinepodsEpisodeCard(
+      episode: episode,
+      onTap: canResolve
+          ? () async {
+              final resolved = hasServerId ? episode : await _resolveFeedEpisode(episode);
+              if (resolved == null || !context.mounted) return;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PinepodsEpisodeDetails(initialEpisode: resolved),
+                ),
+              );
+            }
+          : null,
+      onLongPress: canResolve
+          ? () async {
+              if (!hasServerId && await _resolveFeedEpisode(episode) == null) return;
+              if (mounted) _showEpisodeContextMenu(originalIndex);
+            }
+          : null,
+      onPlayPressed: () => _playEpisode(episode),
+    );
+  }
+}
+
+/// Labels where title matches and description-only matches start in search results.
+class _SearchGroupHeading extends StatelessWidget {
+  final String label;
+  const _SearchGroupHeading(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Text(
+        label.toUpperCase(),
+        style: theme.textTheme.labelMedium!.copyWith(
+          color: theme.hintColor,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.6,
+        ),
       ),
     );
   }
@@ -2669,7 +2717,7 @@ class _EpisodeKeys {
 
   _EpisodeKeys(PinepodsEpisode e)
       : title = e.episodeTitle.toLowerCase(),
-        description = e.episodeDescription.toLowerCase(),
+        description = episodeSearchText(e.episodeDescription).toLowerCase(),
         date = DateTime.tryParse(e.episodePubDate)?.millisecondsSinceEpoch ?? 0;
 }
 

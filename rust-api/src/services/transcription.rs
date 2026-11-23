@@ -9,10 +9,52 @@ use crate::database::DatabasePool;
 use crate::services::{ai_client, audio_processing};
 use serde::Serialize;
 use sqlx::Row;
+use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 use tracing::{debug, warn};
 use crate::database::dialect::dialect_match;
 
 pub const SOURCE_GENERATED: &str = "generated";
+
+/// Episodes this process is transcribing right now.
+fn in_flight() -> &'static Mutex<HashSet<i32>> {
+    static S: OnceLock<Mutex<HashSet<i32>>> = OnceLock::new();
+    S.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Removes the episode from [`in_flight`] when the transcription ends.
+struct InFlightGuard(i32);
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = in_flight().lock() {
+            set.remove(&self.0);
+        }
+    }
+}
+
+/// Mark transcriptions left running by a previous process as failed. Nothing survives a
+/// restart, so without this they would block a new run until they go stale.
+pub async fn fail_interrupted(db_pool: &DatabasePool) -> Result<u64, String> {
+    let n = dialect_match!(db_pool, {
+        pg(pool) => q::query(
+            r#"UPDATE "EpisodeTranscripts" SET status = 'failed' WHERE source = $1 AND status IN ('running','pending')"#,
+        )
+        .bind(SOURCE_GENERATED)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .rows_affected(),
+        mysql(pool) => sqlx::query(
+            "UPDATE EpisodeTranscripts SET Status = 'failed' WHERE Source = ? AND Status IN ('running','pending')",
+        )
+        .bind(SOURCE_GENERATED)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .rows_affected(),
+    });
+    Ok(n)
+}
 
 /// A stored transcript as served to clients.
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
@@ -28,7 +70,7 @@ pub struct StoredTranscript {
 
 /// Whether a generated transcript already exists OR is in progress for the episode. Used to skip
 /// redundant work (and to avoid two triggers racing to transcribe the same episode). A job still
-/// `running` after 12 hours was cut off by a restart and no longer counts.
+/// `running` after 12 hours is hung and no longer counts.
 async fn has_complete_transcript(db_pool: &DatabasePool, episode_id: i32) -> bool {
     dialect_match!(db_pool, {
         pg(pool) => q::query(
@@ -239,10 +281,8 @@ async fn fetch_episode_audio_temp(db_pool: &DatabasePool, episode_id: i32) -> Re
         .get(&url)
         .header("User-Agent", "PinePods/1.0")
         .header("Accept", "*/*");
-    if let (Some(u), Some(p)) = (&username, &password) {
-        if !u.is_empty() {
-            req = req.basic_auth(u, Some(p));
-        }
+    if let Some((u, p)) = crate::services::http::feed_credentials(username.as_deref(), password.as_deref()) {
+        req = req.basic_auth(u, Some(p));
     }
     let mut resp = req.send().await.map_err(|e| format!("download failed: {}", e))?;
     if !resp.status().is_success() {
@@ -327,6 +367,17 @@ pub async fn transcribe_episode(
         debug!("Episode {} already transcribed; skipping", episode_id);
         return Ok(());
     }
+    {
+        let mut set = in_flight().lock().map_err(|_| "in-flight lock poisoned".to_string())?;
+        if !set.insert(episode_id) {
+            if force {
+                return Err("This episode is already being transcribed.".to_string());
+            }
+            debug!("Episode {} transcription already in progress; skipping", episode_id);
+            return Ok(());
+        }
+    }
+    let _guard = InFlightGuard(episode_id);
 
     let downloads = audio_processing::episode_downloads(db_pool, episode_id).await?;
     let download = prefer_user
@@ -642,7 +693,8 @@ pub fn maybe_transcribe_new_episode(db_pool: DatabasePool, episode_id: i32) {
     tokio::spawn(async move {
         let (opted_in, downloads) = auto_transcribe_opt_in(&db_pool, episode_id).await;
         if opted_in && !downloads {
-            if let Err(e) = transcribe_episode(&db_pool, episode_id, false, None, |_| {}).await {
+            let job = || transcribe_episode(&db_pool, episode_id, false, None, |_| {});
+            if let Err(e) = ai_client::retry_if_interrupted(job).await {
                 warn!("Auto-transcription failed for episode {}: {}", episode_id, e);
             }
         }
@@ -687,7 +739,8 @@ pub fn after_download(db_pool: DatabasePool, episode_id: i32, user_id: i32) {
                 true
             }
         };
-        if let Err(e) = transcribe_episode(&db_pool, episode_id, force, Some(user_id), |_| {}).await {
+        let job = || transcribe_episode(&db_pool, episode_id, force, Some(user_id), |_| {});
+        if let Err(e) = ai_client::retry_if_interrupted(job).await {
             warn!("Transcription after download failed for episode {}: {}", episode_id, e);
         }
     });

@@ -222,6 +222,24 @@ async fn a_transcript_can_be_retried_after_a_failure() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_transcript_cut_off_by_a_restart_can_be_started_again() {
+    let s = show().await;
+    use_llm(&s.app, "unused").await;
+    exec(&s.app, &format!(
+        r#"INSERT INTO "EpisodeTranscripts" (EpisodeID, Source, Status) VALUES ({}, 'generated', 'running')"#,
+        s.episode,
+    ))
+    .await;
+    assert_eq!(transcript(&s.app, &s.user, s.episode).await["status"], "running");
+
+    pinepods_api::services::transcription::fail_interrupted(s.app.db()).await.unwrap();
+    assert_eq!(transcript(&s.app, &s.user, s.episode).await["status"], "failed");
+
+    start_transcript(&s.app, &s.user, s.episode, false).await;
+    wait_for_transcript(&s.app, &s.user, s.episode, "complete").await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn other_users_cannot_process_your_episodes() {
     let s = show().await;
     let other = s.app.user("other").await;

@@ -52,6 +52,7 @@ mod sqlite_backup;
 mod shared_episodes;
 mod recommendations;
 mod local_podcasts;
+mod description_text;
 
 pub use mfa::*;
 pub use oidc::*;
@@ -64,6 +65,24 @@ pub use refresh::*;
 pub(crate) use notifications::*;
 pub use gpodder::*;
 pub use backup::*;
+
+/// The MySQL/MariaDB socket file a `DB_HOST` names, when it's a path rather than a hostname.
+/// A directory (e.g. `/var/run/mysqld`) means the server's usual `mysqld.sock` inside it.
+pub fn mysql_socket(host: &str) -> Option<std::path::PathBuf> {
+    if !host.starts_with('/') {
+        return None;
+    }
+    let path = std::path::PathBuf::from(host);
+    Some(if path.is_dir() { path.join("mysqld.sock") } else { path })
+}
+
+/// `mysql`/`mysqldump` arguments that reach the server named by `DB_HOST` and `DB_PORT`.
+pub fn mysql_cli_target(host: &str, port: &str) -> Vec<String> {
+    match mysql_socket(host) {
+        Some(socket) => vec!["--socket".into(), socket.display().to_string()],
+        None => vec!["--host".into(), host.to_string(), "--port".into(), port.to_string()],
+    }
+}
 
 #[derive(Clone)]
 pub enum DatabasePool {
@@ -162,10 +181,9 @@ impl DatabasePool {
                     .password(&db.password)
                     .database(&db.name)
                     .port(db.port);
-                options = if host_is_socket {
-                    options.socket(&db.host)
-                } else {
-                    options.host(&db.host)
+                options = match mysql_socket(&db.host) {
+                    Some(socket) => options.socket(socket),
+                    None => options.host(&db.host),
                 };
 
                 let pool = sqlx::mysql::MySqlPoolOptions::new()
@@ -228,5 +246,22 @@ impl DatabasePool {
         
         // Return empty map if parsing fails
         Some(std::collections::HashMap::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{mysql_cli_target, mysql_socket};
+
+    #[test]
+    fn mysql_db_host_can_name_a_socket() {
+        assert_eq!(mysql_socket("db"), None);
+        assert_eq!(mysql_cli_target("db", "3307"), vec!["--host", "db", "--port", "3307"]);
+
+        // A directory holds the server's mysqld.sock; anything else is the socket itself.
+        let dir = std::env::temp_dir();
+        assert_eq!(mysql_socket(dir.to_str().unwrap()), Some(dir.join("mysqld.sock")));
+        assert_eq!(mysql_socket("/run/mysqld/custom.sock"), Some("/run/mysqld/custom.sock".into()));
+        assert_eq!(mysql_cli_target("/run/mysqld/custom.sock", "3306"), vec!["--socket", "/run/mysqld/custom.sock"]);
     }
 }

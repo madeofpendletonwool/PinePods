@@ -1886,12 +1886,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mp3-metadata"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e462514acb482a039cf915999d6cca0474dfa9d711f040025cf394d54f0f92e4"
-
-[[package]]
 name = "multer"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2191,7 +2185,6 @@ dependencies = [
  "image",
  "lazy_static",
  "lettre",
- "mp3-metadata",
  "pbkdf2",
  "pinepods-api",
  "qrcode",

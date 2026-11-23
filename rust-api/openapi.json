@@ -7823,6 +7823,7 @@
           {
             "name": "search",
             "in": "query",
+            "description": "Words (or \"quoted phrases\") that must each appear in the title or the description's text.\nEpisodes with them in the title come first.",
             "required": false,
             "schema": {
               "type": [
@@ -17770,6 +17771,14 @@
           },
           "is_video": {
             "type": "boolean"
+          },
+          "match_rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "With a search: 0 when every term is in the title, 1 when some are, 2 when it matched on\nthe description alone. Results come in this order. Absent without a search."
           }
         }
       },

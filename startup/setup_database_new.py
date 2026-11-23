@@ -42,7 +42,8 @@ def get_db_wait_timeout():
 
 
 def wait_for_database(label, db_host, db_port, probe):
-    """Call probe() until it succeeds or DB_WAIT_TIMEOUT runs out.
+    """Call probe() until it succeeds or DB_WAIT_TIMEOUT runs out. `db_port` is None for a
+    Unix socket, whose path is `db_host`.
 
     The database container often starts slower than PinePods (first-boot init,
     slow hosts, no orchestrator-level health gating), so every failure is
@@ -52,7 +53,8 @@ def wait_for_database(label, db_host, db_port, probe):
 
     timeout = get_db_wait_timeout()
     limit = "no time limit" if timeout == 0 else f"up to {timeout}s"
-    logger.info(f"Waiting for {label} at {db_host}:{db_port} to be ready ({limit})...")
+    where = db_host if db_port is None else f"{db_host}:{db_port}"
+    logger.info(f"Waiting for {label} at {where} to be ready ({limit})...")
 
     start = time.monotonic()
     attempt = 1
@@ -66,7 +68,7 @@ def wait_for_database(label, db_host, db_port, probe):
             elapsed = time.monotonic() - start
             if timeout and elapsed >= timeout:
                 logger.error(
-                    f"{label} at {db_host}:{db_port} did not become ready within {timeout}s: {e}. "
+                    f"{label} at {where} did not become ready within {timeout}s: {e}. "
                     f"Check DB_HOST/DB_PORT/DB_USER/DB_PASSWORD, or raise DB_WAIT_TIMEOUT (0 waits forever)."
                 )
                 return False
@@ -113,10 +115,14 @@ def wait_for_mysql_ready():
     db_user = os.environ.get("DB_USER", "root")
     db_password = os.environ.get("DB_PASSWORD", "password")
 
+    from database_functions.migrations import mysql_server_params
+    server = mysql_server_params(db_host, db_port)
+    if 'unix_socket' in server:
+        db_host, db_port = server['unix_socket'], None
+
     def probe():
         conn = mysql_connector.connect(
-            host=db_host,
-            port=db_port,
+            **server,
             user=db_user,
             password=db_password,
             connect_timeout=3,

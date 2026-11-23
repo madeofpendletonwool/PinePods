@@ -13,6 +13,7 @@ mod backups;
 mod cross_user;
 mod downloads;
 mod email;
+mod episode_search;
 mod feed_health;
 mod feeds;
 mod foreign_resources;

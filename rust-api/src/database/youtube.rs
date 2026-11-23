@@ -358,6 +358,7 @@ impl DatabasePool {
         for video in videos {
             let title = self.clean_and_normalize_title(&video.title);
             let description = self.decode_html_entities(&video.description);
+            let text = crate::services::search_text::plain_text(&description);
             let url = format!("https://www.youtube.com/watch?v={}", video.id);
             let published = video.published.naive_utc();
             let video_id: i32 = dialect_match!(self, {
@@ -365,8 +366,8 @@ impl DatabasePool {
                     q::query_scalar(r#"
                         INSERT INTO "YouTubeVideos" (
                             podcastid, youtubevideoid, videotitle, videodescription, videourl,
-                            thumbnailurl, publishedat, duration, completed, listenposition
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, 0)
+                            thumbnailurl, publishedat, duration, completed, listenposition, descriptiontext
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, 0, $9)
                         RETURNING videoid
                     "#)
                     .bind(podcast_id)
@@ -377,6 +378,7 @@ impl DatabasePool {
                     .bind(&video.thumbnail)
                     .bind(published)
                     .bind(video.duration)
+                    .bind(&text)
                     .fetch_one(pool)
                     .await?
                 },
@@ -384,8 +386,8 @@ impl DatabasePool {
                     sqlx::query(r#"
                         INSERT INTO YouTubeVideos (
                             PodcastID, YouTubeVideoID, VideoTitle, VideoDescription, VideoURL,
-                            ThumbnailURL, PublishedAt, Duration, Completed, ListenPosition
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+                            ThumbnailURL, PublishedAt, Duration, Completed, ListenPosition, DescriptionText
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)
                     "#)
                     .bind(podcast_id)
                     .bind(&video.id)
@@ -395,6 +397,7 @@ impl DatabasePool {
                     .bind(&video.thumbnail)
                     .bind(published)
                     .bind(video.duration)
+                    .bind(&text)
                     .execute(pool)
                     .await?
                     .last_insert_id() as i32
