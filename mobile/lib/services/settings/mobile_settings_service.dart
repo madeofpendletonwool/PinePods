@@ -5,6 +5,7 @@
 import 'dart:math';
 
 import 'package:pinepods_mobile/core/environment.dart';
+import 'package:pinepods_mobile/core/extensions.dart';
 import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
 import 'package:rxdart/rxdart.dart';
@@ -25,6 +26,7 @@ class MobileSettingsService extends SettingsService {
       _instance = MobileSettingsService._create();
 
       _sharedPreferences = await SharedPreferences.getInstance();
+      HttpsUpgrade.setServer(_sharedPreferences.getString('pinepods_server'));
     }
 
     return _instance;
@@ -49,6 +51,7 @@ class MobileSettingsService extends SettingsService {
     } else {
       _sharedPreferences.setString('pinepods_server', value);
     }
+    HttpsUpgrade.setServer(value);
     settingsNotifier.sink.add('pinepods_server');
   }
 

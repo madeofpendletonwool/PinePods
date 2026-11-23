@@ -75,6 +75,41 @@ void main() {
       expect('http://PINEPODS.LOCAL/api'.forceHttps, 'http://PINEPODS.LOCAL/api');
     });
 
+    test('leaves Tailscale (100.64.0.0/10) addresses over http unchanged', () {
+      expect('http://100.64.0.1:13378/a.mp3'.forceHttps, 'http://100.64.0.1:13378/a.mp3');
+      expect('http://100.127.255.9/a.mp3'.forceHttps, 'http://100.127.255.9/a.mp3');
+    });
+
+    test('still upgrades public addresses next to the private ranges', () {
+      expect('http://100.63.0.1/a.mp3'.forceHttps, 'https://100.63.0.1/a.mp3');
+      expect('http://100.128.0.1/a.mp3'.forceHttps, 'https://100.128.0.1/a.mp3');
+      expect('http://172.32.0.1/a.mp3'.forceHttps, 'https://172.32.0.1/a.mp3');
+      expect('http://172.15.0.1/a.mp3'.forceHttps, 'https://172.15.0.1/a.mp3');
+      expect('http://10.example.com/a.mp3'.forceHttps, 'https://10.example.com/a.mp3');
+    });
+
+    test('leaves local-only hostnames over http unchanged', () {
+      for (final host in ['nas', 'box.lan', 'nas.home.arpa', 'abs.internal', 'nas.tail1234.ts.net', 'app.localhost']) {
+        expect('http://$host:8080/a.mp3'.forceHttps, 'http://$host:8080/a.mp3');
+      }
+    });
+
+    test('leaves link-local and local IPv6 addresses over http unchanged', () {
+      expect('http://169.254.10.2/a.mp3'.forceHttps, 'http://169.254.10.2/a.mp3');
+      expect('http://[::1]:8040/a.mp3'.forceHttps, 'http://[::1]:8040/a.mp3');
+      expect('http://[fd7a:115c:a1e0::1]/a.mp3'.forceHttps, 'http://[fd7a:115c:a1e0::1]/a.mp3');
+      expect('http://[fe80::1]/a.mp3'.forceHttps, 'http://[fe80::1]/a.mp3');
+      expect('http://[2001:db8::1]/a.mp3'.forceHttps, 'https://[2001:db8::1]/a.mp3');
+    });
+
+    test("leaves the user's own server over http unchanged", () {
+      addTearDown(() => HttpsUpgrade.setServer(null));
+      expect('http://pods.example.com/api/data/stream/1'.forceHttps, 'https://pods.example.com/api/data/stream/1');
+      HttpsUpgrade.setServer('http://Pods.Example.com:8040');
+      expect('http://pods.example.com/api/data/stream/1'.forceHttps, 'http://pods.example.com/api/data/stream/1');
+      expect('http://other.example.com/a.mp3'.forceHttps, 'https://other.example.com/a.mp3');
+    });
+
     test('returns an empty string for null', () {
       String? value;
       expect(value.forceHttps, '');
