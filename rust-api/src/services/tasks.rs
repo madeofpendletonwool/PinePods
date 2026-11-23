@@ -502,10 +502,8 @@ impl TaskSpawner {
                             .get(&episode_url)
                             .header("User-Agent", user_agent)
                             .header("Accept", "*/*");
-                        if let (Some(ref username), Some(ref password)) = (&feed_username, &feed_password) {
-                            if !username.is_empty() {
-                                request = request.basic_auth(username, Some(password));
-                            }
+                        if let Some((username, password)) = crate::services::http::feed_credentials(feed_username.as_deref(), feed_password.as_deref()) {
+                            request = request.basic_auth(username, Some(password));
                         }
                         request
                     };

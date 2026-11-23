@@ -927,7 +927,7 @@ impl DatabasePool {
         // Always issue the request (even with no prior validators) so we can capture ETag /
         // Last-Modified for next time.
         let mut request = crate::services::http::feed_client().get(url);
-        if let (Some(user), Some(pass)) = (username, password) {
+        if let Some((user, pass)) = crate::services::http::feed_credentials(username, password) {
             request = request.basic_auth(user, Some(pass));
         }
         if let Some(etag) = prev.etag {
@@ -1245,9 +1245,9 @@ impl DatabasePool {
     /// GET a feed with basic auth when credentials are stored.
     pub(super) fn feed_get(client: &reqwest::Client, url: &str, username: Option<&str>, password: Option<&str>) -> reqwest::RequestBuilder {
         let request = client.get(url);
-        match (username, password) {
-            (Some(user), Some(pass)) => request.basic_auth(user, Some(pass)),
-            _ => request,
+        match crate::services::http::feed_credentials(username, password) {
+            Some((user, pass)) => request.basic_auth(user, Some(pass)),
+            None => request,
         }
     }
 

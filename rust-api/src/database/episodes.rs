@@ -1226,7 +1226,7 @@ impl DatabasePool {
         
         // Use same auth for chapters if it's from the same domain
         if chapters_url.starts_with(feed_url) {
-            if let (Some(user), Some(pass)) = (username, password) {
+            if let Some((user, pass)) = crate::services::http::feed_credentials(username, password) {
                 request = request.basic_auth(user, Some(pass));
             }
         }
