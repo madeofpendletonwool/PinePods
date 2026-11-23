@@ -4,7 +4,7 @@ use std::path::Path;
 
 use id3::TagLike;
 
-use crate::harness::files::{local_media_folder, mp3_bytes};
+use crate::harness::files::{local_media_folder, mp3_bytes, wav_with_gap};
 use crate::harness::*;
 
 fn add_track(dir: &Path, file: &str, title: &str) {
@@ -86,6 +86,33 @@ async fn a_folder_becomes_a_podcast_with_playable_episodes() {
         .await;
     played.assert_ok();
     assert_eq!(played.body, std::fs::read(dir.join("one.mp3")).unwrap());
+}
+
+/// Lengths come from each file's headers, MP3 or not (#1127: reading whole files to time them
+/// stalled the server on large folders).
+#[tokio::test(flavor = "multi_thread")]
+async fn local_episodes_are_timed_from_their_headers() {
+    let app = TestApp::new().await;
+    let user = app.user("timer").await;
+    let name = format!("timed-{}", app.tag);
+    let dir = local_media_folder(&name);
+    // 2,000 frames of 1152 samples at 44.1 kHz: 52.2s.
+    let mut mp3 = Vec::new();
+    for _ in 0..50 {
+        mp3.extend(mp3_bytes());
+    }
+    std::fs::write(dir.join("long.mp3"), mp3).unwrap();
+    std::fs::write(dir.join("gap.wav"), wav_with_gap(2, 3)).unwrap();
+
+    let pod = add_podcast(&app, &user, &name).await;
+    let durations: std::collections::HashMap<String, i64> = app
+        .episodes(&user, pod)
+        .await
+        .iter()
+        .map(|e| (e["Episodetitle"].as_str().unwrap().to_string(), e["Episodeduration"].as_i64().unwrap()))
+        .collect();
+    assert_eq!(durations.get("long"), Some(&52), "{durations:?}");
+    assert_eq!(durations.get("gap"), Some(&7), "{durations:?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

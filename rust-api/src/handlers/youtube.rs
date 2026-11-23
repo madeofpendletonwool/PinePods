@@ -404,17 +404,6 @@ fn parse_channel_info(channel_id: &str, channel: &serde_json::Value) -> HashMap<
 }
 
 
-// Helper function to get MP3 duration from file
-pub fn get_mp3_duration(file_path: &str) -> Option<i32> {
-    match mp3_metadata::read_from_file(file_path) {
-        Ok(metadata) => Some(metadata.duration.as_secs() as i32),
-        Err(e) => {
-            warn!("Failed to read MP3 metadata from {}: {}", file_path, e);
-            None
-        }
-    }
-}
-
 /// The channel ID in a YouTube channel podcast's feed URL (`https://www.youtube.com/channel/<id>`).
 pub fn channel_id_from_url(feed_url: &str) -> &str {
     match feed_url.split_once("channel/") {
@@ -809,7 +798,7 @@ async fn download_missing_audio(state: &AppState, video_ids: &[&str]) {
         match result {
             Ok(_) => {
                 downloaded += 1;
-                match get_mp3_duration(&output_path) {
+                match crate::services::audio_duration::audio_duration(std::path::Path::new(&output_path)) {
                     Some(duration) => {
                         if let Err(e) = state.db_pool.update_youtube_video_duration(video_id, duration).await {
                             warn!("Failed to update duration for video {}: {}", video_id, e);

@@ -1841,8 +1841,7 @@ async fn backup_server_streaming(
             let username = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
             
             let mut cmd = Command::new("mysqldump");
-            cmd.arg("--host").arg(&host)
-               .arg("--port").arg(&port)
+            cmd.args(crate::database::mysql_cli_target(&host, &port))
                .arg("--user").arg(&username)
                .arg(format!("--password={}", database_pass))
                .arg("--skip-ssl")
@@ -2832,13 +2831,16 @@ pub async fn add_custom_podcast(
         return Ok(Json(serde_json::json!({ "data": podcast_details })));
     }
 
-    // Regular podcast feed handling
-    // Get podcast values from feed URL
+    // Regular podcast feed handling. Blank credentials are no credentials, and are stored as such.
+    let (username, password) = match crate::services::http::feed_credentials(request.username.as_deref(), request.password.as_deref()) {
+        Some((user, pass)) => (Some(user), Some(pass)),
+        None => (None, None),
+    };
     let (podcast_values, feed_body) = state.db_pool.get_podcast_values_with_body(
         &request.feed_url,
         request.user_id,
-        request.username.as_deref(),
-        request.password.as_deref()
+        username,
+        password,
     ).await?;
 
     // Add podcast with 30 episode cutoff (matches Python default)
@@ -2846,8 +2848,8 @@ pub async fn add_custom_podcast(
         &podcast_values,
         request.user_id,
         30,
-        request.username.as_deref(),
-        request.password.as_deref(),
+        username,
+        password,
         Some(&feed_body),
         crate::services::sync::SyncOrigin::Pinepods,
     ).await?;

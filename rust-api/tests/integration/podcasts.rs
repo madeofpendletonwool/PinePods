@@ -241,6 +241,36 @@ async fn password_protected_feeds_send_their_credentials_on_every_fetch() {
     }
 }
 
+/// Blank username and password fields mean a public feed: no `Authorization: Basic Og==`, which
+/// some hosts answer with a 401 (#1128).
+#[tokio::test(flavor = "multi_thread")]
+async fn blank_feed_credentials_send_no_authorization() {
+    let app = TestApp::new().await;
+    let user = app.user("public").await;
+    let feed = Feed::with_episodes("Public Show", 2);
+    let url = app.feed("public.xml", &feed);
+
+    let body = app
+        .post("/api/data/add_custom_podcast")
+        .key(&user)
+        .json(&json!({ "user_id": user.id, "feed_url": url, "username": "", "password": "" }))
+        .send()
+        .await
+        .ok_json();
+    let podcast_id = body["data"]["podcastid"].as_i64().unwrap_or_else(|| panic!("{body}")) as i32;
+    eventually("public episodes", || async { (app.episodes(&user, podcast_id).await.len() == 2).then_some(()) }).await;
+
+    app.feed("public.xml", &feed.episode(Episode::new(3)));
+    app.refresh().await;
+    assert_eq!(app.episodes(&user, podcast_id).await.len(), 3);
+
+    let hits = app.fixtures().hits("public.xml");
+    assert!(hits.len() >= 2, "{hits:?}");
+    for h in &hits {
+        assert_eq!(h.headers.get("authorization"), None, "blank credentials were sent: {h:?}");
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn merged_podcasts_show_as_one_and_can_be_split_again() {
     let app = TestApp::new().await;

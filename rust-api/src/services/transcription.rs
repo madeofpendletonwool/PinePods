@@ -281,10 +281,8 @@ async fn fetch_episode_audio_temp(db_pool: &DatabasePool, episode_id: i32) -> Re
         .get(&url)
         .header("User-Agent", "PinePods/1.0")
         .header("Accept", "*/*");
-    if let (Some(u), Some(p)) = (&username, &password) {
-        if !u.is_empty() {
-            req = req.basic_auth(u, Some(p));
-        }
+    if let Some((u, p)) = crate::services::http::feed_credentials(username.as_deref(), password.as_deref()) {
+        req = req.basic_auth(u, Some(p));
     }
     let mut resp = req.send().await.map_err(|e| format!("download failed: {}", e))?;
     if !resp.status().is_success() {

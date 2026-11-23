@@ -405,8 +405,7 @@ impl DatabasePool {
                 let password = std::env::var("DB_PASSWORD").unwrap_or_else(|_| "password".to_string());
 
                 let mut cmd = Command::new("mysql");
-                cmd.arg("--host").arg(&host)
-                   .arg("--port").arg(&port)
+                cmd.args(super::mysql_cli_target(&host, &port))
                    .arg("--user").arg(&username)
                    .arg(format!("--password={}", password))
                    .arg("--skip-ssl")
@@ -783,8 +782,7 @@ impl DatabasePool {
                 let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_database".to_string());
 
                 let mut cmd = Command::new("mysqldump");
-                cmd.arg("-h").arg(&db_host)
-                   .arg("-P").arg(&db_port)
+                cmd.args(super::mysql_cli_target(&db_host, &db_port))
                    .arg("-u").arg(&db_user)
                    .arg(format!("-p{}", &db_password))
                    .arg(&db_name)
