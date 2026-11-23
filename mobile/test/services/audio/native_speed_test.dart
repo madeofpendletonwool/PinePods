@@ -34,6 +34,7 @@ void main() {
       when(() => settings.volumeBoost).thenReturn(false);
       when(() => settings.fastForwardInterval).thenReturn(30);
       when(() => settings.rewindInterval).thenReturn(10);
+      when(() => settings.pauseForInterruptions).thenReturn(true);
       final calls = <MethodCall>[];
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;

@@ -1195,6 +1195,8 @@
   "artwork_colours_description": "Tint episode cards with a colour from each podcast's artwork",
   "auto_play_queue": "Play the queue automatically",
   "auto_play_queue_description": "When an episode ends, start the next one in your queue",
+  "pause_for_interruptions": "Pause for interruptions",
+  "pause_for_interruptions_description": "Pause when another app plays a notification sound. When off, Pinepods lowers its volume and keeps playing",
   "settings_navigation": "Navigation",
   "reorganize_bottom_bar": "Reorganize Bottom Bar",
   "reorganize_bottom_bar_description": "Customize the order of bottom navigation items",

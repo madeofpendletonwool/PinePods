@@ -210,11 +210,6 @@ class PinepodsMediaService : MediaLibraryService() {
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        // Configure audio attributes for podcast playback
-        val audioAttributes = AudioAttributes.Builder()
-            .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
-            .setUsage(C.USAGE_MEDIA)
-            .build()
 
         // Podcast enclosures commonly sit behind tracking-redirect chains that
         // hop between http and https; ExoPlayer refuses those by default, which
@@ -240,7 +235,7 @@ class PinepodsMediaService : MediaLibraryService() {
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
-            .setAudioAttributes(audioAttributes, true)
+            .setAudioAttributes(audioAttributes(pauseForInterruptions()), true)
             .setHandleAudioBecomingNoisy(true)  // Auto-pause when headphones disconnect
             // Default wake mode; overridden per-episode in playEpisode() so that
             // downloaded/local playback uses WAKE_MODE_LOCAL (CPU only) instead of
@@ -814,6 +809,29 @@ class PinepodsMediaService : MediaLibraryService() {
         player?.volume = volume.coerceIn(0f, 1f)
     }
 
+    // Media3 pauses for a "may duck" focus loss (a notification sound) when the
+    // content is speech and only lowers the volume otherwise, so the content type
+    // is what decides whether another app's short sounds pause playback.
+    private fun audioAttributes(pauseForInterruptions: Boolean): AudioAttributes =
+        AudioAttributes.Builder()
+            .setContentType(
+                if (pauseForInterruptions) C.AUDIO_CONTENT_TYPE_SPEECH else C.AUDIO_CONTENT_TYPE_MUSIC
+            )
+            .setUsage(C.USAGE_MEDIA)
+            .build()
+
+    // Kept natively too, so a cold start from Android Auto without Dart applies it.
+    private fun pauseForInterruptions(): Boolean =
+        getSharedPreferences(PLAYBACK_PREFS, MODE_PRIVATE).getBoolean(KEY_PAUSE_FOR_INTERRUPTIONS, true)
+
+    fun setPauseForInterruptions(enabled: Boolean) {
+        if (enabled == pauseForInterruptions()) return
+        Log.d(TAG, "setPauseForInterruptions: $enabled")
+        getSharedPreferences(PLAYBACK_PREFS, MODE_PRIVATE).edit()
+            .putBoolean(KEY_PAUSE_FOR_INTERRUPTIONS, enabled).apply()
+        player?.setAudioAttributes(audioAttributes(enabled), true)
+    }
+
     fun setVolumeBoost(enabled: Boolean) {
         Log.d(TAG, "setVolumeBoost: $enabled")
         try {
@@ -877,6 +895,8 @@ class PinepodsMediaService : MediaLibraryService() {
         private const val NOTIFICATION_CHANNEL_ID = "pinepods_playback"
         private const val NOTIFICATION_ID = 1
         private const val STREAM_CACHE_BYTES = 256L * 1024 * 1024
+        private const val PLAYBACK_PREFS = "pinepods_playback"
+        private const val KEY_PAUSE_FOR_INTERRUPTIONS = "pause_for_interruptions"
 
         // One SimpleCache per directory per process, so it outlives the service.
         private var streamCache: SimpleCache? = null

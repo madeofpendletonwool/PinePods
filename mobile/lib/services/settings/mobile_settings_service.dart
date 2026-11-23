@@ -373,6 +373,15 @@ class MobileSettingsService extends SettingsService {
   }
 
   @override
+  bool get pauseForInterruptions => _sharedPreferences.getBool('pauseForInterruptions') ?? true;
+
+  @override
+  set pauseForInterruptions(bool value) {
+    _sharedPreferences.setBool('pauseForInterruptions', value);
+    settingsNotifier.sink.add('pauseForInterruptions');
+  }
+
+  @override
   String get language => _sharedPreferences.getString('language') ?? '';
 
   @override

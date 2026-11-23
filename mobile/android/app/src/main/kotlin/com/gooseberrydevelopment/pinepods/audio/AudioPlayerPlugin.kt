@@ -134,6 +134,7 @@ class AudioPlayerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                             call.argument<Double>("speed")?.let { service.setPlaybackSpeed(it.toFloat()) }
                             call.argument<Boolean>("trimSilence")?.let { service.setTrimSilence(it) }
                             call.argument<Boolean>("volumeBoost")?.let { service.setVolumeBoost(it) }
+                            call.argument<Boolean>("pauseForInterruptions")?.let { service.setPauseForInterruptions(it) }
                             val forwardMs = call.argument<Int>("forwardMs")
                             val backwardMs = call.argument<Int>("backwardMs")
                             if (forwardMs != null && backwardMs != null) {
@@ -225,6 +226,12 @@ class AudioPlayerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 "setVolumeBoost" -> {
                     val enabled = call.argument<Boolean>("enabled") ?: false
                     mediaService?.setVolumeBoost(enabled)
+                    result.success(null)
+                }
+
+                "setPauseForInterruptions" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: true
+                    mediaService?.setPauseForInterruptions(enabled)
                     result.success(null)
                 }
 
