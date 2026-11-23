@@ -653,6 +653,7 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     EditedMetadata VARCHAR(255),
                     Subscribed BOOLEAN NOT NULL DEFAULT TRUE,
                     UnsubscribedSince TIMESTAMP NULL,
+                    InboxEnabled BOOLEAN NOT NULL DEFAULT TRUE,
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                 )
             """)
@@ -737,6 +738,7 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     EditedMetadata VARCHAR(255),
                     Subscribed TINYINT(1) NOT NULL DEFAULT 1,
                     UnsubscribedSince DATETIME NULL DEFAULT NULL,
+                    InboxEnabled TINYINT(1) NOT NULL DEFAULT 1,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )
             """)
@@ -8481,6 +8483,140 @@ def migration_098_ai_features_enabled(conn, db_type: str) -> None:
                 cursor.execute('ALTER TABLE "AISettings" ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT TRUE')
             else:
                 cursor.execute("ALTER TABLE AISettings ADD COLUMN Enabled TINYINT(1) NOT NULL DEFAULT 1")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("099", "inbox_and_episode_labels", "Inbox: dismissed episodes, how far back it reaches and which podcasts feed it; episode labels, also usable as a smart playlist filter", requires=["001", "005", "010"], sqlite=True)
+def migration_099_inbox_and_episode_labels(conn, db_type: str) -> None:
+    """The inbox is worked out from what the user has done: an episode of a subscribed podcast,
+    released in the last UserSettings.InboxDays days, that they haven't played, finished, queued,
+    saved, downloaded or dismissed. InboxDismissed holds the dismissals (EpisodeID is a
+    YouTubeVideos.VideoID when IsYoutube). Podcasts.InboxEnabled = FALSE keeps a podcast out.
+
+    EpisodeLabels are a user's own labels; EpisodeLabelAssignments puts them on episodes.
+    Playlists.LabelIDs (a JSON list) limits a smart playlist to episodes with any of them."""
+    cursor = conn.cursor()
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "InboxDismissed" (
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    EpisodeID INT NOT NULL,
+                    IsYoutube BOOLEAN NOT NULL DEFAULT FALSE,
+                    DismissedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (UserID, EpisodeID, IsYoutube)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeLabels" (
+                    LabelID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    Name VARCHAR(64) NOT NULL,
+                    Color VARCHAR(16) NOT NULL DEFAULT 'blue',
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (UserID, Name)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeLabelAssignments" (
+                    LabelID INT NOT NULL REFERENCES "EpisodeLabels"(LabelID) ON DELETE CASCADE,
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    EpisodeID INT NOT NULL,
+                    IsYoutube BOOLEAN NOT NULL DEFAULT FALSE,
+                    AssignedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (LabelID, EpisodeID, IsYoutube)
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_episodelabelassignments_user ON "EpisodeLabelAssignments"(UserID, EpisodeID)')
+        elif db_type == "sqlite":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "InboxDismissed" (
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    episodeid INTEGER NOT NULL,
+                    isyoutube BOOLEAN NOT NULL DEFAULT 0,
+                    dismissedat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (userid, episodeid, isyoutube)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeLabels" (
+                    labelid INTEGER PRIMARY KEY AUTOINCREMENT,
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    color TEXT NOT NULL DEFAULT 'blue',
+                    createdat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (userid, name)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeLabelAssignments" (
+                    labelid INTEGER NOT NULL REFERENCES "EpisodeLabels"(labelid) ON DELETE CASCADE,
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    episodeid INTEGER NOT NULL,
+                    isyoutube BOOLEAN NOT NULL DEFAULT 0,
+                    assignedat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (labelid, episodeid, isyoutube)
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_episodelabelassignments_user ON "EpisodeLabelAssignments"(userid, episodeid)')
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS InboxDismissed (
+                    UserID INT NOT NULL,
+                    EpisodeID INT NOT NULL,
+                    IsYoutube TINYINT(1) NOT NULL DEFAULT 0,
+                    DismissedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (UserID, EpisodeID, IsYoutube),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS EpisodeLabels (
+                    LabelID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(64) NOT NULL,
+                    Color VARCHAR(16) NOT NULL DEFAULT 'blue',
+                    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_episodelabels_user_name (UserID, Name),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS EpisodeLabelAssignments (
+                    LabelID INT NOT NULL,
+                    UserID INT NOT NULL,
+                    EpisodeID INT NOT NULL,
+                    IsYoutube TINYINT(1) NOT NULL DEFAULT 0,
+                    AssignedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (LabelID, EpisodeID, IsYoutube),
+                    KEY idx_episodelabelassignments_user (UserID, EpisodeID),
+                    FOREIGN KEY (LabelID) REFERENCES EpisodeLabels(LabelID) ON DELETE CASCADE,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+
+        # SQLite reports a column by its declared name, and its schema is all lowercase.
+        columns = [
+            ("Podcasts", "InboxEnabled", {"postgresql": "BOOLEAN NOT NULL DEFAULT TRUE", "sqlite": "BOOLEAN NOT NULL DEFAULT 1", "mysql": "TINYINT(1) NOT NULL DEFAULT 1"}),
+            ("UserSettings", "InboxDays", {"postgresql": "INT NOT NULL DEFAULT 30", "sqlite": "INTEGER NOT NULL DEFAULT 30", "mysql": "INT NOT NULL DEFAULT 30"}),
+            ("Playlists", "LabelIDs", {"postgresql": "TEXT", "sqlite": "TEXT", "mysql": "TEXT NULL"}),
+        ]
+        for table, column, types in columns:
+            if db_type == "sqlite":
+                cursor.execute(f'PRAGMA table_info("{table}")')
+                exists = any(row[1].lower() == column.lower() for row in cursor.fetchall())
+            else:
+                exists = _column_exists(cursor, db_type, table, column)
+            if exists:
+                continue
+            name = column.lower() if db_type == "sqlite" else column
+            quoted = table if db_type == "mysql" else f'"{table}"'
+            cursor.execute(f"ALTER TABLE {quoted} ADD COLUMN {name} {types.get(db_type, types['mysql'])}")
         conn.commit()
     except Exception:
         conn.rollback()

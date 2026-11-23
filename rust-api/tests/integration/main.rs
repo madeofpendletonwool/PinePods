@@ -20,6 +20,7 @@ mod foreign_resources;
 mod gpodder;
 mod gpodder_server;
 mod in_app_notifications;
+mod inbox;
 mod task_list;
 mod library;
 mod listening_report;

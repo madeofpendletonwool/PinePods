@@ -5,7 +5,7 @@ use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::episode_list_view::EpisodeListView;
 use crate::components::gen_components::{Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
-use crate::pages::playlists::{IconSelector, PodcastSelector};
+use crate::pages::playlists::{IconSelector, LabelSelector, PodcastSelector};
 use crate::requests::episode::Episode;
 use crate::requests::pod_req::{self, PlaylistInfo, Podcast, UpdatePlaylistRequest};
 use gloo_timers::future::TimeoutFuture;
@@ -54,6 +54,7 @@ pub fn playlist_detail(props: &Props) -> Html {
     let edit_play_progress_max = use_state(String::new);
     let edit_time_filter_hours = use_state(String::new);
     let edit_selected_podcasts = use_state(|| Vec::<i32>::new());
+    let edit_selected_labels = use_state(|| Vec::<i32>::new());
     let edit_available_podcasts = use_state(|| Vec::<Podcast>::new());
     let edit_loading_podcasts = use_state(|| false);
     let edit_saving = use_state(|| false);
@@ -130,6 +131,7 @@ pub fn playlist_detail(props: &Props) -> Html {
         let edit_play_progress_max = edit_play_progress_max.clone();
         let edit_time_filter_hours = edit_time_filter_hours.clone();
         let edit_selected_podcasts = edit_selected_podcasts.clone();
+        let edit_selected_labels = edit_selected_labels.clone();
 
         use_effect_with(playlist_info.clone(), move |playlist_info| {
             if let Some(info) = (**playlist_info).as_ref() {
@@ -148,6 +150,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                 edit_play_progress_max.set(info.play_progress_max.map(|v| v.to_string()).unwrap_or_default());
                 edit_time_filter_hours.set(info.time_filter_hours.map(|v| v.to_string()).unwrap_or_default());
                 edit_selected_podcasts.set(info.podcast_ids.clone().unwrap_or_default());
+                edit_selected_labels.set(info.label_ids.clone());
             }
             || ()
         });
@@ -324,6 +327,7 @@ pub fn playlist_detail(props: &Props) -> Html {
         let edit_play_progress_max = edit_play_progress_max.clone();
         let edit_time_filter_hours = edit_time_filter_hours.clone();
         let edit_selected_podcasts = edit_selected_podcasts.clone();
+        let edit_selected_labels = edit_selected_labels.clone();
         let edit_saving = edit_saving.clone();
         let show_edit_modal = show_edit_modal.clone();
         let playlist_info = playlist_info.clone();
@@ -361,6 +365,7 @@ pub fn playlist_detail(props: &Props) -> Html {
             let play_progress_max: Option<f32> = edit_play_progress_max.parse().ok();
             let time_filter_hours: Option<i32> = edit_time_filter_hours.parse().ok();
             let selected_podcasts = (*edit_selected_podcasts).clone();
+            let selected_labels = (*edit_selected_labels).clone();
 
             let api_key = api_key.clone();
             let user_id = user_id.clone();
@@ -402,6 +407,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                     play_progress_min,
                     play_progress_max,
                     time_filter_hours,
+                    label_ids: Some(selected_labels),
                 };
 
                 wasm_bindgen_futures::spawn_local(async move {
@@ -586,6 +592,14 @@ pub fn playlist_detail(props: &Props) -> Html {
                                             on_select={let edit_icon_name = edit_icon_name.clone(); Callback::from(move |new_icon| {
                                                 edit_icon_name.set(new_icon);
                                             })}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label class="block mb-2 text-sm font-medium">{&i18n.t("labels.playlist_filter")}</label>
+                                        <LabelSelector
+                                            selected={(*edit_selected_labels).clone()}
+                                            on_change={let s = edit_selected_labels.clone(); Callback::from(move |v| s.set(v))}
                                         />
                                     </div>
 

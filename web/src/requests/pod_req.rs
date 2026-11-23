@@ -5596,6 +5596,8 @@ pub struct Playlist {
     pub episode_count: Option<i32>,
     pub preview_episodes: Vec<PlaylistEpisode>,
     pub icon_name: Option<String>,
+    #[serde(default)]
+    pub label_ids: Vec<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -5664,6 +5666,7 @@ pub struct CreatePlaylistRequest {
     pub play_progress_min: Option<f32>,
     pub play_progress_max: Option<f32>,
     pub time_filter_hours: Option<i32>,
+    pub label_ids: Option<Vec<i32>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -5764,6 +5767,7 @@ pub struct UpdatePlaylistRequest {
     pub play_progress_min: Option<f32>,
     pub play_progress_max: Option<f32>,
     pub time_filter_hours: Option<i32>,
+    pub label_ids: Option<Vec<i32>>,
 }
 
 #[allow(dead_code)]
@@ -5848,6 +5852,8 @@ pub struct PlaylistInfo {
     pub play_progress_min: Option<f32>,
     pub play_progress_max: Option<f32>,
     pub time_filter_hours: Option<i32>,
+    #[serde(default)]
+    pub label_ids: Vec<i32>,
 }
 
 #[allow(dead_code)]
@@ -5890,6 +5896,7 @@ pub async fn call_get_playlist_episodes(
                     play_progress_min: None,
                     play_progress_max: None,
                     time_filter_hours: None,
+                    label_ids: Vec::new(),
                 },
                 episodes: vec![],
             });

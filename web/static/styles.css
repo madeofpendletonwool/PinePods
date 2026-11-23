@@ -12188,3 +12188,165 @@ button.ep-modal-podcast:hover { text-decoration: underline; }
     font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
     color: var(--text-secondary-color); padding: 12px 4px 6px;
 }
+
+/* ---- Inbox and episode labels ---- */
+.sb-badge {
+    margin-left: auto;
+    min-width: 22px;
+    padding: 1px 7px;
+    border-radius: var(--radius-full);
+    background: color-mix(in oklab, var(--accent-color) 22%, transparent);
+    color: var(--text-color);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.inbox-header { padding: 8px 16px 4px; display: flex; flex-direction: column; gap: 10px; }
+.inbox-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.inbox-title { font-size: 1.6rem; font-weight: 700; color: var(--text-color); display: flex; align-items: center; gap: 10px; margin: 0; }
+.inbox-count {
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: var(--radius-full);
+    background: var(--secondary-background);
+    color: var(--text-secondary-color);
+    font-variant-numeric: tabular-nums;
+}
+.inbox-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.inbox-tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-color);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color var(--dur-fast);
+}
+.inbox-tool:hover:not(:disabled) { background: var(--hover-color); }
+.inbox-tool:disabled { opacity: .45; cursor: default; }
+.inbox-tool i { font-size: 16px; }
+
+.inbox-filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.inbox-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary-color);
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color var(--dur-fast), color var(--dur-fast);
+}
+.inbox-chip:hover { color: var(--text-color); background: var(--hover-color); }
+.inbox-chip.is-active {
+    color: var(--text-color);
+    border-color: color-mix(in oklab, var(--accent-color) 60%, var(--border-color));
+    background: color-mix(in oklab, var(--accent-color) 18%, transparent);
+    font-weight: 600;
+}
+.inbox-podcast-select {
+    padding: 5px 10px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-color);
+    background: var(--container-background);
+    color: var(--text-color);
+    font-size: 13px;
+    max-width: 220px;
+}
+.inbox-undo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    border-radius: var(--radius-md);
+    background: var(--secondary-background);
+    color: var(--text-color);
+    font-size: 14px;
+}
+.inbox-undo-btn { background: none; border: none; color: var(--link-color); font-weight: 600; cursor: pointer; padding: 0; }
+
+.ep-inbox-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.ep-inbox-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary-color);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color var(--dur-fast), color var(--dur-fast);
+}
+.ep-inbox-btn:hover:not(:disabled) { background: var(--hover-color); color: var(--text-color); }
+.ep-inbox-btn:disabled { opacity: .5; cursor: default; }
+.ep-inbox-btn i { font-size: 14px; }
+@media (max-width: 640px) {
+    .ep-inbox-btn span { display: none; }
+    .ep-inbox-btn { padding: 6px 9px; }
+    .inbox-tool span { display: none; }
+}
+
+/* Label colours: each sets --lbl, the chips mix it with the theme. */
+.ep-label--blue { --lbl: #3b82f6; }
+.ep-label--green { --lbl: #22c55e; }
+.ep-label--yellow { --lbl: #eab308; }
+.ep-label--orange { --lbl: #f97316; }
+.ep-label--red { --lbl: #ef4444; }
+.ep-label--purple { --lbl: #a855f7; }
+.ep-label--pink { --lbl: #ec4899; }
+.ep-label--teal { --lbl: #14b8a6; }
+.ep-label--gray { --lbl: #94a3b8; }
+.ep-labels { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; cursor: pointer; }
+.ep-label {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 8px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.6;
+    color: color-mix(in oklab, var(--lbl) 70%, var(--text-color));
+    background: color-mix(in oklab, var(--lbl) 18%, transparent);
+    border: 1px solid color-mix(in oklab, var(--lbl) 35%, transparent);
+    white-space: nowrap;
+}
+.ep-label-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--lbl); flex-shrink: 0; }
+
+.label-new { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.label-new input { flex: 1 1 160px; }
+.label-colors { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.label-swatch {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--lbl);
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+}
+.label-swatch.is-selected { border-color: var(--text-color); box-shadow: 0 0 0 2px var(--container-background) inset; }
+.label-manager { display: flex; flex-direction: column; gap: 12px; padding: 4px 0; }
+.label-manager-list { display: flex; flex-direction: column; gap: 4px; }
+.label-manager-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 4px;
+    border-bottom: 1px solid var(--border-color);
+}
+.label-manager-row .label-new { flex: 1; }
+.label-manager-count { color: var(--text-secondary-color); font-size: 13px; }
+.label-manager-actions { margin-left: auto; display: flex; gap: 4px; }

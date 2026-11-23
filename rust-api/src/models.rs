@@ -41,6 +41,9 @@ pub struct CreatePlaylistRequest {
     pub group_by_podcast: bool,
     pub max_episodes: Option<i32>,
     pub icon_name: String,
+    /// Only episodes with any of these labels (see `/api/data/labels`).
+    #[serde(default)]
+    pub label_ids: Option<Vec<i32>>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -83,6 +86,9 @@ pub struct UpdatePlaylistRequest {
     pub group_by_podcast: bool,
     pub max_episodes: Option<i32>,
     pub icon_name: String,
+    /// Only episodes with any of these labels (see `/api/data/labels`).
+    #[serde(default)]
+    pub label_ids: Option<Vec<i32>>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -479,6 +485,9 @@ pub struct PlaylistInfo {
     pub play_progress_min: Option<f64>,
     pub play_progress_max: Option<f64>,
     pub time_filter_hours: Option<i32>,
+    /// Only episodes with any of these labels.
+    #[serde(default)]
+    pub label_ids: Vec<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]

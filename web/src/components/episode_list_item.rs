@@ -10,6 +10,8 @@ use crate::components::gen_funcs::{
 };
 use crate::components::gen_funcs::format_time;
 use crate::components::safehtml::RawHtml;
+use crate::components::inbox_actions::{self, InboxAction};
+use crate::components::labels::LabelChips;
 use crate::requests::episode::Episode;
 use crate::components::i18n::use_translation;
 use yew_router::history::BrowserHistory;
@@ -116,6 +118,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 fn episode_list_item_body(props: &EpisodeListItemProps) -> Html {
     let (i18n, _) = use_translation();
     let i18n_completed = i18n.t("episode_list_item.completed").to_string();
+    let inbox_busy = use_state(|| false);
     // Use selective subscriptions to only re-render when relevant state changes
     let episode_id = props.episode.episodeid;
 
@@ -576,6 +579,63 @@ fn episode_list_item_body(props: &EpisodeListItemProps) -> Html {
     };
     let has_media = !props.episode.episodeurl.is_empty();
 
+    // One-tap triage on inbox cards. Queue, save and played take the card out through the shared
+    // episode state; dismissing tells the page directly.
+    let inbox_buttons = if props.page_type == PageType::Inbox {
+        let busy = inbox_busy.clone();
+        let button = |action: InboxAction, icon: &str, label: String| {
+            let episode = props.episode.clone();
+            let on_removed = props.on_episode_removed.clone();
+            let disabled = *busy;
+            let busy = busy.clone();
+            let onclick = Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                if *busy {
+                    return;
+                }
+                busy.set(true);
+                let id = episode.episodeid;
+                let on_removed = on_removed.clone();
+                let busy_done = busy.clone();
+                inbox_actions::run(action, episode.clone(), move || {
+                    busy_done.set(false);
+                    if action == InboxAction::Dismiss {
+                        on_removed.emit(id);
+                    }
+                });
+            });
+            html! {
+                <button class="ep-inbox-btn" title={label.clone()} aria-label={label.clone()} {disabled} {onclick}>
+                    <i class={classes!("ph", icon.to_string())}></i>
+                    <span>{ label }</span>
+                </button>
+            }
+        };
+        let label_click = {
+            let episode = props.episode.clone();
+            Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                crate::components::labels::open_picker(vec![crate::requests::inbox_req::EpisodeRef::from(&episode)]);
+            })
+        };
+        let label_text = i18n.t("labels.labels").to_string();
+        html! {
+            <div class="ep-inbox-actions">
+                { button(InboxAction::PlayNext, "ph-skip-forward", i18n.t("inbox.play_next").to_string()) }
+                { button(InboxAction::Queue, "ph-queue", i18n.t("inbox.queue").to_string()) }
+                { button(InboxAction::Save, "ph-star", i18n.t("inbox.save").to_string()) }
+                { button(InboxAction::MarkPlayed, "ph-check", i18n.t("inbox.mark_played").to_string()) }
+                <button class="ep-inbox-btn" title={label_text.clone()} aria-label={label_text.clone()} onclick={label_click}>
+                    <i class="ph ph-tag"></i>
+                    <span>{ label_text }</span>
+                </button>
+                { button(InboxAction::Dismiss, "ph-x", i18n.t("inbox.dismiss").to_string()) }
+            </div>
+        }
+    } else {
+        html! {}
+    };
+
     html! {
         <div>
             <div
@@ -729,7 +789,11 @@ fn episode_list_item_body(props: &EpisodeListItemProps) -> Html {
                                 <i class="ph ph-download-simple" title={i18n.t("episode_list_item.downloaded").to_string()}></i>
                             }
                         </span>
+                        <LabelChips episode_id={props.episode.episodeid} is_youtube={props.episode.is_youtube} editable={true} />
                     </div>
+                    if props.page_type == PageType::Inbox {
+                        { inbox_buttons }
+                    }
                 </div>
 
                 if has_media {

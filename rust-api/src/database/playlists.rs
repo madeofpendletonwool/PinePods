@@ -23,6 +23,16 @@ pub struct PlaylistConfig {
     pub sort_order: String,
     pub group_by_podcast: bool,
     pub max_episodes: Option<i32>,
+    /// Only episodes with any of these labels (empty: no label filter).
+    pub label_ids: Vec<i32>,
+}
+
+/// A MariaDB/MySQL text column that may come back as a binary string.
+fn mysql_text(row: &sqlx::mysql::MySqlRow, col: &str) -> Option<String> {
+    match row.try_get::<Option<String>, _>(col) {
+        Ok(v) => v,
+        Err(_) => row.try_get::<Option<Vec<u8>>, _>(col).ok().flatten().map(|b| String::from_utf8_lossy(&b).into_owned()),
+    }
 }
 
 impl PlaylistConfig {
@@ -76,6 +86,7 @@ impl PlaylistConfig {
             sort_order: opt(row, "sortorder").unwrap_or_else(|| "date_desc".to_string()),
             group_by_podcast: opt(row, "groupbypodcast").unwrap_or(false),
             max_episodes: opt(row, "maxepisodes"),
+            label_ids: super::inbox::parse_label_ids(opt::<R, String>(row, "labelids").as_deref()),
         })
     }
     
@@ -133,6 +144,7 @@ impl PlaylistConfig {
             sort_order: row.try_get("SortOrder").unwrap_or_else(|_| "date_desc".to_string()),
             group_by_podcast: row.try_get("GroupByPodcast").unwrap_or(false),
             max_episodes: row.try_get("MaxEpisodes").ok(),
+            label_ids: super::inbox::parse_label_ids(mysql_text(row, "LabelIDs").as_deref()),
         })
     }
     
@@ -222,6 +234,7 @@ impl DatabasePool {
                         p.description,
                         p.issystemplaylist,
                         p.podcastids,
+                        p.labelids,
                         p.includeunplayed,
                         p.includepartiallyplayed,
                         p.includeplayed,
@@ -284,6 +297,7 @@ impl DatabasePool {
                         "description": row.try_get::<Option<String>, _>("description")?.unwrap_or_default(),
                         "is_system_playlist": row.try_get::<bool, _>("issystemplaylist")?,
                         "podcast_ids": podcast_ids,
+                        "label_ids": super::inbox::parse_label_ids(row.try_get::<Option<String>, _>("labelids")?.as_deref()),
                         "include_unplayed": row.try_get::<bool, _>("includeunplayed")?,
                         "include_partially_played": row.try_get::<bool, _>("includepartiallyplayed")?,
                         "include_played": row.try_get::<bool, _>("includeplayed")?,
@@ -313,6 +327,7 @@ impl DatabasePool {
                         p.Description,
                         p.IsSystemPlaylist,
                         p.PodcastIDs,
+                        p.LabelIDs,
                         p.IncludeUnplayed,
                         p.IncludePartiallyPlayed,
                         p.IncludePlayed,
@@ -408,6 +423,7 @@ impl DatabasePool {
                         "description": row.try_get::<Option<String>, _>("Description")?.unwrap_or_default(),
                         "is_system_playlist": row.try_get::<i8, _>("IsSystemPlaylist")? != 0,
                         "podcast_ids": podcast_ids,
+                        "label_ids": super::inbox::parse_label_ids(mysql_text(&row, "LabelIDs").as_deref()),
                         "include_unplayed": row.try_get::<i8, _>("IncludeUnplayed")? != 0,
                         "include_partially_played": row.try_get::<i8, _>("IncludePartiallyPlayed")? != 0,
                         "include_played": row.try_get::<i8, _>("IncludePlayed")? != 0,
@@ -487,6 +503,7 @@ impl DatabasePool {
                 .await?;
 
                 let playlist_id = result.get::<i32, _>("playlistid");
+                self.set_playlist_label_ids(playlist_id, playlist_data.label_ids.as_deref()).await?;
                 
                 // Update playlist contents immediately like Python does
                 self.update_playlist_contents(playlist_id).await?;
@@ -543,6 +560,7 @@ impl DatabasePool {
                 .await?;
 
                 let playlist_id = result.last_insert_id() as i32;
+                self.set_playlist_label_ids(playlist_id, playlist_data.label_ids.as_deref()).await?;
                 
                 // Update playlist contents immediately like Python does
                 self.update_playlist_contents(playlist_id).await?;
@@ -550,6 +568,22 @@ impl DatabasePool {
                 Ok(playlist_id)
             },
         })
+    }
+
+    /// Store a smart playlist's label filter (`None` or empty clears it).
+    pub async fn set_playlist_label_ids(&self, playlist_id: i32, label_ids: Option<&[i32]>) -> AppResult<()> {
+        let value = label_ids.filter(|ids| !ids.is_empty()).map(|ids| serde_json::to_string(ids)).transpose()?;
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Playlists" SET labelids = $1 WHERE playlistid = $2"#)
+                    .bind(value).bind(playlist_id).execute(pool).await?;
+            },
+            mysql(pool) => {
+                sqlx::query("UPDATE Playlists SET LabelIDs = ? WHERE PlaylistID = ?")
+                    .bind(value).bind(playlist_id).execute(pool).await?;
+            },
+        });
+        Ok(())
     }
 
     pub async fn get_next_playlist_episode(&self, episode_id: i32, playlist_id: i32, user_id: i32) -> AppResult<Option<crate::models::QueuedEpisode>> {
@@ -691,7 +725,7 @@ impl DatabasePool {
             pg(pool) => {
                 // Get playlist configuration first  
                 let playlist = q::query(r#"
-                    SELECT playlistid, name, userid, podcastids, includeunplayed, 
+                    SELECT playlistid, name, userid, podcastids, labelids, includeunplayed, 
                            includepartiallyplayed, includeplayed, playprogressmin, playprogressmax, 
                            timefilterhours, minduration, maxduration, sortorder, 
                            groupbypodcast, maxepisodes, issystemplaylist
@@ -739,7 +773,7 @@ impl DatabasePool {
             mysql(pool) => {
                 // Get playlist configuration first
                 let playlist = sqlx::query("
-                    SELECT PlaylistID, Name, UserID, PodcastIDs, IncludeUnplayed, 
+                    SELECT PlaylistID, Name, UserID, PodcastIDs, LabelIDs, IncludeUnplayed, 
                            IncludePartiallyPlayed, IncludePlayed, PlayProgressMin, PlayProgressMax, 
                            TimeFilterHours, MinDuration, MaxDuration, SortOrder, 
                            GroupByPodcast, MaxEpisodes, IsSystemPlaylist
@@ -1170,6 +1204,9 @@ impl DatabasePool {
         } else {
             info!("PostgreSQL no podcast filter applied - config.podcast_ids is None");
         }
+        if let Some(labels) = super::inbox::playlist_label_condition(&config.label_ids, false) {
+            select_query.push_str(&format!(" AND {labels}"));
+        }
         
         // Add duration filters
         if let Some(min_duration) = config.min_duration {
@@ -1311,6 +1348,9 @@ impl DatabasePool {
             }
         } else {
             info!("MySQL no podcast_ids specified, no filter applied");
+        }
+        if let Some(labels) = super::inbox::playlist_label_condition(&config.label_ids, true) {
+            select_query.push_str(&format!(" AND {labels}"));
         }
         
         // Add duration filters
@@ -1924,6 +1964,7 @@ impl DatabasePool {
                 .execute(pool)
                 .await?;
 
+                self.set_playlist_label_ids(playlist_data.playlist_id, playlist_data.label_ids.as_deref()).await?;
                 self.update_playlist_contents(playlist_data.playlist_id).await?;
                 Ok(())
             },
@@ -1986,6 +2027,7 @@ impl DatabasePool {
                 .execute(pool)
                 .await?;
 
+                self.set_playlist_label_ids(playlist_data.playlist_id, playlist_data.label_ids.as_deref()).await?;
                 self.update_playlist_contents(playlist_data.playlist_id).await?;
                 Ok(())
             },
@@ -2243,7 +2285,7 @@ impl DatabasePool {
                 let playlist_row = q::query(
                     r#"SELECT userid, name, minduration, maxduration, sortorder, 
                        includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
-                       groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids
+                       groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids, labelids
                        FROM "Playlists" WHERE playlistid = $1"#
                 ).bind(playlist_id).fetch_optional(pool).await?;
                 
@@ -2286,6 +2328,13 @@ impl DatabasePool {
                     }
                 }
                 
+                if let Some(labels) = super::inbox::playlist_label_condition(
+                    &super::inbox::parse_label_ids(playlist.try_get::<Option<String>, _>("labelids")?.as_deref()),
+                    false,
+                ) {
+                    where_conditions.push(labels);
+                }
+
                 // Play state filters
                 let mut play_state_conditions = Vec::new();
                 if playlist.try_get::<bool, _>("includeunplayed")? {
@@ -2358,7 +2407,7 @@ impl DatabasePool {
                 let playlist_row = sqlx::query(
                     r#"SELECT UserID, Name, MinDuration, MaxDuration, SortOrder, 
                        IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
-                       GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs
+                       GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs, LabelIDs
                        FROM Playlists WHERE PlaylistID = ?"#
                 ).bind(playlist_id).fetch_optional(pool).await?;
                 
@@ -2411,6 +2460,13 @@ impl DatabasePool {
                             Err(e) => warn!("⚠️ Failed to parse MySQL podcast IDs JSON '{}': {}", podcast_ids_json, e),
                         }
                     }
+                }
+
+                if let Some(labels) = super::inbox::playlist_label_condition(
+                    &super::inbox::parse_label_ids(mysql_text(&playlist, "LabelIDs").as_deref()),
+                    true,
+                ) {
+                    where_conditions.push(labels);
                 }
 
                 // Play state filters - must mirror get_playlist_episodes_dynamic exactly
@@ -2609,7 +2665,7 @@ impl DatabasePool {
                 let playlist_row = q::query(
                     r#"SELECT userid, name, description, minduration, maxduration, sortorder, 
                        includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
-                       groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids,
+                       groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids, labelids,
                        issystemplaylist, created, iconname, episodecount
                        FROM "Playlists" WHERE playlistid = $1"#
                 ).bind(playlist_id).fetch_optional(pool).await?;
@@ -2702,6 +2758,13 @@ impl DatabasePool {
                     }
                 }
                 
+                if let Some(labels) = super::inbox::playlist_label_condition(
+                    &super::inbox::parse_label_ids(playlist.try_get::<Option<String>, _>("labelids")?.as_deref()),
+                    false,
+                ) {
+                    where_conditions.push(labels);
+                }
+
                 // 4. ULTRA-PRECISE PLAY STATE FILTERS
                 let mut play_state_conditions = Vec::new();
                 
@@ -2879,6 +2942,7 @@ impl DatabasePool {
                     play_progress_min: playlist.try_get::<Option<f64>, _>("playprogressmin")?,
                     play_progress_max: playlist.try_get::<Option<f64>, _>("playprogressmax")?,
                     time_filter_hours: playlist.try_get::<Option<i32>, _>("timefilterhours")?,
+                    label_ids: super::inbox::parse_label_ids(playlist.try_get::<Option<String>, _>("labelids")?.as_deref()),
                 };
 
                 Ok(crate::models::PlaylistEpisodesResponse {
@@ -2899,7 +2963,7 @@ impl DatabasePool {
                 let playlist_row = sqlx::query(
                     r#"SELECT UserID, Name, Description, MinDuration, MaxDuration, SortOrder,
                        IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
-                       GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
+                       GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs, LabelIDs,
                        IsSystemPlaylist, Created, IconName, EpisodeCount
                        FROM Playlists WHERE PlaylistID = ?"#
                 ).bind(playlist_id).fetch_optional(pool).await?;
@@ -2995,6 +3059,13 @@ impl DatabasePool {
                     }
                 }
                 
+                if let Some(labels) = super::inbox::playlist_label_condition(
+                    &super::inbox::parse_label_ids(mysql_text(&playlist, "LabelIDs").as_deref()),
+                    true,
+                ) {
+                    where_conditions.push(labels);
+                }
+
                 // 4. ULTRA-PRECISE PLAY STATE FILTERS (MySQL)
                 let mut play_state_conditions = Vec::new();
                 
@@ -3182,6 +3253,7 @@ impl DatabasePool {
                     play_progress_min: playlist.try_get::<Option<f64>, _>("PlayProgressMin")?,
                     play_progress_max: playlist.try_get::<Option<f64>, _>("PlayProgressMax")?,
                     time_filter_hours: playlist.try_get::<Option<i32>, _>("TimeFilterHours")?,
+                    label_ids: super::inbox::parse_label_ids(mysql_text(&playlist, "LabelIDs").as_deref()),
                 };
 
                 Ok(crate::models::PlaylistEpisodesResponse {

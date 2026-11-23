@@ -16,6 +16,7 @@ String bottomNavLabel(BuildContext context, String page) {
   return switch (page) {
     'Home' => l.nav_home,
     'Feed' => l.feed,
+    'Inbox' => l.inbox,
     'Saved' => l.saved,
     'Podcasts' => l.podcasts,
     'People' => l.nav_people,
@@ -33,6 +34,8 @@ IconData bottomNavIcon(String label, {bool selected = false}) {
       return selected ? PhosphorIconsFill.house : PhosphorIconsRegular.house;
     case 'Feed':
       return selected ? PhosphorIconsFill.rss : PhosphorIconsRegular.rss;
+    case 'Inbox':
+      return selected ? PhosphorIconsFill.tray : PhosphorIconsRegular.tray;
     case 'Saved':
       return selected
           ? PhosphorIconsFill.bookmarkSimple

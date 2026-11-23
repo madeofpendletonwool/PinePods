@@ -1,5 +1,8 @@
 // lib/ui/pinepods/create_playlist.dart
 import 'package:flutter/material.dart';
+import 'package:pinepods_mobile/entities/episode_label.dart';
+import 'package:pinepods_mobile/ui/pinepods/labels.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:provider/provider.dart';
@@ -41,6 +44,7 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage> {
   String _sortOrder = 'date_desc';
   bool _groupByPodcast = false;
   String _maxEpisodes = '';
+  final Set<int> _labelIds = {};
 
   final List<Map<String, String>> _availableIcons = [
     {'name': 'ph-playlist', 'icon': '🎵'},
@@ -64,6 +68,14 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage> {
     {'name': 'ph-sun', 'icon': '☀️'},
     {'name': 'ph-rocket', 'icon': '🚀'},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) LabelStore.instance.ensureLoaded(context);
+    });
+  }
 
   @override
   void dispose() {
@@ -118,6 +130,7 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage> {
         playProgressMin: null, // Simplified for now
         playProgressMax: null,
         timeFilterHours: null,
+        labelIds: _labelIds.toList(),
       );
 
       final success = await _pinepodsService.createPlaylist(request);
@@ -302,6 +315,36 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage> {
               },
             ),
             
+            const SizedBox(height: 16),
+
+            Text(
+              L.of(context)!.playlist_label_filter,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            ListenableBuilder(
+              listenable: LabelStore.instance,
+              builder: (context, _) {
+                final labels = LabelStore.instance.labels;
+                if (labels.isEmpty) {
+                  return Text(L.of(context)!.playlist_label_none, style: TextStyle(color: Theme.of(context).hintColor));
+                }
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    for (final l in labels)
+                      FilterChip(
+                        avatar: Icon(PhosphorIconsFill.circle, size: 14, color: labelColor(l.color)),
+                        label: Text(l.name),
+                        selected: _labelIds.contains(l.id),
+                        onSelected: (on) => setState(() => on ? _labelIds.add(l.id) : _labelIds.remove(l.id)),
+                      ),
+                  ],
+                );
+              },
+            ),
+
             const SizedBox(height: 16),
             
             // Duration range

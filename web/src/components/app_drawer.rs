@@ -44,6 +44,7 @@ pub fn app_drawer() -> Html {
     let i18n_pinepods = i18n.t("app_drawer.pinepods").to_string();
     let i18n_home = i18n.t("navigation.home").to_string();
     let i18n_feed = i18n.t("app_drawer.feed").to_string();
+    let i18n_inbox = i18n.t("app_drawer.inbox").to_string();
     let i18n_search = i18n.t("navigation.search").to_string();
     let i18n_collections = i18n.t("navigation.collections").to_string();
     let i18n_playlists = i18n.t("navigation.playlists").to_string();
@@ -210,6 +211,7 @@ pub fn app_drawer() -> Html {
         "/local_downloads",
         "/people_subs",
         "/feed",
+        "/inbox",
         "/playlists",
     ]
     .iter()
@@ -223,6 +225,32 @@ pub fn app_drawer() -> Html {
                 <Link<Route> to={route} classes={classes!("sb-item", active.then_some("is-active"))}>
                     <i class={classes!("ph", icon.to_string())}></i>
                     <span>{label.to_string()}</span>
+                </Link<Route>>
+            </div>
+        }
+    };
+
+    // The inbox count, refreshed whenever the drawer opens.
+    let inbox_count = yewdux::use_selector(|s: &crate::components::labels::LabelState| s.inbox_count);
+    {
+        let open = *is_drawer_open;
+        use_effect_with(open, move |open| {
+            if *open || Dispatch::<crate::components::labels::LabelState>::global().get().inbox_count.is_none() {
+                crate::components::labels::refresh_inbox_count();
+            }
+            || ()
+        });
+    }
+    let inbox_item = {
+        let active = current_route.as_ref() == Some(&Route::Inbox);
+        html! {
+            <div onclick={toggle_drawer.clone()}>
+                <Link<Route> to={Route::Inbox} classes={classes!("sb-item", active.then_some("is-active"))}>
+                    <i class="ph ph-tray"></i>
+                    <span>{i18n_inbox.clone()}</span>
+                    if let Some(n) = (*inbox_count).filter(|n| *n > 0) {
+                        <span class="sb-badge">{ if n > 999 { "999+".to_string() } else { n.to_string() } }</span>
+                    }
                 </Link<Route>>
             </div>
         }
@@ -265,6 +293,7 @@ pub fn app_drawer() -> Html {
                     <div class="sb-section">{&i18n_listen}</div>
                     { nav_item(Route::Home, "ph-house", &i18n_home) }
                     { nav_item(Route::Feed, "ph-bell-ringing", &i18n_feed) }
+                    { inbox_item }
                     { nav_item(Route::Collections, "ph-bookmark-simple", &i18n_collections) }
                     { nav_item(Route::Playlists, "ph-list-checks", &i18n_playlists) }
                     { nav_item(Route::PodHistory, "ph-clock-counter-clockwise", &i18n_history) }

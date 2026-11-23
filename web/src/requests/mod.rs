@@ -1,6 +1,7 @@
 pub(crate) mod cache;
 pub(crate) mod discover_req;
 pub(crate) mod episode;
+pub(crate) mod inbox_req;
 pub(crate) mod login_requests;
 pub(crate) mod models;
 pub(crate) mod notify;

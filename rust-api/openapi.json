@@ -5972,6 +5972,326 @@
         ]
       }
     },
+    "/api/data/inbox": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "List the inbox",
+        "description": "Episodes of subscribed podcasts released in the last `days` days (see the inbox settings) that the user hasn't played, finished, queued, saved, downloaded or dismissed. Podcasts with their inbox turned off are left out. Newest first unless `sort=oldest`.",
+        "operationId": "get_inbox",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, at most 200 (default 50).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "label_id",
+            "in": "query",
+            "description": "Only episodes with this label.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "unlabeled",
+            "in": "query",
+            "description": "Only episodes without any label.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "podcast_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "`newest` (default) or `oldest`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/inbox/clear": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Dismiss everything in the inbox",
+        "description": "With `podcast_id`, `label_id` or `unlabeled`, only what that filter shows.",
+        "operationId": "clear_inbox",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClearInboxRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxChanged"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/inbox/count": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "How many episodes are in the inbox",
+        "operationId": "get_inbox_count",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxCount"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/inbox/dismiss": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Take episodes out of the inbox",
+        "operationId": "dismiss_inbox",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxEpisodesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxChanged"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/inbox/restore": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Undo dismissing episodes",
+        "description": "They show in the inbox again if nothing else (a play, queue entry, save, ...) took them out.",
+        "operationId": "restore_inbox",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxEpisodesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxChanged"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/inbox/settings": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Get the inbox settings",
+        "operationId": "get_inbox_settings",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Change the inbox settings",
+        "operationId": "set_inbox_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Days out of range"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/increment_listen_time/{user_id}": {
       "put": {
         "tags": [
@@ -6076,6 +6396,254 @@
           },
           "401": {
             "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/labels": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "List the user's episode labels",
+        "operationId": "list_labels",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EpisodeLabel"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Create an episode label",
+        "operationId": "create_label",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodeLabel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad name or color"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "409": {
+            "description": "A label with that name exists"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/labels/assignments": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Which labels are on which episodes",
+        "description": "Every label on every episode of the user's, for showing labels on episode lists.",
+        "operationId": "list_label_assignments",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LabelAssignment"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/labels/{label_id}": {
+      "put": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Rename or recolor an episode label",
+        "operationId": "update_label",
+        "parameters": [
+          {
+            "name": "label_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad name or color"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such label"
+          },
+          "409": {
+            "description": "A label with that name exists"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Delete an episode label",
+        "description": "Takes it off every episode. Smart playlists filtering on it stop doing so.",
+        "operationId": "delete_label",
+        "parameters": [
+          {
+            "name": "label_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such label"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/labels/{label_id}/episodes": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Put a label on episodes or take it off",
+        "operationId": "set_label_episodes",
+        "parameters": [
+          {
+            "name": "label_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelEpisodesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxChanged"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such label, or an episode that isn't the user's"
           }
         },
         "security": [
@@ -7501,6 +8069,100 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AutoRefresh"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such podcast"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/podcast/{podcast_id}/inbox": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Whether a podcast's episodes show in the inbox",
+        "operationId": "get_podcast_inbox",
+        "parameters": [
+          {
+            "name": "podcast_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodcastInbox"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such podcast"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Show or hide a podcast's episodes in the inbox",
+        "operationId": "set_podcast_inbox",
+        "parameters": [
+          {
+            "name": "podcast_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PodcastInbox"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodcastInbox"
                 }
               }
             }
@@ -14424,6 +15086,31 @@
           }
         }
       },
+      "ClearInboxRequest": {
+        "type": "object",
+        "properties": {
+          "podcast_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Only this podcast's episodes."
+          },
+          "label_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Only episodes with this label."
+          },
+          "unlabeled": {
+            "type": "boolean",
+            "description": "Only episodes without a label."
+          }
+        }
+      },
       "ClearPlaybackSpeedPodcast": {
         "type": "object",
         "required": [
@@ -15140,6 +15827,17 @@
           },
           "icon_name": {
             "type": "string"
+          },
+          "label_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Only episodes with any of these labels (see `/api/data/labels`)."
           }
         }
       },
@@ -15892,6 +16590,32 @@
           }
         }
       },
+      "EpisodeLabel": {
+        "type": "object",
+        "required": [
+          "label_id",
+          "name",
+          "color",
+          "episode_count"
+        ],
+        "properties": {
+          "label_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "episode_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Episodes of the user's podcasts that have the label."
+          }
+        }
+      },
       "EpisodeMetadataRequest": {
         "type": "object",
         "required": [
@@ -15918,6 +16642,22 @@
               "boolean",
               "null"
             ]
+          }
+        }
+      },
+      "EpisodeRef": {
+        "type": "object",
+        "description": "One episode or YouTube video.",
+        "required": [
+          "episode_id"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_youtube": {
+            "type": "boolean"
           }
         }
       },
@@ -16600,6 +17340,59 @@
           }
         }
       },
+      "InboxChanged": {
+        "type": "object",
+        "required": [
+          "changed"
+        ],
+        "properties": {
+          "changed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many episodes changed.",
+            "minimum": 0
+          }
+        }
+      },
+      "InboxCount": {
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "InboxEpisodesRequest": {
+        "type": "object",
+        "required": [
+          "episodes"
+        ],
+        "properties": {
+          "episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EpisodeRef"
+            }
+          }
+        }
+      },
+      "InboxSettings": {
+        "type": "object",
+        "required": [
+          "days"
+        ],
+        "properties": {
+          "days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many days back the inbox reaches, 1 to 365 (default 30)."
+          }
+        }
+      },
       "InitRequest": {
         "type": "object",
         "required": [
@@ -16624,6 +17417,65 @@
           },
           "nextcloud_url": {
             "type": "string"
+          }
+        }
+      },
+      "LabelAssignment": {
+        "type": "object",
+        "required": [
+          "label_id",
+          "episode_id",
+          "is_youtube"
+        ],
+        "properties": {
+          "label_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "episode_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_youtube": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LabelEpisodesRequest": {
+        "type": "object",
+        "required": [
+          "episodes",
+          "assigned"
+        ],
+        "properties": {
+          "episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EpisodeRef"
+            }
+          },
+          "assigned": {
+            "type": "boolean",
+            "description": "True puts the label on, false takes it off."
+          }
+        }
+      },
+      "LabelRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "1 to 64 characters, unique per user ignoring case."
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One of blue, green, yellow, orange, red, purple, pink, teal, gray (default blue)."
           }
         }
       },
@@ -17982,6 +18834,18 @@
           "podcast_id": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "PodcastInbox": {
+        "type": "object",
+        "required": [
+          "inbox"
+        ],
+        "properties": {
+          "inbox": {
+            "type": "boolean",
+            "description": "New episodes of the podcast show in the inbox."
           }
         }
       },
@@ -21144,6 +22008,17 @@
           },
           "icon_name": {
             "type": "string"
+          },
+          "label_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Only episodes with any of these labels (see `/api/data/labels`)."
           }
         }
       },
@@ -21663,6 +22538,10 @@
     {
       "name": "playlists",
       "description": "Smart and manual playlists"
+    },
+    {
+      "name": "inbox",
+      "description": "The inbox of new episodes not dealt with yet, and episode labels"
     },
     {
       "name": "settings",

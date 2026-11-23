@@ -293,6 +293,10 @@ pub async fn cleanup_tasks_internal(state: &AppState) -> AppResult<()> {
         tracing::warn!("Removing unused podcast rows failed: {}", e);
     }
 
+    if let Err(e) = state.db_pool.prune_inbox_and_labels().await {
+        tracing::warn!("Pruning old inbox dismissals and labels failed: {}", e);
+    }
+
     if let Err(e) = state.db_pool.delete_orphan_feeds().await {
         tracing::warn!("Deleting feeds without subscribers failed: {}", e);
     }

@@ -958,6 +958,7 @@ pub fn episode_layout() -> Html {
     let auto_play_next_status = use_state(|| false);
     let auto_queue_status = use_state(|| false);
     let auto_refresh_status = use_state(|| true);
+    let inbox_status = use_state(|| true);
     let refreshing_podcast = use_state(|| false);
     let podcast_id = use_state(|| 0);
     // Bumped after the podcast's details are read from its feed again, to reload its episodes.
@@ -1967,6 +1968,49 @@ pub fn episode_layout() -> Html {
                     Ok(()) => auto_refresh_status.set(enabled),
                     Err(e) => Dispatch::<NotificationState>::global()
                         .reduce_mut(|state| state.error_message = Some(format!("{i18n_failed}: {e}"))),
+                }
+            });
+        })
+    };
+
+    // Whether this podcast's new episodes show in the inbox.
+    {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let inbox_status = inbox_status.clone();
+        use_effect_with((*podcast_id, *is_added), move |(pid, added)| {
+            if let (true, true, Some(Some(api_key)), Some(server_name)) = (*pid > 0, *added, api_key.clone(), server_name.clone()) {
+                let pid = *pid;
+                spawn_local(async move {
+                    if let Ok(enabled) = crate::requests::inbox_req::call_get_podcast_inbox(&server_name, &api_key, pid).await {
+                        inbox_status.set(enabled);
+                    }
+                });
+            }
+            || ()
+        });
+    }
+
+    let toggle_inbox = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let inbox_status = inbox_status.clone();
+        let podcast_id = podcast_id.clone();
+        Callback::from(move |_| {
+            let (Some(Some(api_key)), Some(server_name)) = (api_key.clone(), server_name.clone()) else {
+                return;
+            };
+            let inbox_status = inbox_status.clone();
+            let enabled = !*inbox_status;
+            let pid = *podcast_id;
+            spawn_local(async move {
+                match crate::requests::inbox_req::call_set_podcast_inbox(&server_name, &api_key, pid, enabled).await {
+                    Ok(()) => {
+                        inbox_status.set(enabled);
+                        crate::components::labels::refresh_inbox_count();
+                    }
+                    Err(e) => Dispatch::<NotificationState>::global()
+                        .reduce_mut(|state| state.error_message = Some(e.to_string())),
                 }
             });
         })
@@ -3123,6 +3167,14 @@ pub fn episode_layout() -> Html {
                                 <p class="mb-2 text-xs item_container-text opacity-75">{ &i18n.t("episodes_layout.auto_refresh_description") }</p>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input id="auto_refresh" type="checkbox" checked={*auto_refresh_status} class="sr-only peer" onclick={toggle_auto_refresh} />
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div>
+                                <label for="show_in_inbox" class="block mb-1 text-sm font-medium">{ &i18n.t("episodes_layout.show_in_inbox") }</label>
+                                <p class="mb-2 text-xs item_container-text opacity-75">{ &i18n.t("episodes_layout.show_in_inbox_description") }</p>
+                                <label class="inline-flex relative items-center cursor-pointer">
+                                    <input id="show_in_inbox" type="checkbox" checked={*inbox_status} class="sr-only peer" onclick={toggle_inbox} />
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                 </label>
                             </div>
