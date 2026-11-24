@@ -5801,11 +5801,22 @@ pub struct PlaylistEpisodesResponse {
     pub playlist_info: PlaylistInfo,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct PlaylistFeedPage {
     pub episodes: Vec<Episode>,
     pub playlist_info: PlaylistInfo,
     pub total: i64,
+    /// Totals for the whole playlist; the server sends them with the first page.
+    #[serde(default)]
+    pub stats: Option<PlaylistStats>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+pub struct PlaylistStats {
+    pub total_seconds: i64,
+    pub remaining_seconds: i64,
+    pub podcast_count: i64,
+    pub in_progress: i64,
 }
 
 pub async fn call_get_playlist_episodes_paged(
@@ -5833,7 +5844,7 @@ pub async fn call_get_playlist_episodes_paged(
         .map_err(|e| anyhow::anyhow!("Failed to deserialize playlist page: {}", e))
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct PlaylistInfo {
     pub name: String,
     pub description: Option<String>,

@@ -203,14 +203,85 @@ async fn the_search_page_renders() {
 
 #[wasm_bindgen_test]
 async fn the_playlists_page_offers_creating_one() {
-    assert_shows(&shown_when_signed_in(Page::Playlists, json!({})).await, "Create Playlist");
+    assert_shows(&shown_when_signed_in(Page::Playlists, json!({})).await, "New playlist");
+}
+
+#[wasm_bindgen_test]
+async fn playlist_cards_spell_out_rules_totals_and_whats_next() {
+    let playlist = json!({
+        "playlist_id": 7, "user_id": 2, "name": "Quick Listens", "description": "Short ones",
+        "is_system_playlist": true, "podcast_ids": null, "include_unplayed": true,
+        "include_partially_played": true, "include_played": false, "min_duration": null,
+        "max_duration": 900, "sort_order": "date_desc", "group_by_podcast": false,
+        "max_episodes": null, "last_updated": "", "created": "", "episode_count": 5,
+        "preview_episodes": [], "icon_name": "ph-lightning", "label_ids": []
+    });
+    let episode = json!({
+        "podcastid": 1, "podcastname": "Hard Fork", "episodetitle": "Inbox agents",
+        "episodeduration": 780, "listenduration": 0, "episodeid": 11
+    });
+    answer_api_with(json!({
+        "/api/data/get_playlists": { "playlists": [playlist] },
+        "/api/data/get_playlist_episodes": {
+            "episodes": [episode],
+            "playlist_info": { "name": "Quick Listens", "max_duration": 15, "time_filter_hours": 48 },
+            "total": 5,
+            "stats": { "total_seconds": 9000, "remaining_seconds": 8640, "podcast_count": 3, "in_progress": 1 }
+        }
+    }));
+    sign_in();
+    let (root, app) = render(Page::Playlists).await;
+    TimeoutFuture::new(200).await;
+    let shown = text(&root);
+    close(root, app);
+    sign_out();
+    for expected in [
+        "Quick Listens", "5 episodes", "2h 24m left", "3 podcasts", "1 started",
+        "Unplayed + In progress", "Under 15 min", "Last 2 days", "Newest First",
+        "Up next", "Inbox agents", "Hard Fork", "+4 more",
+    ] {
+        assert_shows(&shown, expected);
+    }
 }
 
 #[wasm_bindgen_test]
 async fn the_discover_page_has_its_sections() {
     let shown = shown_when_signed_in(Page::Discover, json!({})).await;
+    assert_shows(&shown, "Discover");
     assert_shows(&shown, "For You");
-    assert_shows(&shown, "Trending Now");
+    assert_shows(&shown, "Browse by category");
+}
+
+#[wasm_bindgen_test]
+async fn discover_spotlights_trending_shows_and_their_fresh_episodes() {
+    let feed = |id: i64, title: &str| json!({
+        "id": id, "title": title, "url": format!("https://feeds.example/{id}.xml"),
+        "description": "<p>Deep <b>reporting</b>, every week.</p>", "author": "Studio",
+        "image": "", "artwork": "", "categories": { "1": "News" }
+    });
+    let mut feeds = vec![feed(1, "Morning Brief"), feed(2, "Tech Weekly")];
+    feeds.extend((3..=8).map(|i| feed(i, &format!("Show {i}"))));
+    answer_api_with(json!({
+        "/api/data/proxy_trending": { "feeds": feeds },
+        "/api/data/proxy_episodes": { "items": [{
+            "id": 9, "title": "Inside the newsroom", "datePublished": 1_700_000_000,
+            "enclosureUrl": "https://audio.example/9.mp3", "duration": 1500, "feedId": 2
+        }] },
+        "/api/data/recommendations": []
+    }));
+    sign_in();
+    let (root, app) = render(Page::Discover).await;
+    TimeoutFuture::new(200).await;
+    let shown = text(&root);
+    close(root, app);
+    sign_out();
+    for expected in [
+        "Morning Brief", "Deep reporting, every week.", "Play latest", "Follow",
+        "Fresh episodes", "Inside the newsroom", "Tech Weekly", "25m",
+        "Top charts", "Show 6",
+    ] {
+        assert_shows(&shown, expected);
+    }
 }
 
 #[wasm_bindgen_test]
@@ -362,6 +433,26 @@ async fn a_rejected_login_stays_on_the_page_and_says_so() {
     );
     assert!(Dispatch::<AppState>::global().get().auth_details.is_none(), "still signed out");
     assert!(root.query_selector("input[type=password]").unwrap().is_some(), "still on the login page");
+    close(root, app);
+}
+
+#[wasm_bindgen_test]
+async fn forgot_password_opens_in_the_card_and_back_returns_to_sign_in() {
+    answer_api_with(json!({}));
+    sign_out();
+    let (root, app) = render(Page::Login).await;
+    let forgot: web_sys::HtmlElement =
+        root.query_selector(".lp-row .lp-link").unwrap().unwrap().dyn_into().unwrap();
+    forgot.click();
+    TimeoutFuture::new(50).await;
+    assert!(root.query_selector("input[type=email]").unwrap().is_some(), "an email field");
+    assert!(root.query_selector("input[type=password]").unwrap().is_none(), "the sign-in form is replaced");
+
+    let back: web_sys::HtmlElement =
+        root.query_selector(".lp-back").unwrap().unwrap().dyn_into().unwrap();
+    back.click();
+    TimeoutFuture::new(50).await;
+    assert!(root.query_selector("input[type=password]").unwrap().is_some(), "back on sign-in");
     close(root, app);
 }
 

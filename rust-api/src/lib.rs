@@ -294,6 +294,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::podcasts::proxy_search))
         .routes(routes!(handlers::podcasts::proxy_trending))
         .routes(routes!(handlers::podcasts::proxy_categories))
+        .routes(routes!(handlers::podcasts::proxy_episodes))
         .routes(routes!(handlers::podcasts::get_recommendations))
         .routes(routes!(handlers::podcasts::fetch_transcript))
         .routes(routes!(handlers::podcasts::home_overview))

@@ -495,6 +495,22 @@ pub struct PlaylistEpisodesResponse {
     pub episodes: Vec<SavedEpisode>,
     pub playlist_info: PlaylistInfo,
     pub total: i64,
+    /// Totals over every episode in the playlist; only sent with the first page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stats: Option<PlaylistStats>,
+}
+
+/// Totals for a smart playlist, honouring its episode cap.
+#[derive(Debug, Default, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct PlaylistStats {
+    /// Combined length of the episodes, in seconds.
+    pub total_seconds: i64,
+    /// What is left to hear once listening progress is taken off, in seconds.
+    pub remaining_seconds: i64,
+    /// How many podcasts the episodes come from.
+    pub podcast_count: i64,
+    /// Episodes that have been started but not finished.
+    pub in_progress: i64,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]

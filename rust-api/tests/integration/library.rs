@@ -373,3 +373,57 @@ async fn smart_playlist_rules_select_episodes_live() {
     let left = playlist_list(&playlists(&app, &l.user).await);
     assert!(left.iter().all(|x| x["playlist_id"] != p));
 }
+
+async fn playlist_page(app: &TestApp, u: &TestUser, playlist: i32, offset: i64) -> Value {
+    app.get("/api/data/get_playlist_episodes")
+        .key(u)
+        .query("user_id", u.id)
+        .query("playlist_id", playlist)
+        .query("limit", 100)
+        .query("offset", offset)
+        .send()
+        .await
+        .ok_json()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn playlist_pages_carry_totals_for_the_whole_playlist() {
+    let app = TestApp::new().await;
+    let l = setup(&app).await;
+    let other_url = app.feed("other.xml", &Feed::with_episodes("Other Show", 2));
+    app.subscribe(&l.user, &other_url, 2).await;
+
+    // Episode n of a fixture feed runs 1800 + n seconds.
+    let mine = create_playlist(&app, &l.user, json!({ "name": "Library only", "podcast_ids": [l.pod] })).await;
+    let stats = playlist_page(&app, &l.user, mine, 0).await["stats"].clone();
+    assert_eq!(stats["total_seconds"], 1801 + 1802 + 1803 + 1804, "{stats}");
+    assert_eq!(stats["remaining_seconds"], stats["total_seconds"]);
+    assert_eq!(stats["podcast_count"], 1);
+    assert_eq!(stats["in_progress"], 0);
+
+    app.post("/api/data/record_listen_duration")
+        .key(&l.user)
+        .json(&json!({ "episode_id": l.ep[1], "user_id": l.user.id, "listen_duration": 600.0 }))
+        .send()
+        .await
+        .assert_ok();
+    let stats = playlist_page(&app, &l.user, mine, 0).await["stats"].clone();
+    assert_eq!(stats["remaining_seconds"], 1801 + 1802 + 1803 + 1804 - 600, "progress comes off: {stats}");
+    assert_eq!(stats["in_progress"], 1);
+
+    // Everything, capped at two episodes: the totals cover only what the playlist holds.
+    let capped = create_playlist(&app, &l.user, json!({ "name": "Two", "max_episodes": 2 })).await;
+    let page = playlist_page(&app, &l.user, capped, 0).await;
+    let listed: i64 = page["episodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["episodeduration"].as_i64().unwrap())
+        .sum();
+    assert_eq!(page["episodes"].as_array().unwrap().len(), 2);
+    assert_eq!(page["stats"]["total_seconds"], listed, "{page}");
+
+    let all = create_playlist(&app, &l.user, json!({ "name": "All" })).await;
+    assert_eq!(playlist_page(&app, &l.user, all, 0).await["stats"]["podcast_count"], 2);
+    assert!(playlist_page(&app, &l.user, all, 2).await.get("stats").is_none(), "later pages skip the totals");
+}

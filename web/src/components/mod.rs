@@ -13,6 +13,7 @@ pub(crate) mod player_ui;
 pub(crate) mod media_session;
 pub(crate) mod progress;
 pub(crate) mod loading;
+pub mod login_shell;
 pub mod misc_func;
 pub(crate) mod navigation;
 pub(crate) mod notification_center;
@@ -35,6 +36,7 @@ pub(crate) mod gen_components;
 pub(crate) mod i18n;
 pub mod gen_funcs;
 pub mod home_cards;
+pub mod playlist_overview;
 // #[cfg(feature = "server_build")]
 // pub(crate) mod login;
 pub mod setting_components;

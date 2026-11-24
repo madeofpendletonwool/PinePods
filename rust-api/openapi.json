@@ -8686,6 +8686,75 @@
         ]
       }
     },
+    "/api/data/proxy_episodes": {
+      "get": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Proxy recent episodes of several podcasts",
+        "operationId": "proxy_episodes",
+        "parameters": [
+          {
+            "name": "feeds",
+            "in": "query",
+            "description": "Comma-separated PodcastIndex feed ids (at most 200).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "No feed ids"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "503": {
+            "description": "The search service isn't reachable or answered with an error"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/proxy_search": {
       "get": {
         "tags": [
