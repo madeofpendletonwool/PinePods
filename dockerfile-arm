@@ -38,8 +38,10 @@ FROM alpine AS python-builder
 WORKDIR /build
 ENV UV_PYTHON_INSTALL_DIR=/python UV_PYTHON_PREFERENCE=only-managed
 
-# Install build dependencies for PyInstaller and MariaDB connector
-RUN apk add --no-cache gcc musl-dev libffi-dev openssl-dev mariadb-connector-c-dev
+# Install build dependencies for PyInstaller and MariaDB connector. uv's arm64 musl Python was
+# built with clang and its compiler flags (--rtlib=compiler-rt) break gcc, so build with clang.
+RUN apk add --no-cache gcc clang compiler-rt musl-dev libffi-dev openssl-dev mariadb-connector-c-dev
+ENV CC=clang
 
 # Install Python
 COPY ./.python-version ./
