@@ -247,8 +247,41 @@ async fn playlist_cards_spell_out_rules_totals_and_whats_next() {
 #[wasm_bindgen_test]
 async fn the_discover_page_has_its_sections() {
     let shown = shown_when_signed_in(Page::Discover, json!({})).await;
+    assert_shows(&shown, "Discover");
     assert_shows(&shown, "For You");
-    assert_shows(&shown, "Trending Now");
+    assert_shows(&shown, "Browse by category");
+}
+
+#[wasm_bindgen_test]
+async fn discover_spotlights_trending_shows_and_their_fresh_episodes() {
+    let feed = |id: i64, title: &str| json!({
+        "id": id, "title": title, "url": format!("https://feeds.example/{id}.xml"),
+        "description": "<p>Deep <b>reporting</b>, every week.</p>", "author": "Studio",
+        "image": "", "artwork": "", "categories": { "1": "News" }
+    });
+    let mut feeds = vec![feed(1, "Morning Brief"), feed(2, "Tech Weekly")];
+    feeds.extend((3..=8).map(|i| feed(i, &format!("Show {i}"))));
+    answer_api_with(json!({
+        "/api/data/proxy_trending": { "feeds": feeds },
+        "/api/data/proxy_episodes": { "items": [{
+            "id": 9, "title": "Inside the newsroom", "datePublished": 1_700_000_000,
+            "enclosureUrl": "https://audio.example/9.mp3", "duration": 1500, "feedId": 2
+        }] },
+        "/api/data/recommendations": []
+    }));
+    sign_in();
+    let (root, app) = render(Page::Discover).await;
+    TimeoutFuture::new(200).await;
+    let shown = text(&root);
+    close(root, app);
+    sign_out();
+    for expected in [
+        "Morning Brief", "Deep reporting, every week.", "Play latest", "Follow",
+        "Fresh episodes", "Inside the newsroom", "Tech Weekly", "25m",
+        "Top charts", "Show 6",
+    ] {
+        assert_shows(&shown, expected);
+    }
 }
 
 #[wasm_bindgen_test]

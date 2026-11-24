@@ -5,7 +5,7 @@
 use crate::requests::search_pods::UnifiedPodcast;
 use anyhow::Error;
 use gloo_net::http::Request;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // PodcastIndex /podcasts/trending returns a *reduced* feed object (no originalUrl/link/
@@ -165,13 +165,15 @@ pub async fn call_get_trending(
     server_name: &str,
     api_key: &str,
     category: Option<&str>,
+    language: Option<&str>,
     max: i32,
 ) -> Result<Vec<UnifiedPodcast>, Error> {
     let mut url = format!("{}/api/data/proxy_trending?max={}", server_name, max);
-    if let Some(cat) = category {
-        if !cat.is_empty() {
-            url.push_str(&format!("&cat={}", urlencoding::encode(cat)));
-        }
+    if let Some(cat) = category.filter(|c| !c.is_empty()) {
+        url.push_str(&format!("&cat={}", urlencoding::encode(cat)));
+    }
+    if let Some(lang) = language.filter(|l| !l.is_empty()) {
+        url.push_str(&format!("&lang={}", urlencoding::encode(lang)));
     }
     let response = Request::get(&url).header("Api-Key", api_key).send().await?;
     if !response.ok() {
@@ -199,4 +201,83 @@ pub async fn call_get_categories(
     }
     let result: CategoriesResponse = response.json().await?;
     Ok(result.feeds)
+}
+
+// One episode from PodcastIndex /episodes/byfeedid (proxied via /api/data/proxy_episodes).
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug, Default)]
+#[allow(non_snake_case)]
+pub struct DiscoverEpisodeItem {
+    #[serde(default)]
+    pub id: i64,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub datePublished: i64,
+    #[serde(default)]
+    pub enclosureUrl: String,
+    #[serde(default)]
+    pub duration: Option<i32>,
+    #[serde(default)]
+    pub image: String,
+    #[serde(default)]
+    pub feedImage: String,
+    #[serde(default)]
+    pub feedId: i64,
+}
+
+#[derive(Deserialize, Default)]
+struct EpisodesResponse {
+    #[serde(default)]
+    items: Vec<DiscoverEpisodeItem>,
+}
+
+impl DiscoverEpisodeItem {
+    /// A playable feed episode (no server id yet: playing it resolves one), joined with the
+    /// podcast it came from.
+    pub fn to_episode(&self, podcast: &UnifiedPodcast) -> crate::requests::episode::Episode {
+        let art = [&self.image, &self.feedImage, &podcast.artwork, &podcast.image]
+            .into_iter()
+            .find(|a| !a.is_empty())
+            .cloned()
+            .unwrap_or_default();
+        let published = chrono::DateTime::from_timestamp(self.datePublished, 0)
+            .map(|d| d.format("%Y-%m-%dT%H:%M:%S").to_string())
+            .unwrap_or_default();
+        crate::requests::episode::Episode {
+            podcastname: podcast.title.clone(),
+            episodetitle: self.title.clone(),
+            artworkurl: if podcast.artwork.is_empty() { podcast.image.clone() } else { podcast.artwork.clone() },
+            author: podcast.author.clone(),
+            episodedescription: self.description.clone(),
+            feedurl: podcast.url.clone(),
+            episodeurl: self.enclosureUrl.clone(),
+            episodeartwork: art,
+            episodepubdate: published,
+            episodeduration: self.duration.unwrap_or(0),
+            ..Default::default()
+        }
+    }
+}
+
+// The newest episodes across several podcasts, newest first. Older servers and search
+// services don't have this; callers treat an error as "no episodes".
+pub async fn call_get_feed_episodes(
+    server_name: &str,
+    api_key: &str,
+    feed_ids: &[i32],
+    max: i32,
+) -> Result<Vec<DiscoverEpisodeItem>, Error> {
+    let feeds = feed_ids.iter().filter(|id| **id > 0).map(|id| id.to_string()).collect::<Vec<_>>().join(",");
+    if feeds.is_empty() {
+        return Ok(Vec::new());
+    }
+    let url = format!("{}/api/data/proxy_episodes?feeds={}&max={}", server_name, feeds, max);
+    let response = Request::get(&url).header("Api-Key", api_key).send().await?;
+    if !response.ok() {
+        return Err(Error::msg(format!("Failed to fetch episodes: {}", response.status_text())));
+    }
+    let result: EpisodesResponse = response.json().await?;
+    Ok(result.items)
 }

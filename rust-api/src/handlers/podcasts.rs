@@ -4371,6 +4371,78 @@ pub async fn proxy_trending(
     Ok(Json(body))
 }
 
+#[derive(Deserialize, Debug, utoipa::IntoParams)]
+pub struct ProxyEpisodesParams {
+    /// Comma-separated PodcastIndex feed ids (at most 200).
+    pub feeds: String,
+    #[serde(default)]
+    pub max: Option<u32>,
+    #[serde(default)]
+    pub since: Option<i64>,
+}
+
+// Proxy PodcastIndex /episodes/byfeedid for several feeds: their newest episodes, newest
+// first. Powers the Discover page's playable episode rows.
+#[utoipa::path(
+    get,
+    path = "/proxy_episodes",
+    tag = "podcasts",
+    summary = "Proxy recent episodes of several podcasts",
+    params(ProxyEpisodesParams),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 400, description = "No feed ids"),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 503, description = "The search service isn't reachable or answered with an error"),
+    ),
+)]
+pub async fn proxy_episodes(
+    Query(params): Query<ProxyEpisodesParams>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    let feeds: Vec<&str> = params
+        .feeds
+        .split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()))
+        .take(200)
+        .collect();
+    if feeds.is_empty() {
+        return Err(AppError::bad_request("List one or more feed ids"));
+    }
+
+    let url = search_service_url("/api/episodes");
+    let mut query_params: Vec<(&str, String)> = vec![("feeds", feeds.join(","))];
+    if let Some(v) = params.max {
+        query_params.push(("max", v.min(200).to_string()));
+    }
+    if let Some(v) = params.since {
+        query_params.push(("since", v.to_string()));
+    }
+
+    let response = reqwest::Client::new()
+        .get(&url)
+        .query(&query_params)
+        .send()
+        .await
+        .map_err(|e| search_unreachable(&url, e))?;
+    if !response.status().is_success() {
+        return Err(search_failed(&url, response.status()));
+    }
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to parse episodes response: {}", e)))?;
+    Ok(Json(body))
+}
+
 // Proxy PodcastIndex /categories/list. Powers the Discover page's "Browse by category" chips.
 #[utoipa::path(
     get,

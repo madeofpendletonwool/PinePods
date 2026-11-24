@@ -37,6 +37,14 @@ struct TrendingQuery {
 }
 
 #[derive(Deserialize)]
+struct EpisodesQuery {
+    /// Comma-separated PodcastIndex feed ids (at most 200).
+    feeds: String,
+    max: Option<u32>,
+    since: Option<i64>,
+}
+
+#[derive(Deserialize)]
 struct YouTubeChannelQuery {
     id: String,
 }
@@ -417,6 +425,51 @@ async fn trending_handler(
     handle_response(response).await
 }
 
+// Proxy PodcastIndex /episodes/byfeedid for several feeds at once: the newest episodes
+// across them, newest first. Powers the Discover page's playable episode rows.
+async fn episodes_handler(
+    query: web::Query<EpisodesQuery>,
+    hit_counters: web::Data<HitCounters>,
+) -> impl Responder {
+    hit_counters.increment_podcast_index();
+
+    let feeds: Vec<&str> = query
+        .feeds
+        .split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()))
+        .take(200)
+        .collect();
+    if feeds.is_empty() {
+        return HttpResponse::BadRequest().body("feeds must list one or more feed ids");
+    }
+
+    let (api_key, api_secret) = match get_api_credentials() {
+        Ok(creds) => creds,
+        Err(response) => return response,
+    };
+    let headers = match create_auth_headers(&api_key, &api_secret) {
+        Ok(h) => h,
+        Err(response) => return response,
+    };
+
+    let mut params: Vec<(&str, String)> = vec![
+        ("id", feeds.join(",")),
+        ("max", query.max.unwrap_or(40).min(200).to_string()),
+    ];
+    if let Some(since) = query.since {
+        params.push(("since", since.to_string()));
+    }
+
+    let response = reqwest::Client::new()
+        .get("https://api.podcastindex.org/api/1.0/episodes/byfeedid")
+        .query(&params)
+        .headers(headers)
+        .send()
+        .await;
+    handle_response(response).await
+}
+
 // Proxy PodcastIndex /categories/list (the canonical category taxonomy). Changes rarely;
 // callers cache it. Powers the Discover page's "Browse by category" chips.
 async fn categories_handler(hit_counters: web::Data<HitCounters>) -> impl Responder {
@@ -677,6 +730,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/podcast", web::get().to(podcast_handler))
             .route("/api/trending", web::get().to(trending_handler))
             .route("/api/categories", web::get().to(categories_handler))
+            .route("/api/episodes", web::get().to(episodes_handler))
             .route("/api/youtube/channel", web::get().to(youtube_channel_handler))
             .route("/api/stats", web::get().to(stats_handler))
             .route("/api/podping/updates", web::get().to(podping::updates_handler))
