@@ -203,7 +203,45 @@ async fn the_search_page_renders() {
 
 #[wasm_bindgen_test]
 async fn the_playlists_page_offers_creating_one() {
-    assert_shows(&shown_when_signed_in(Page::Playlists, json!({})).await, "Create Playlist");
+    assert_shows(&shown_when_signed_in(Page::Playlists, json!({})).await, "New playlist");
+}
+
+#[wasm_bindgen_test]
+async fn playlist_cards_spell_out_rules_totals_and_whats_next() {
+    let playlist = json!({
+        "playlist_id": 7, "user_id": 2, "name": "Quick Listens", "description": "Short ones",
+        "is_system_playlist": true, "podcast_ids": null, "include_unplayed": true,
+        "include_partially_played": true, "include_played": false, "min_duration": null,
+        "max_duration": 900, "sort_order": "date_desc", "group_by_podcast": false,
+        "max_episodes": null, "last_updated": "", "created": "", "episode_count": 5,
+        "preview_episodes": [], "icon_name": "ph-lightning", "label_ids": []
+    });
+    let episode = json!({
+        "podcastid": 1, "podcastname": "Hard Fork", "episodetitle": "Inbox agents",
+        "episodeduration": 780, "listenduration": 0, "episodeid": 11
+    });
+    answer_api_with(json!({
+        "/api/data/get_playlists": { "playlists": [playlist] },
+        "/api/data/get_playlist_episodes": {
+            "episodes": [episode],
+            "playlist_info": { "name": "Quick Listens", "max_duration": 15, "time_filter_hours": 48 },
+            "total": 5,
+            "stats": { "total_seconds": 9000, "remaining_seconds": 8640, "podcast_count": 3, "in_progress": 1 }
+        }
+    }));
+    sign_in();
+    let (root, app) = render(Page::Playlists).await;
+    TimeoutFuture::new(200).await;
+    let shown = text(&root);
+    close(root, app);
+    sign_out();
+    for expected in [
+        "Quick Listens", "5 episodes", "2h 24m left", "3 podcasts", "1 started",
+        "Unplayed + In progress", "Under 15 min", "Last 2 days", "Newest First",
+        "Up next", "Inbox agents", "Hard Fork", "+4 more",
+    ] {
+        assert_shows(&shown, expected);
+    }
 }
 
 #[wasm_bindgen_test]

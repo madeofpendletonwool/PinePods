@@ -36,6 +36,7 @@ pub(crate) mod gen_components;
 pub(crate) mod i18n;
 pub mod gen_funcs;
 pub mod home_cards;
+pub mod playlist_overview;
 // #[cfg(feature = "server_build")]
 // pub(crate) mod login;
 pub mod setting_components;

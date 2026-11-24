@@ -2920,6 +2920,34 @@ impl DatabasePool {
 
                 debug!("📝 Retrieved {} episodes from dynamic query (total: {})", episodes.len(), total_count);
 
+                let stats = if offset == 0 {
+                    let cap = match max_eps_opt {
+                        Some(max) if max > 0 => format!("{} LIMIT {}", order_clause, max),
+                        _ => String::new(),
+                    };
+                    let stats_query = format!(
+                        r#"SELECT COUNT(*) AS n,
+                                CAST(COALESCE(SUM(t.episodeduration), 0) AS BIGINT) AS total_seconds,
+                            CAST(COALESCE(SUM(GREATEST(t.episodeduration - t.listenduration, 0)), 0) AS BIGINT) AS remaining_seconds,
+                            COUNT(DISTINCT t.podcastid) AS podcast_count,
+                            CAST(COALESCE(SUM(CASE WHEN t.listenduration > 0 AND NOT t.completed THEN 1 ELSE 0 END), 0) AS BIGINT) AS in_progress
+                        FROM ({}{}{}) t"#,
+                        query_parts.join(" "), where_clause, cap
+                    );
+                    let row = q::query(sqlx::AssertSqlSafe(stats_query.as_str()))
+                        .bind(user_id)
+                        .fetch_one(pool)
+                        .await?;
+                    Some(crate::models::PlaylistStats {
+                        total_seconds: row.try_get("total_seconds")?,
+                        remaining_seconds: row.try_get("remaining_seconds")?,
+                        podcast_count: row.try_get("podcast_count")?,
+                        in_progress: row.try_get("in_progress")?,
+                    })
+                } else {
+                    None
+                };
+
                 // Create playlist info from the playlist row we already have
                 let min_dur_secs: Option<i32> = playlist.try_get("minduration")?;
                 let max_dur_secs: Option<i32> = playlist.try_get("maxduration")?;
@@ -2949,6 +2977,7 @@ impl DatabasePool {
                     episodes,
                     playlist_info,
                     total: total_count,
+                    stats,
                 })
             },
             mysql(pool) => {
@@ -3217,6 +3246,33 @@ impl DatabasePool {
 
                 debug!("📝 Retrieved {} episodes from MySQL dynamic query (total: {})", episodes.len(), total_count);
 
+                let stats = if offset == 0 {
+                    let cap = match max_eps_opt {
+                        Some(max) if max > 0 => format!("{} LIMIT {}", order_clause, max),
+                        _ => String::new(),
+                    };
+                    let stats_query = format!(
+                        "SELECT CAST(COALESCE(SUM(t.episodeduration), 0) AS SIGNED) AS total_seconds,
+                            CAST(COALESCE(SUM(GREATEST(t.episodeduration - t.listenduration, 0)), 0) AS SIGNED) AS remaining_seconds,
+                            COUNT(DISTINCT t.podcastid) AS podcast_count,
+                            CAST(COALESCE(SUM(CASE WHEN t.listenduration > 0 AND NOT t.completed THEN 1 ELSE 0 END), 0) AS SIGNED) AS in_progress
+                        FROM ({}{}{}) t",
+                        query_parts.join(" "), where_clause, cap
+                    );
+                    let row = sqlx::query(sqlx::AssertSqlSafe(stats_query.as_str()))
+                        .bind(user_id)
+                        .fetch_one(pool)
+                        .await?;
+                    Some(crate::models::PlaylistStats {
+                        total_seconds: row.try_get("total_seconds")?,
+                        remaining_seconds: row.try_get("remaining_seconds")?,
+                        podcast_count: row.try_get("podcast_count")?,
+                        in_progress: row.try_get("in_progress")?,
+                    })
+                } else {
+                    None
+                };
+
                 // Create playlist info from the MySQL playlist row we already have
                 let min_dur_secs: Option<i32> = playlist.try_get("MinDuration")?;
                 let max_dur_secs: Option<i32> = playlist.try_get("MaxDuration")?;
@@ -3260,6 +3316,7 @@ impl DatabasePool {
                     episodes,
                     playlist_info,
                     total: total_count,
+                    stats,
                 })
             },
         })
