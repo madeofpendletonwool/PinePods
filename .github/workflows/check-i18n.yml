@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up uv
-        uses: $/.github/actions/setup-uv
+        uses: ./.github/actions/setup-uv
         with:
           enable-cache: false
 
@@ -71,7 +71,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up uv
-        uses: $/.github/actions/setup-uv
+        uses: ./.github/actions/setup-uv
         with:
           enable-cache: false
 
@@ -111,7 +111,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up uv
-        uses: $/.github/actions/setup-uv
+        uses: ./.github/actions/setup-uv
         with:
           enable-cache: false
 

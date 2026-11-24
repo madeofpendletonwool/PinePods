@@ -94,7 +94,7 @@ jobs:
           workspaces: rust-api
 
       - name: Set up uv (schema migrations)
-        uses: $/.github/actions/setup-uv
+        uses: ./.github/actions/setup-uv
 
       - name: Install migration dependencies
         run: |
