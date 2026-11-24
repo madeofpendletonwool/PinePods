@@ -80,6 +80,16 @@ const PAGES: &[PageDef] = &[
         ],
     },
     PageDef {
+        id: "inbox",
+        icon: "ph-tray",
+        title: "settings.page_inbox",
+        group: Group::Personal,
+        sections: &[
+            sec("inbox", "ph-tray", "settings.inbox_settings", Some("inbox_settings.description"), "inbox new episodes triage days window dismiss"),
+            sec("labels", "ph-tag", "settings.episode_labels", Some("labels.description"), "labels tags triage later listen maybe filter smart playlist"),
+        ],
+    },
+    PageDef {
         id: "notifications",
         icon: "ph-bell-ringing",
         title: "settings.page_notifications",
@@ -235,6 +245,8 @@ fn section_body(id: &str, themes_trigger: &UseStateHandle<u32>) -> Html {
         "display" => html! { <start_page_options::StartPageOptions /> },
         "playback" => html! { <playback_settings::PlaybackSettings /> },
         "auto_delete" => html! { <auto_delete_settings::AutoDeleteSettings /> },
+        "inbox" => html! { <inbox_settings::InboxSettings /> },
+        "labels" => html! { <inbox_settings::LabelSettings /> },
         "notifications" => html! { <notifications::NotificationOptions /> },
         "custom_feed" => html! { <custom_feed::CustomFeed /> },
         "local_podcast" => html! { <local_podcast::LocalPodcast /> },

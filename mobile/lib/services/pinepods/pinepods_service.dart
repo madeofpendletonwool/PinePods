@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/entities/episode.dart';
+import 'package:pinepods_mobile/entities/episode_label.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_collection.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
@@ -651,6 +652,142 @@ class PinepodsService {
       throw Exception('HTTP ${response.statusCode}');
     }
   }
+
+  // ---- Inbox and episode labels (the server acts for the API key's user) ----
+
+  Exception _httpError(http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map && (body['message'] ?? body['detail']) != null) {
+        return Exception((body['message'] ?? body['detail']).toString());
+      }
+    } catch (_) {}
+    return Exception('HTTP ${response.statusCode}');
+  }
+
+  List<Map<String, dynamic>> _refs(List<(int, bool)> episodes) =>
+      [for (final (id, yt) in episodes) {'episode_id': id, 'is_youtube': yt}];
+
+  Future<EpisodePage> getInbox(InboxQuery query, {int limit = 50, int offset = 0}) async {
+    _requireAuth();
+    final params = <String, String>{'limit': '$limit', 'offset': '$offset'};
+    if (query.labelId != null) {
+      params['label_id'] = '${query.labelId}';
+    } else if (query.unlabeled) {
+      params['unlabeled'] = 'true';
+    }
+    if (query.podcastId != null) params['podcast_id'] = '${query.podcastId}';
+    if (query.oldestFirst) params['sort'] = 'oldest';
+    final url = Uri.parse('$_server/api/data/inbox').replace(queryParameters: params);
+    final response = await _get(url, headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final episodes = (data['episodes'] as List? ?? const [])
+        .map((e) => PinepodsEpisode.fromJson(e as Map<String, dynamic>))
+        .toList();
+    return EpisodePage(episodes: episodes, total: (data['total'] as num?)?.toInt() ?? episodes.length);
+  }
+
+  Future<int> getInboxCount() async {
+    _requireAuth();
+    final response = await _get(Uri.parse('$_server/api/data/inbox/count'), headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+    return ((jsonDecode(response.body) as Map<String, dynamic>)['count'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<int> _inboxChange(String path, Object body) async {
+    _requireAuth();
+    final response = await _post(Uri.parse('$_server/api/data/$path'), headers: _jsonHeaders, body: jsonEncode(body));
+    if (response.statusCode != 200) throw _httpError(response);
+    return ((jsonDecode(response.body) as Map<String, dynamic>)['changed'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Take episodes out of the inbox.
+  Future<int> dismissInbox(List<(int, bool)> episodes) => _inboxChange('inbox/dismiss', {'episodes': _refs(episodes)});
+
+  /// Undo a dismissal.
+  Future<int> restoreInbox(List<(int, bool)> episodes) => _inboxChange('inbox/restore', {'episodes': _refs(episodes)});
+
+  /// Dismiss everything the query shows.
+  Future<int> clearInbox(InboxQuery query) => _inboxChange('inbox/clear', {
+        'podcast_id': query.podcastId,
+        'label_id': query.labelId,
+        'unlabeled': query.labelId == null && query.unlabeled,
+      });
+
+  Future<int> getInboxDays() async {
+    _requireAuth();
+    final response = await _get(Uri.parse('$_server/api/data/inbox/settings'), headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+    return ((jsonDecode(response.body) as Map<String, dynamic>)['days'] as num?)?.toInt() ?? 30;
+  }
+
+  Future<int> setInboxDays(int days) async {
+    _requireAuth();
+    final response = await _put(Uri.parse('$_server/api/data/inbox/settings'),
+        headers: _jsonHeaders, body: jsonEncode({'days': days}));
+    if (response.statusCode != 200) throw _httpError(response);
+    return ((jsonDecode(response.body) as Map<String, dynamic>)['days'] as num?)?.toInt() ?? days;
+  }
+
+  Future<bool> getPodcastInbox(int podcastId) async {
+    _requireAuth();
+    final response = await _get(Uri.parse('$_server/api/data/podcast/$podcastId/inbox'), headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+    return (jsonDecode(response.body) as Map<String, dynamic>)['inbox'] as bool? ?? true;
+  }
+
+  Future<void> setPodcastInbox(int podcastId, bool inbox) async {
+    _requireAuth();
+    final response = await _put(Uri.parse('$_server/api/data/podcast/$podcastId/inbox'),
+        headers: _jsonHeaders, body: jsonEncode({'inbox': inbox}));
+    if (response.statusCode != 200) throw _httpError(response);
+  }
+
+  Future<List<EpisodeLabel>> getLabels() async {
+    _requireAuth();
+    final response = await _get(Uri.parse('$_server/api/data/labels'), headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+    return (jsonDecode(response.body) as List).map((e) => EpisodeLabel.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Label ids on each (episode id, is YouTube).
+  Future<Map<(int, bool), List<int>>> getLabelAssignments() async {
+    _requireAuth();
+    final response = await _get(Uri.parse('$_server/api/data/labels/assignments'), headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+    final out = <(int, bool), List<int>>{};
+    for (final a in jsonDecode(response.body) as List) {
+      final m = a as Map<String, dynamic>;
+      final key = ((m['episode_id'] as num).toInt(), m['is_youtube'] as bool? ?? false);
+      (out[key] ??= []).add((m['label_id'] as num).toInt());
+    }
+    return out;
+  }
+
+  Future<EpisodeLabel> createLabel(String name, String color) async {
+    _requireAuth();
+    final response = await _post(Uri.parse('$_server/api/data/labels'),
+        headers: _jsonHeaders, body: jsonEncode({'name': name, 'color': color}));
+    if (response.statusCode != 200) throw _httpError(response);
+    return EpisodeLabel.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> updateLabel(int labelId, String name, String color) async {
+    _requireAuth();
+    final response = await _put(Uri.parse('$_server/api/data/labels/$labelId'),
+        headers: _jsonHeaders, body: jsonEncode({'name': name, 'color': color}));
+    if (response.statusCode != 200) throw _httpError(response);
+  }
+
+  Future<void> deleteLabel(int labelId) async {
+    _requireAuth();
+    final response = await _delete(Uri.parse('$_server/api/data/labels/$labelId'), headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+  }
+
+  Future<int> setLabelOnEpisodes(int labelId, List<(int, bool)> episodes, bool assigned) =>
+      _inboxChange('labels/$labelId/episodes', {'episodes': _refs(episodes), 'assigned': assigned});
 
   // Get a podcast's favorite status.
   Future<bool> getPodcastFavoriteStatus(int podcastId, int userId) async {
@@ -3846,6 +3983,8 @@ class CreatePlaylistRequest {
   final double? playProgressMin;
   final double? playProgressMax;
   final int? timeFilterHours;
+  /// Only episodes with any of these labels.
+  final List<int>? labelIds;
 
   CreatePlaylistRequest({
     required this.userId,
@@ -3864,6 +4003,7 @@ class CreatePlaylistRequest {
     this.playProgressMin,
     this.playProgressMax,
     this.timeFilterHours,
+    this.labelIds,
   });
 
   Map<String, dynamic> toJson() {
@@ -3884,6 +4024,7 @@ class CreatePlaylistRequest {
       'play_progress_min': playProgressMin,
       'play_progress_max': playProgressMax,
       'time_filter_hours': timeFilterHours,
+      if (labelIds != null && labelIds!.isNotEmpty) 'label_ids': labelIds,
     };
   }
 }

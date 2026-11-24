@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:pinepods_mobile/ui/pinepods/labels.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/core/download_cleanup.dart';
@@ -114,6 +115,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   StreamSubscription<({int episodeId, bool isYoutube})>? _completedSub;
   // The scheduled refresh and Refresh all check this podcast.
   bool _isAutoRefreshEnabled = true;
+  bool _isInboxEnabled = true;
   bool _isRefreshingNow = false;
 
   // AI features (#726/#790) per-podcast settings. Only surfaced when the server
@@ -147,6 +149,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _loadAutoDownloadPreference();
     _loadAutoPlayNextPreference();
     _loadAutoRefreshPreference();
+    _loadInboxPreference();
     _loadAiPreferences();
     _checkFollowStatus();
     _checkFavoriteStatus();
@@ -288,6 +291,36 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       ));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(L.of(context)!.couldnt_change_auto_refresh(e.toString()))));
+    }
+  }
+
+  Future<void> _loadInboxPreference() async {
+    final podcastId = _podcast.id;
+    if (podcastId <= 0 || !_useServer()) return;
+    try {
+      final enabled = await _pinepodsService.getPodcastInbox(podcastId);
+      if (mounted) setState(() => _isInboxEnabled = enabled);
+    } catch (e) {
+      debugPrint('Error loading inbox preference: $e');
+    }
+  }
+
+  Future<void> _toggleInbox() async {
+    final podcastId = _podcast.id;
+    if (podcastId <= 0 || !_useServer()) return;
+    final newValue = !_isInboxEnabled;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _pinepodsService.setPodcastInbox(podcastId, newValue);
+      if (!mounted) return;
+      setState(() => _isInboxEnabled = newValue);
+      LabelStore.instance.refreshInboxCount(_pinepodsService);
+      messenger.showSnackBar(SnackBar(
+        content: Text(newValue ? L.of(context)!.inbox_podcast_on : L.of(context)!.inbox_podcast_off),
+        duration: const Duration(seconds: 2),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e'), backgroundColor: Colors.red));
     }
   }
 
@@ -2379,6 +2412,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           case 'auto_refresh':
             _toggleAutoRefresh();
             break;
+          case 'inbox':
+            _toggleInbox();
+            break;
           case 'refresh_details':
             _refreshDetails();
             break;
@@ -2432,6 +2468,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             value: 'auto_refresh',
             checked: _isAutoRefreshEnabled,
             child: Text(L.of(context)!.refresh_automatically),
+          ),
+          CheckedPopupMenuItem<String>(
+            value: 'inbox',
+            checked: _isInboxEnabled,
+            child: Text(L.of(context)!.show_in_inbox),
           ),
           if (!_isYoutube && !_isLocal)
             PopupMenuItem<String>(

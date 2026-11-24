@@ -8,6 +8,8 @@ pub enum Route {
     Home,
     #[at("/feed")]
     Feed,
+    #[at("/inbox")]
+    Inbox,
     #[not_found]
     #[at("/404")]
     NotFound,

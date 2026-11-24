@@ -443,6 +443,49 @@ pub struct PodcastSelectorProps {
     pub available_podcasts: Vec<Podcast>,
 }
 
+#[derive(Properties, PartialEq)]
+pub struct LabelSelectorProps {
+    pub selected: Vec<i32>,
+    pub on_change: Callback<Vec<i32>>,
+}
+
+/// Limit a smart playlist to episodes with any of the chosen labels.
+#[function_component(LabelSelector)]
+pub fn label_selector(props: &LabelSelectorProps) -> Html {
+    let (i18n, _) = use_translation();
+    let labels = yewdux::use_selector(|s: &crate::components::labels::LabelState| s.labels.clone());
+    let signed_in = crate::components::labels::use_signed_in();
+    use_effect_with(signed_in, |_| {
+        crate::components::labels::ensure_loaded();
+        || ()
+    });
+    if labels.is_empty() {
+        return html! { <p class="text-xs item_container-text opacity-75">{ i18n.t("labels.playlist_none") }</p> };
+    }
+    html! {
+        <div class="inbox-filters">
+            { for labels.iter().map(|l| {
+                let id = l.label_id;
+                let on = props.selected.contains(&id);
+                let selected = props.selected.clone();
+                let on_change = props.on_change.clone();
+                let onclick = Callback::from(move |e: MouseEvent| {
+                    e.prevent_default();
+                    let mut next = selected.clone();
+                    if on { next.retain(|x| *x != id) } else { next.push(id) }
+                    on_change.emit(next);
+                });
+                html! {
+                    <button type="button" class={classes!("inbox-chip", on.then_some("is-active"))} {onclick}>
+                        <span class={classes!("ep-label-dot", crate::components::labels::color_class(&l.color))}></span>
+                        { l.name.clone() }
+                    </button>
+                }
+            }) }
+        </div>
+    }
+}
+
 #[function_component(PodcastSelector)]
 pub fn podcast_selector(props: &PodcastSelectorProps) -> Html {
     let (i18n, _) = use_translation();
@@ -660,6 +703,7 @@ pub fn playlists() -> Html {
     }
 
     let selected_podcasts = use_state(|| Vec::new());
+    let selected_labels = use_state(|| Vec::<i32>::new());
     let available_podcasts = use_state(|| Vec::<Podcast>::new());
     let loading_podcasts = use_state(|| false);
 
@@ -978,6 +1022,7 @@ pub fn playlists() -> Html {
         let play_progress_max = play_progress_max.clone();
         let time_filter_hours = time_filter_hours.clone();
         let selected_pods_create = selected_podcasts.clone();
+        let selected_labels_create = selected_labels.clone();
         let create_success_msg = create_success_msg.clone();
         let create_failed_msg = create_failed_msg.clone();
 
@@ -1019,6 +1064,7 @@ pub fn playlists() -> Html {
                     play_progress_min: play_progress_min_call.parse().ok(),
                     play_progress_max: play_progress_max_call.parse().ok(),
                     time_filter_hours: time_filter_call.parse().ok(),
+                    label_ids: (!selected_labels_create.is_empty()).then(|| (*selected_labels_create).clone()),
                 };
 
                 let _dispatch = dispatch.clone();
@@ -1119,6 +1165,14 @@ pub fn playlists() -> Html {
                                     on_select={let icon_name = icon_name.clone(); Callback::from(move |new_icon| {
                                         icon_name.set(new_icon);
                                     })}
+                                />
+                            </div>
+
+                            <div>
+                                <label class="block mb-2 text-sm font-medium">{&i18n.t("labels.playlist_filter")}</label>
+                                <LabelSelector
+                                    selected={(*selected_labels).clone()}
+                                    on_change={let selected_labels = selected_labels.clone(); Callback::from(move |v| selected_labels.set(v))}
                                 />
                             </div>
 

@@ -3,6 +3,8 @@ pub(crate) mod audio_player_bar;
 pub(crate) mod app_drawer;
 pub(crate) mod context_menu_button;
 pub(crate) mod collection_picker_modal;
+pub(crate) mod inbox_actions;
+pub(crate) mod labels;
 pub(crate) mod episode_list_item;
 pub(crate) mod episode_list_view;
 pub(crate) mod transcript_hits;

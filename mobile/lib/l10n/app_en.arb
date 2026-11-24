@@ -2594,5 +2594,88 @@
   "cancel_queued_task": "Cancel",
   "transcription_cancelled": "Transcription cancelled",
   "see_all": "See all",
-  "could_not_cancel_task": "Couldn't cancel. It may have already started."
+  "could_not_cancel_task": "Couldn't cancel. It may have already started.",
+  "inbox": "Inbox",
+  "inbox_empty_title": "Your inbox is clear",
+  "inbox_empty_body": "New episodes from your podcasts show up here until you play, queue, save, mark played or dismiss them.",
+  "inbox_unavailable": "Inbox unavailable",
+  "inbox_failed_to_load": "Couldn't load the inbox",
+  "inbox_unlabeled": "Unlabeled",
+  "inbox_oldest_first": "Oldest first",
+  "inbox_newest_first": "Newest first",
+  "inbox_clear": "Clear inbox",
+  "inbox_clear_shown": "Clear shown",
+  "inbox_clear_confirm": "Remove {count, plural, =1{the episode} other{all {count} episodes}} shown from the inbox? They stay in their podcasts and the feed.",
+  "@inbox_clear_confirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "inbox_cleared": "{count, plural, =1{Removed 1 episode from the inbox} other{Removed {count} episodes from the inbox}}",
+  "@inbox_cleared": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "inbox_dismissed": "Removed from the inbox",
+  "inbox_queued": "Added to the queue",
+  "inbox_undo": "Undo",
+  "inbox_remove": "Remove from inbox",
+  "inbox_settings": "Inbox settings",
+  "inbox_label_shown": "Label shown",
+  "inbox_all_podcasts": "All podcasts",
+  "inbox_window": "How far back the inbox goes",
+  "inbox_window_description": "Episodes released earlier than this don't show in the inbox. They're still in their podcasts.",
+  "inbox_days": "{count, plural, =1{1 day} other{{count} days}}",
+  "@inbox_days": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "inbox_and_labels": "Inbox & labels",
+  "inbox_description": "The inbox holds new episodes you haven't played, queued, saved, marked played or dismissed. Swipe right to queue, left to remove.",
+  "show_in_inbox": "Show in inbox",
+  "inbox_podcast_on": "New episodes of this podcast go to your inbox",
+  "inbox_podcast_off": "This podcast stays out of your inbox",
+  "inbox_play_next": "Play next",
+  "labels": "Labels",
+  "labels_menu": "Labels…",
+  "label_episodes_title": "{count, plural, =1{Label 1 episode} other{Label {count} episodes}}",
+  "@label_episodes_title": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "labels_none_yet": "No labels yet. Make one below, like Listen, Maybe or Later.",
+  "new_label": "New label",
+  "label_add": "Add",
+  "label_rename": "Rename",
+  "label_delete": "Delete label",
+  "label_delete_confirm": "Delete the label \"{name}\"? It comes off every episode, and smart playlists stop filtering on it.",
+  "@label_delete_confirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "label_episode_count": "{count, plural, =1{1 episode} other{{count} episodes}}",
+  "@label_episode_count": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "labels_description": "Your own tags for sorting episodes. Filter the inbox by them, or build smart playlists from them.",
+  "playlist_label_filter": "Only episodes with these labels",
+  "playlist_label_none": "Make labels in Settings → Inbox & labels to filter by them here."
 }

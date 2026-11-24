@@ -261,7 +261,7 @@ impl DatabasePool {
     }
 
     /// Remove the rows of podcasts a user never subscribed to once nothing of theirs uses them:
-    /// no listen, played mark, save, queue entry, download or collection entry for any of its
+    /// no listen, played mark, save, queue entry, download, label or collection entry for any of its
     /// episodes, and no use in the last 30 days.
     pub async fn cleanup_unused_unsubscribed_podcasts(&self) -> AppResult<usize> {
         const UNUSED: &str = r#"SELECT p.podcastid, p.userid FROM "Podcasts" p
@@ -273,6 +273,7 @@ impl DatabasePool {
                  OR EXISTS (SELECT 1 FROM "SavedEpisodes" x WHERE x.episodeid = e.episodeid AND x.userid = p.userid)
                  OR EXISTS (SELECT 1 FROM "EpisodeQueue" x WHERE x.episodeid = e.episodeid AND x.userid = p.userid AND x.is_youtube = FALSE)
                  OR EXISTS (SELECT 1 FROM "DownloadedEpisodes" x WHERE x.episodeid = e.episodeid AND x.userid = p.userid)
+                 OR EXISTS (SELECT 1 FROM "EpisodeLabelAssignments" x WHERE x.episodeid = e.episodeid AND x.userid = p.userid AND x.isyoutube = FALSE)
                  OR EXISTS (SELECT 1 FROM "CollectionEpisodes" x JOIN "Collections" c ON c.collectionid = x.collectionid
                             WHERE x.episodeid = e.episodeid AND c.userid = p.userid)))"#;
         const UNUSED_MYSQL: &str = "SELECT p.PodcastID, p.UserID FROM Podcasts p
@@ -284,6 +285,7 @@ impl DatabasePool {
                  OR EXISTS (SELECT 1 FROM SavedEpisodes x WHERE x.EpisodeID = e.EpisodeID AND x.UserID = p.UserID)
                  OR EXISTS (SELECT 1 FROM EpisodeQueue x WHERE x.EpisodeID = e.EpisodeID AND x.UserID = p.UserID AND x.is_youtube = 0)
                  OR EXISTS (SELECT 1 FROM DownloadedEpisodes x WHERE x.EpisodeID = e.EpisodeID AND x.UserID = p.UserID)
+                 OR EXISTS (SELECT 1 FROM EpisodeLabelAssignments x WHERE x.EpisodeID = e.EpisodeID AND x.UserID = p.UserID AND x.IsYoutube = 0)
                  OR EXISTS (SELECT 1 FROM CollectionEpisodes x JOIN Collections c ON c.CollectionID = x.CollectionID
                             WHERE x.EpisodeID = e.EpisodeID AND c.UserID = p.UserID)))";
         let rows: Vec<(i32, i32)> = dialect_match!(self, {

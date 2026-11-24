@@ -53,6 +53,7 @@ mod shared_episodes;
 mod recommendations;
 mod local_podcasts;
 mod description_text;
+pub mod inbox;
 
 pub use mfa::*;
 pub use oidc::*;

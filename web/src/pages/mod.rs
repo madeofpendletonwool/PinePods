@@ -7,6 +7,7 @@ pub(crate) mod episode_layout;
 pub(crate) mod feed;
 pub(crate) mod history;
 pub(crate) mod home;
+pub(crate) mod inbox;
 pub(crate) mod internal_error;
 #[cfg(feature = "server_build")]
 pub(crate) mod login;

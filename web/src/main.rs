@@ -12,6 +12,8 @@ use crate::pages::episode_layout::EpisodeLayout;
 use crate::pages::feed::Feed;
 use crate::pages::history::PodHistory;
 use crate::pages::home::Home;
+use crate::pages::inbox::Inbox;
+use crate::components::labels::LabelPickerModal;
 use crate::pages::internal_error::InternalError;
 use crate::pages::not_found::NotFound;
 use crate::pages::person::Person;
@@ -62,6 +64,7 @@ fn switch(route: Route) -> Html {
         Route::Episode => html! { <Episode /> },
         Route::EpisodeLayout => html! { <EpisodeLayout /> },
         Route::Feed => html! { <Feed /> },
+        Route::Inbox => html! { <Inbox /> },
         Route::Home => html! { <Home /> },
         Route::Login => html! { <Login /> },
         Route::LogOut => html! { <LogOut /> },
@@ -243,6 +246,7 @@ fn language_manager() -> Html {
             </NavigationHandler>
             <RestoreOverlay />
             <CollectionPickerModal />
+            <LabelPickerModal />
         </BrowserRouter>
     }
 }

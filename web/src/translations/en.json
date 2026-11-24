@@ -1,4 +1,52 @@
 {
+  "inbox": {
+    "all": "All",
+    "all_podcasts": "All podcasts",
+    "clear_all": "Clear inbox",
+    "clear_confirm": "Remove all {count} episodes shown from the inbox? They stay in their podcasts and the feed.",
+    "clear_shown": "Clear shown",
+    "cleared": "Removed {count} episodes from the inbox",
+    "dismiss": "Dismiss",
+    "dismissed_count": "{count} removed from the inbox",
+    "empty_description": "New episodes from your podcasts show up here until you play, queue, save, mark played or dismiss them.",
+    "empty_title": "Your inbox is clear",
+    "label_all": "Label shown",
+    "mark_played": "Played",
+    "newest_first": "Newest first",
+    "oldest_first": "Oldest first",
+    "play_next": "Play next",
+    "queue": "Queue",
+    "remove_from_inbox": "Remove from Inbox",
+    "save": "Save",
+    "settings": "Inbox settings",
+    "sort": "Sort order",
+    "title": "Inbox",
+    "undo": "Undo",
+    "unlabeled": "Unlabeled"
+  },
+  "inbox_settings": {
+    "days_option": "{days} days",
+    "description": "The inbox holds new episodes you haven't played, queued, saved, marked played or dismissed.",
+    "saved": "Inbox setting saved",
+    "window": "How far back the inbox goes",
+    "window_description": "Episodes released earlier than this don't show in the inbox. They're still in their podcasts."
+  },
+  "labels": {
+    "add": "Add",
+    "delete": "Delete",
+    "delete_confirm": "Delete the label \"{name}\"? It comes off every episode, and smart playlists stop filtering on it.",
+    "description": "Your own tags for sorting episodes. Filter the inbox by them, or build smart playlists from them.",
+    "episode_count": "Episodes: {count}",
+    "label_episodes_count": "Label {count} episodes",
+    "labels": "Labels",
+    "labels_menu": "Labels…",
+    "new_label": "New label",
+    "none_yet": "No labels yet. Make one below, like Listen, Maybe or Later.",
+    "playlist_filter": "Only episodes with these labels",
+    "playlist_none": "Make labels in Settings → Inbox & labels to filter by them here.",
+    "rename": "Rename",
+    "save": "Save"
+  },
   "shared_links": {
     "title": "Shared Links",
     "description": "Manage episode links you have shared. You can extend their expiry or remove them before they expire.",
@@ -54,7 +102,8 @@
     "subscribed_people": "People You Follow",
     "section_listen": "Listen",
     "section_library": "Library",
-    "section_explore": "Explore"
+    "section_explore": "Explore",
+    "inbox": "Inbox"
   },
   "discover": {
     "title": "Discover",
@@ -635,7 +684,9 @@
     "auto_ad_detect_desc": "Detect ads automatically (requires auto-transcribe)",
     "ad_skip_auto_activate_desc": "Skip detected ads automatically (off = confirm each on the episode page first)",
     "silence_trim_updated": "Silence trim settings updated.",
-    "silence_trim_error": "Error updating silence trim."
+    "silence_trim_error": "Error updating silence trim.",
+    "show_in_inbox": "Show in Inbox",
+    "show_in_inbox_description": "New episodes of this podcast go to your inbox."
   },
   "export_settings": {
     "download_export_opml": "Download/Export OPML",
@@ -1647,7 +1698,10 @@
     "page_sharing": "Sharing",
     "page_users": "Users & sign-in",
     "page_downloads": "Downloads",
-    "page_backup": "Backup & restore"
+    "page_backup": "Backup & restore",
+    "episode_labels": "Episode labels",
+    "inbox_settings": "Inbox",
+    "page_inbox": "Inbox & labels"
   },
   "shared_episode": {
     "episode_transcript": "Episode Transcript",
