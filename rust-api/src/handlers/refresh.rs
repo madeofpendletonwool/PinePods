@@ -440,7 +440,8 @@ async fn unchanged_schedule(state: &AppState, rep: &PodcastRefreshItem, max_age:
     let interval = match rep.refresh_interval {
         Some(minutes) if !refresh_schedule::is_dormant(&dates, now) => {
             let floor = max_age.unwrap_or_default().min(refresh_schedule::ACTIVE_MAX_INTERVAL);
-            chrono::Duration::minutes(minutes.into()).max(floor).min(max)
+            // Clamped again: the interval may be from when the ceiling was higher.
+            chrono::Duration::minutes(minutes.into()).max(floor).min(refresh_schedule::ACTIVE_MAX_INTERVAL).min(max)
         }
         _ => refresh_schedule::interval(&dates, &hints, now, max),
     };

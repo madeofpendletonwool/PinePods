@@ -1,16 +1,16 @@
-//! When each feed is refreshed next: from how often it publishes, what its host and the feed
-//! itself say about updates, and the configured maximum interval.
+//! When each feed is refreshed next: from how often it publishes, when it usually publishes,
+//! what its host and the feed itself say about updates, and the configured maximum interval.
 
 use std::sync::OnceLock;
 
-use chrono::{DateTime, Datelike, Duration, Months, NaiveTime, Utc, Weekday};
+use chrono::{DateTime, Datelike, Duration, Months, NaiveTime, Timelike, Utc, Weekday};
 use quick_xml::events::Event;
 use tracing::{info, warn};
 
 /// Shortest interval a feed's publishing pattern can earn.
 pub const MIN_INTERVAL: Duration = Duration::minutes(15);
 /// Longest interval for a feed that still publishes.
-pub const ACTIVE_MAX_INTERVAL: Duration = Duration::hours(6);
+pub const ACTIVE_MAX_INTERVAL: Duration = Duration::hours(1);
 /// Interval for feeds with no episode in `DORMANT_AFTER` (or marked complete).
 pub const DORMANT_INTERVAL: Duration = Duration::hours(24);
 const DORMANT_AFTER: Duration = Duration::days(90);
@@ -22,6 +22,16 @@ const CADENCE_SAMPLE: usize = 10;
 /// How long after a feed's announced publishing time it's refreshed.
 const AFTER_EXPECTED: Duration = Duration::minutes(10);
 const JITTER: f64 = 0.1;
+/// Shows publishing at least this far apart can have a usual release time.
+const RELEASE_MIN_GAP: Duration = Duration::hours(20);
+/// Episodes this many minutes either side of each other in the day share a release time (wide
+/// enough for a daylight saving shift).
+const RELEASE_SPREAD_MINUTES: i64 = 60;
+const RELEASE_MIN_EPISODES: usize = 3;
+/// The release window runs from a little before the earliest of those times to well after the
+/// latest; inside it the feed is checked every `MIN_INTERVAL`.
+const WINDOW_BEFORE: Duration = Duration::minutes(15);
+const WINDOW_AFTER: Duration = Duration::hours(2);
 /// Default `PINEPODS_REFRESH_MAX_INTERVAL`.
 const DEFAULT_MAX_INTERVAL: Duration = Duration::hours(24);
 
@@ -73,11 +83,81 @@ fn median_gap(newest_first: &[DateTime<Utc>]) -> Option<Duration> {
     Some(if gaps.len() % 2 == 0 { (gaps[mid - 1] + gaps[mid]) / 2 } else { gaps[mid] })
 }
 
-/// When to refresh next: `interval` scaled by `jitter` (-1.0..=1.0 → ±10%), at most `max`, or just
-/// after the feed's next announced publishing time when that comes sooner.
+/// The time of day (and weekdays) a show's episodes usually come out, learned from their
+/// publishing dates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReleasePattern {
+    /// Minute of the UTC day the matching episodes cluster around.
+    center: i64,
+    /// The earliest and latest of them, in minutes from `center`.
+    earliest: i64,
+    latest: i64,
+    weekdays: Vec<Weekday>,
+}
+
+impl ReleasePattern {
+    /// The pattern in the newest ten of `pub_dates`, when most of them came out around the same
+    /// time of day and the show publishes daily or less often.
+    pub fn from_dates(pub_dates: &[DateTime<Utc>]) -> Option<ReleasePattern> {
+        let mut dates: Vec<DateTime<Utc>> = pub_dates.to_vec();
+        dates.sort_unstable_by(|a, b| b.cmp(a));
+        dates.dedup();
+        dates.truncate(CADENCE_SAMPLE);
+        if median_gap(&dates)? < RELEASE_MIN_GAP {
+            return None;
+        }
+        let minute = |t: &DateTime<Utc>| i64::from(t.time().num_seconds_from_midnight() / 60);
+        // Signed minutes from `center` to `t`'s time of day, across midnight.
+        let offset = |center: i64, t: &DateTime<Utc>| (minute(t) - center + 720).rem_euclid(1440) - 720;
+        let (center, members) = dates
+            .iter()
+            .map(|c| {
+                let members: Vec<&DateTime<Utc>> = dates.iter().filter(|t| offset(minute(c), t).abs() <= RELEASE_SPREAD_MINUTES).collect();
+                (minute(c), members)
+            })
+            .max_by_key(|(_, members)| members.len())?;
+        if members.len() < RELEASE_MIN_EPISODES || members.len() * 2 < dates.len() {
+            return None;
+        }
+        let offsets: Vec<i64> = members.iter().map(|t| offset(center, t)).collect();
+        let mut weekdays: Vec<Weekday> = members
+            .iter()
+            .map(|t| (**t - Duration::minutes(offset(center, t))).weekday())
+            .collect();
+        weekdays.sort_unstable_by_key(|d| d.num_days_from_monday());
+        weekdays.dedup();
+        Some(ReleasePattern {
+            center,
+            earliest: *offsets.iter().min()?,
+            latest: *offsets.iter().max()?,
+            weekdays,
+        })
+    }
+
+    /// The current or next release window that `newest` (the newest episode) doesn't already
+    /// fall in.
+    pub fn next_window(&self, now: DateTime<Utc>, newest: Option<DateTime<Utc>>) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
+        (-1..=8)
+            .map(|d| now.date_naive() + Duration::days(d))
+            .filter(|day| self.weekdays.contains(&day.weekday()))
+            .map(|day| {
+                let center = day.and_time(NaiveTime::MIN).and_utc() + Duration::minutes(self.center);
+                (
+                    center + Duration::minutes(self.earliest) - WINDOW_BEFORE,
+                    center + Duration::minutes(self.latest) + WINDOW_AFTER,
+                )
+            })
+            .find(|(start, end)| *end > now && newest.is_none_or(|n| n < *start))
+    }
+}
+
+/// When to refresh next: `interval` scaled by `jitter` (-1.0..=1.0 → ±10%), at most `max`; every
+/// `MIN_INTERVAL` inside the show's release window, or just when the next window opens or just
+/// after the feed's next announced publishing time when either comes sooner.
 pub fn next_refresh_in(
     interval: Duration,
     hints: &FeedHints,
+    pattern: Option<&ReleasePattern>,
     newest: Option<DateTime<Utc>>,
     now: DateTime<Utc>,
     jitter: f64,
@@ -89,6 +169,9 @@ pub fn next_refresh_in(
         if let Some(expected) = rule.next_after(now, newest.unwrap_or(now)) {
             delay = delay.min(expected + AFTER_EXPECTED - now);
         }
+    }
+    if let Some((start, _)) = pattern.and_then(|p| p.next_window(now, newest)) {
+        delay = delay.min(if start <= now { MIN_INTERVAL } else { start - now });
     }
     delay.max(Duration::minutes(1))
 }
@@ -104,9 +187,10 @@ pub fn schedule_with(interval: Duration, pub_dates: &[DateTime<Utc>], hints: &Fe
     use rand::RngExt;
     let jitter = rand::rng().random_range(-1.0..=1.0);
     let newest = pub_dates.iter().max().copied();
+    let pattern = if hints.complete || is_dormant(pub_dates, now) { None } else { ReleasePattern::from_dates(pub_dates) };
     Schedule {
         interval_minutes: interval.num_minutes().clamp(1, i64::from(i32::MAX)) as i32,
-        next_in_secs: next_refresh_in(interval, hints, newest, now, jitter, max).num_seconds(),
+        next_in_secs: next_refresh_in(interval, hints, pattern.as_ref(), newest, now, jitter, max).num_seconds(),
     }
 }
 
@@ -412,13 +496,13 @@ mod tests {
 
     #[test]
     fn interval_is_an_eighth_of_the_median_gap() {
-        let daily = episodes(10, Duration::hours(2), Duration::days(1));
-        assert_eq!(interval(&daily, &none(), at(NOW), MAX), Duration::hours(3));
+        let six_hourly = episodes(10, Duration::hours(2), Duration::hours(6));
+        assert_eq!(interval(&six_hourly, &none(), at(NOW), MAX), Duration::minutes(45));
 
         // One long break doesn't move the median.
-        let mut dates = episodes(9, Duration::hours(1), Duration::hours(16));
+        let mut dates = episodes(9, Duration::hours(1), Duration::hours(4));
         dates.push(dates[8] - Duration::days(60));
-        assert_eq!(interval(&dates, &none(), at(NOW), MAX), Duration::hours(2));
+        assert_eq!(interval(&dates, &none(), at(NOW), MAX), Duration::minutes(30));
 
         // Only the newest ten count; the order they come in doesn't matter.
         let mut dates = episodes(10, Duration::zero(), Duration::hours(8));
@@ -428,7 +512,7 @@ mod tests {
     }
 
     #[test]
-    fn interval_is_clamped_between_15_minutes_and_6_hours() {
+    fn interval_is_clamped_between_15_minutes_and_an_hour() {
         let hourly = episodes(10, Duration::minutes(5), Duration::hours(1));
         assert_eq!(interval(&hourly, &none(), at(NOW), MAX), MIN_INTERVAL);
         let weekly = episodes(10, Duration::days(2), Duration::weeks(1));
@@ -449,7 +533,7 @@ mod tests {
         assert_eq!(interval(&old, &none(), at(NOW), MAX), DORMANT_INTERVAL);
         assert_eq!(interval(&[], &none(), at(NOW), MAX), DORMANT_INTERVAL);
         let recent = episodes(10, Duration::days(89), Duration::days(1));
-        assert_eq!(interval(&recent, &none(), at(NOW), MAX), Duration::hours(3));
+        assert_eq!(interval(&recent, &none(), at(NOW), MAX), ACTIVE_MAX_INTERVAL);
         let complete = FeedHints { complete: true, ..none() };
         assert_eq!(interval(&recent, &complete, at(NOW), MAX), DORMANT_INTERVAL);
         assert!(is_dormant(&old, at(NOW)) && !is_dormant(&recent, at(NOW)));
@@ -458,19 +542,19 @@ mod tests {
     #[test]
     fn host_hints_only_slow_a_feed_down() {
         let hourly = episodes(10, Duration::zero(), Duration::hours(1));
-        let daily = episodes(10, Duration::zero(), Duration::days(1));
+        let four_hourly = episodes(10, Duration::zero(), Duration::hours(4));
         let hints = |max_age: Option<i64>, period: Option<i64>| FeedHints {
             max_age: max_age.map(Duration::minutes),
             update_period: period.map(Duration::minutes),
             ..none()
         };
-        assert_eq!(interval(&hourly, &hints(Some(60), None), at(NOW), MAX), Duration::hours(1));
-        assert_eq!(interval(&hourly, &hints(None, Some(120)), at(NOW), MAX), Duration::hours(2));
+        assert_eq!(interval(&hourly, &hints(Some(20), None), at(NOW), MAX), Duration::minutes(20));
+        assert_eq!(interval(&hourly, &hints(None, Some(40)), at(NOW), MAX), Duration::minutes(40));
         // The smaller of the two counts.
-        assert_eq!(interval(&hourly, &hints(Some(90), Some(120)), at(NOW), MAX), Duration::minutes(90));
-        // A generic "hourly" doesn't speed up a daily show.
-        assert_eq!(interval(&daily, &hints(None, Some(60)), at(NOW), MAX), Duration::hours(3));
-        // Never past the 6 hour ceiling for a live feed.
+        assert_eq!(interval(&hourly, &hints(Some(25), Some(40)), at(NOW), MAX), Duration::minutes(25));
+        // A generic "every 20 minutes" doesn't speed up a show that posts every 4 hours.
+        assert_eq!(interval(&four_hourly, &hints(None, Some(20)), at(NOW), MAX), Duration::minutes(30));
+        // Never past the hour ceiling for a live feed.
         assert_eq!(interval(&hourly, &hints(Some(60 * 48), Some(60 * 48)), at(NOW), MAX), ACTIVE_MAX_INTERVAL);
     }
 
@@ -489,10 +573,10 @@ mod tests {
     #[test]
     fn jitter_is_ten_percent_and_stays_under_the_maximum() {
         let i = Duration::hours(2);
-        assert_eq!(next_refresh_in(i, &none(), None, at(NOW), 0.0, MAX), i);
-        assert_eq!(next_refresh_in(i, &none(), None, at(NOW), 1.0, MAX), Duration::minutes(132));
-        assert_eq!(next_refresh_in(i, &none(), None, at(NOW), -1.0, MAX), Duration::minutes(108));
-        assert_eq!(next_refresh_in(i, &none(), None, at(NOW), 1.0, i), i);
+        assert_eq!(next_refresh_in(i, &none(), None, None, at(NOW), 0.0, MAX), i);
+        assert_eq!(next_refresh_in(i, &none(), None, None, at(NOW), 1.0, MAX), Duration::minutes(132));
+        assert_eq!(next_refresh_in(i, &none(), None, None, at(NOW), -1.0, MAX), Duration::minutes(108));
+        assert_eq!(next_refresh_in(i, &none(), None, None, at(NOW), 1.0, i), i);
         for _ in 0..100 {
             let s = schedule_with(i, &[], &none(), at(NOW), MAX);
             assert!((108 * 60..=132 * 60).contains(&s.next_in_secs), "{s:?}");
@@ -507,13 +591,51 @@ mod tests {
         assert_eq!(rule.next_after(at(NOW), at(NOW)), Some(at("2026-10-28T09:00:00Z")));
         let soon = UpdateRule::parse("FREQ=DAILY", Some("2026-10-01T12:30:00Z")).unwrap();
         let hints = FeedHints { update_rule: Some(soon), ..none() };
-        assert_eq!(next_refresh_in(Duration::hours(6), &hints, None, at(NOW), 0.0, MAX), Duration::minutes(40));
+        assert_eq!(next_refresh_in(Duration::hours(6), &hints, None, None, at(NOW), 0.0, MAX), Duration::minutes(40));
         // Later than the interval: no effect.
         let later = FeedHints { update_rule: Some(rule), ..none() };
-        assert_eq!(next_refresh_in(Duration::hours(6), &later, None, at(NOW), 0.0, MAX), Duration::hours(6));
+        assert_eq!(next_refresh_in(Duration::hours(6), &later, None, None, at(NOW), 0.0, MAX), Duration::hours(6));
         // A complete feed expects nothing.
         let done = FeedHints { complete: true, ..hints };
-        assert_eq!(next_refresh_in(Duration::hours(6), &done, None, at(NOW), 0.0, MAX), Duration::hours(6));
+        assert_eq!(next_refresh_in(Duration::hours(6), &done, None, None, at(NOW), 0.0, MAX), Duration::hours(6));
+    }
+
+    #[test]
+    fn a_usual_release_time_is_learned_from_past_episodes() {
+        // Mondays at 17:00, give or take; one came out at 18:00 after a clock change.
+        let mondays: Vec<_> = ["2026-10-19T17:00:00Z", "2026-10-12T17:05:00Z", "2026-10-05T16:58:00Z", "2026-09-28T18:00:00Z"]
+            .into_iter()
+            .map(at)
+            .collect();
+        let p = ReleasePattern::from_dates(&mondays).unwrap();
+        // Now is Wednesday the 21st: the next window opens the following Monday.
+        assert_eq!(p.next_window(at(NOW), Some(mondays[0])), Some((at("2026-10-26T16:43:00Z"), at("2026-10-26T20:00:00Z"))));
+        let next = |now: &str, newest: &str| next_refresh_in(Duration::hours(1), &none(), Some(&p), Some(at(newest)), at(now), 0.0, MAX);
+        assert_eq!(next("2026-10-26T16:13:00Z", "2026-10-19T17:00:00Z"), Duration::minutes(30), "just as the window opens");
+        assert_eq!(next("2026-10-26T17:30:00Z", "2026-10-19T17:00:00Z"), MIN_INTERVAL, "inside it, nothing yet");
+        assert_eq!(next("2026-10-26T17:30:00Z", "2026-10-26T17:10:00Z"), Duration::hours(1), "this week's is in");
+        assert_eq!(next("2026-10-26T20:30:00Z", "2026-10-19T17:00:00Z"), Duration::hours(1), "window over");
+
+        // Weekdays at 10:00; the window crosses midnight for a show released at 23:30.
+        let weekdays: Vec<_> = (0..10).map(|d| at("2026-10-20T10:00:00Z") - Duration::days(d)).filter(|t| t.weekday().num_days_from_monday() < 5).collect();
+        let p = ReleasePattern::from_dates(&weekdays).unwrap();
+        assert_eq!(p.next_window(at("2026-10-23T12:00:00Z"), Some(at("2026-10-23T10:00:00Z"))).unwrap().0, at("2026-10-26T09:45:00Z"), "skips the weekend");
+        let late = episodes(10, Duration::hours(12) + Duration::minutes(30), Duration::days(1));
+        let p = ReleasePattern::from_dates(&late).unwrap();
+        let (start, end) = p.next_window(at("2026-10-22T00:30:00Z"), Some(late[0])).unwrap();
+        assert_eq!((start, end), (at("2026-10-21T23:15:00Z"), at("2026-10-22T01:30:00Z")));
+    }
+
+    #[test]
+    fn no_release_time_without_a_pattern() {
+        // Scattered through the day.
+        let scattered: Vec<_> = (0..8).map(|i| at(NOW) - Duration::days(i) - Duration::hours(i * 5)).collect();
+        assert_eq!(ReleasePattern::from_dates(&scattered), None);
+        // More often than daily: the interval already covers it.
+        assert_eq!(ReleasePattern::from_dates(&episodes(10, Duration::zero(), Duration::hours(12))), None);
+        // Too few to tell.
+        assert_eq!(ReleasePattern::from_dates(&episodes(2, Duration::zero(), Duration::weeks(1))), None);
+        assert_eq!(ReleasePattern::from_dates(&[]), None);
     }
 
     #[test]
