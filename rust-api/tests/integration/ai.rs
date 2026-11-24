@@ -150,6 +150,55 @@ async fn status_reports_what_each_capability_needs() {
     assert_eq!(status["ad_removal_ready"], true, "{status}");
 }
 
+async fn set_ai_enabled(app: &TestApp, enabled: bool) {
+    let admin = app.admin().await.clone();
+    app.post("/api/data/ai_enabled").key(&admin).json(&json!({ "enabled": enabled })).send().await.assert_ok();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn turning_ai_off_hides_and_blocks_it_with_the_sidecar_connected() {
+    let s = show().await;
+    set_ai_enabled(&s.app, false).await;
+
+    let status = s.app.get("/api/data/ai_status").key(&s.user).send().await.ok_json();
+    assert_eq!(status["available"], false, "{status}");
+    assert_eq!(status["enabled"], false, "{status}");
+    assert_eq!(status["connected"], true, "{status}");
+    for path in ["/api/data/transcribe_episode", "/api/data/detect_ads"] {
+        s.app.post(path)
+            .key(&s.user)
+            .json(&json!({ "episode_id": s.episode, "user_id": s.user.id }))
+            .send()
+            .await
+            .assert_status(503);
+    }
+
+    set_ai_enabled(&s.app, true).await;
+    let status = s.app.get("/api/data/ai_status").key(&s.user).send().await.ok_json();
+    assert_eq!(status["available"], true, "{status}");
+    start_transcript(&s.app, &s.user, s.episode, false).await;
+    wait_for_transcript(&s.app, &s.user, s.episode, "complete").await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn opted_in_podcasts_are_not_transcribed_while_ai_is_off() {
+    let s = show().await;
+    set_flag(&s.app, &s.user, s.pod, "/api/data/adjust_auto_transcribe").await;
+    set_ai_enabled(&s.app, false).await;
+
+    let first = s.app.fixtures().url("audio/ep1.mp3");
+    let second = s.app.fixtures().serve("audio/ep2.mp3", Fixture::new("audio/mpeg", mp3_bytes()));
+    let feed = Feed::new(&format!("AI Show {}", s.app.tag))
+        .episode(Episode::new(1).enclosure(&first))
+        .episode(Episode::new(2).enclosure(&second));
+    s.app.feed("show.xml", &feed);
+    s.app.refresh().await;
+    let fresh = s.app.episode_id(&s.user, s.pod, "Episode 2").await;
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    assert_eq!(transcript(&s.app, &s.user, fresh).await, Value::Null);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_transcript_is_made_from_the_episode_audio_and_stored() {
     let s = show().await;

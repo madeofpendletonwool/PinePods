@@ -8464,6 +8464,31 @@ def migration_097_episode_description_text(conn, db_type: str) -> None:
         cursor.close()
 
 
+@register_migration("098", "ai_features_enabled", "AISettings.Enabled: admin switch that turns every AI feature off, even with the AI container connected", requires=["056"], sqlite=True)
+def migration_098_ai_features_enabled(conn, db_type: str) -> None:
+    cursor = conn.cursor()
+    try:
+        if db_type == "sqlite":
+            cursor.execute('PRAGMA table_info("AISettings")')
+            exists = any(row[1].lower() == "enabled" for row in cursor.fetchall())
+        else:
+            exists = _column_exists(cursor, db_type, "AISettings", "Enabled")
+        if not exists:
+            # SQLite reports a column by its declared name, and its schema is all lowercase.
+            if db_type == "postgresql":
+                cursor.execute('ALTER TABLE "AISettings" ADD COLUMN Enabled BOOLEAN NOT NULL DEFAULT TRUE')
+            elif db_type == "sqlite":
+                cursor.execute('ALTER TABLE "AISettings" ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT TRUE')
+            else:
+                cursor.execute("ALTER TABLE AISettings ADD COLUMN Enabled TINYINT(1) NOT NULL DEFAULT 1")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("118", "gpodder_actions_follow_merged_episodes", "Episode actions point at the shared episode their merged copy became; the copies are deleted", requires=["082", "111"])
 def migration_118_gpodder_actions_follow_merged_episodes(conn, db_type: str) -> None:
     """GpodderSyncEpisodeActions.EpisodeID of actions on an episode copy merged by 082 now points

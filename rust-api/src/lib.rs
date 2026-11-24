@@ -425,6 +425,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::settings::adjust_ad_skip_auto_activate))
         .routes(routes!(handlers::settings::get_ad_skip_auto_activate))
         .routes(routes!(handlers::settings::get_ai_settings, handlers::settings::update_ai_settings))
+        .routes(routes!(handlers::settings::set_ai_enabled))
         .routes(routes!(handlers::settings::get_ytdlp_settings, handlers::settings::update_ytdlp_settings))
         .routes(routes!(handlers::settings::trigger_ytdlp_update))
         .routes(routes!(handlers::settings::get_ai_models))

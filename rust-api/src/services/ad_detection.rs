@@ -267,8 +267,8 @@ pub async fn detect_episode_ads(
     user_id: Option<i32>,
     on_progress: impl FnMut(f64),
 ) -> Result<usize, String> {
-    if ai_client::ai_base_url().is_none() {
-        return Err("AI service not configured".to_string());
+    if !ai_client::ai_active(db_pool).await {
+        return Err("AI features are off or not configured".to_string());
     }
     if !force && already_detected(db_pool, episode_id).await {
         debug!("Episode {} already ad-scanned; skipping", episode_id);
@@ -315,6 +315,9 @@ pub fn maybe_detect_ads_after_transcript(db_pool: DatabasePool, episode_id: i32,
         return;
     }
     tokio::spawn(async move {
+        if !ai_client::ai_active(&db_pool).await {
+            return;
+        }
         let any_opted_in = dialect_match!(db_pool, {
             pg(ref pool) => q::query(r#"
                 SELECT EXISTS(

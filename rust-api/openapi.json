@@ -726,6 +726,46 @@
         ]
       }
     },
+    "/api/data/ai_enabled": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Turn every AI feature on or off for the server (admin)",
+        "operationId": "set_ai_enabled",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiEnabledRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Admin access required"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/ai_models": {
       "get": {
         "tags": [
@@ -13858,6 +13898,17 @@
           },
           "hash_pw": {
             "type": "string"
+          }
+        }
+      },
+      "AiEnabledRequest": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
           }
         }
       },

@@ -15,14 +15,30 @@ use tracing::{debug, info, warn};
 #[derive(Clone)]
 pub struct AiAvailability {
     available: Arc<AtomicBool>,
+    enabled: Arc<AtomicBool>,
 }
 
 impl AiAvailability {
     pub fn new() -> Self {
-        Self { available: Arc::new(AtomicBool::new(false)) }
+        Self { available: Arc::new(AtomicBool::new(false)), enabled: Arc::new(AtomicBool::new(true)) }
     }
 
+    /// Connected and turned on by an admin.
     pub fn is_available(&self) -> bool {
+        self.is_connected() && self.is_enabled()
+    }
+
+    /// The admin switch (`AISettings.Enabled`).
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.load(Ordering::Relaxed)
+    }
+
+    pub fn set_enabled(&self, value: bool) {
+        self.enabled.store(value, Ordering::Relaxed);
+    }
+
+    /// The sidecar answers its health check, whatever the admin switch says.
+    pub fn is_connected(&self) -> bool {
         self.available.load(Ordering::Relaxed)
     }
 
@@ -35,6 +51,11 @@ impl Default for AiAvailability {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// A sidecar URL is configured and an admin hasn't turned AI off. Background work gates on this.
+pub async fn ai_active(db_pool: &crate::database::DatabasePool) -> bool {
+    ai_base_url().is_some() && crate::services::ai_settings::ai_enabled(db_pool).await.unwrap_or(true)
 }
 
 /// The configured base URL of the sidecar, or `None` if the feature is off.

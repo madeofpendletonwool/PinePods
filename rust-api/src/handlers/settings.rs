@@ -3891,8 +3891,8 @@ pub async fn adjust_skip_times(
     Ok(Json(serde_json::json!({ "detail": "Skip times updated." })))
 }
 
-// Report whether the optional AI sidecar (#726) is available, so clients can
-// show/hide AI features (transcription, later ad-detection/RAG).
+// Report whether AI features can be used, so clients can show or hide them. `available` is the
+// one to gate on: the sidecar is connected and an admin hasn't turned AI off.
 #[utoipa::path(
     get,
     path = "/ai_status",
@@ -3931,6 +3931,8 @@ pub async fn ai_status(
     let downloads_enabled = state.db_pool.download_status().await.unwrap_or(false);
     Ok(Json(serde_json::json!({
         "available": available,
+        "enabled": state.ai_available.is_enabled(),
+        "connected": state.ai_available.is_connected(),
         "transcription_ready": transcription_ready,
         "ad_removal_ready": ad_removal_ready,
         "downloads_enabled": downloads_enabled,
@@ -4761,6 +4763,44 @@ pub async fn update_ai_settings(
         .map_err(|e| AppError::internal(&e))?;
 
     Ok(Json(serde_json::json!({ "detail": "AI settings updated." })))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct AiEnabledRequest {
+    pub enabled: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/ai_enabled",
+    tag = "settings",
+    summary = "Turn every AI feature on or off for the server (admin)",
+    request_body = AiEnabledRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Admin access required"),
+    ),
+)]
+pub async fn set_ai_enabled(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AiEnabledRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if !state.db_pool.user_admin_check(key_id).await? {
+        return Err(AppError::forbidden("Admin access required."));
+    }
+
+    crate::services::ai_settings::set_ai_enabled(&state.db_pool, request.enabled)
+        .await
+        .map_err(|e| AppError::internal(&e))?;
+    state.ai_available.set_enabled(request.enabled);
+
+    Ok(Json(serde_json::json!({ "enabled": request.enabled })))
 }
 
 #[utoipa::path(

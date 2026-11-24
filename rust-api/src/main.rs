@@ -98,6 +98,12 @@ async fn main() -> AppResult<()> {
         merged_episodes: Default::default(),
     };
 
+    // Apply the admin's AI on/off switch before anything can queue AI work.
+    match services::ai_settings::ai_enabled(&app_state.db_pool).await {
+        Ok(on) => app_state.ai_available.set_enabled(on),
+        Err(e) => tracing::warn!("Could not read the AI on/off setting, leaving AI on: {}", e),
+    }
+
     // Start the AI sidecar health monitor (no-op if PINEPODS_AI_URL is unset).
     services::ai_client::spawn_health_monitor(app_state.ai_available.clone());
 

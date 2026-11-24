@@ -8,7 +8,7 @@
 use crate::components::context::{AppState, NotificationState};
 use crate::requests::pod_req::{
     call_ai_pull_model, call_get_ai_models, call_get_ai_settings, call_get_ai_status_full,
-    call_update_ai_settings, AiModels, AiPullModelRequest, AiSettingsUpdate, AiStatus,
+    call_set_ai_enabled, call_update_ai_settings, AiModels, AiPullModelRequest, AiSettingsUpdate, AiStatus,
 };
 use crate::components::i18n::use_translation;
 use web_sys::{HtmlInputElement, HtmlSelectElement};
@@ -103,7 +103,7 @@ pub fn ai_settings() -> Html {
         }
     };
 
-    let connection_badge = if ai_status.available {
+    let connection_badge = if ai_status.connected {
         html! { <span style="color:var(--success-color);font-weight:500;">{ i18n.t("ai_settings.connected") }</span> }
     } else if *checked {
         html! { <span style="color:var(--error-color);font-weight:500;">{ i18n.t("ai_settings.not_connected") }</span> }
@@ -203,6 +203,52 @@ pub fn ai_settings() -> Html {
         })
     };
 
+    let toggling = use_state(|| false);
+    let on_toggle_enabled = {
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let ai_status = ai_status.clone();
+        let toggling = toggling.clone();
+        let refresh = refresh.clone();
+        let err_msg = i18n.t("ai_settings.save_error").to_string();
+        Callback::from(move |_: MouseEvent| {
+            let Some(server_name) = server_name.clone() else { return };
+            let api_key = api_key.clone();
+            let enabled = !ai_status.enabled;
+            let (toggling, refresh, err_msg) = (toggling.clone(), refresh.clone(), err_msg.clone());
+            toggling.set(true);
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Err(e) = call_set_ai_enabled(&server_name, &api_key, enabled).await {
+                    Dispatch::<NotificationState>::global()
+                        .reduce_mut(|s| s.error_message = Some(format!("{}: {}", err_msg, e)));
+                }
+                toggling.set(false);
+                refresh.set(*refresh + 1);
+            });
+        })
+    };
+
+    let enabled_row = html! {
+        <div class="settings-row">
+            <div>
+                <div class="settings-row-label">{ i18n.t("ai_settings.enable_ai") }</div>
+                <div class="settings-row-desc">{ i18n.t("ai_settings.enable_ai_desc") }</div>
+            </div>
+            <div class="settings-row-control">
+                <label class="toggle">
+                    <input type="checkbox" checked={ai_status.enabled} disabled={*toggling || !*checked}
+                        onclick={on_toggle_enabled} />
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
+            </div>
+        </div>
+    };
+
+    // Turned off: admins get only the switch back on; nothing else AI is shown.
+    if !ai_status.enabled {
+        return if *is_admin { enabled_row } else { html! {} };
+    }
+
     // Live AI job queue (transcription, ad detection, model pulls).
     let ai_tasks: Vec<_> = notif_state
         .active_tasks
@@ -276,11 +322,11 @@ pub fn ai_settings() -> Html {
 
     html! {
         <>
+            if *is_admin { { enabled_row } }
             // ---- Service status ----
             <div class="settings-row">
                 <div>
                     <div class="settings-row-label">{ i18n.t("ai_settings.ai_service") }</div>
-                    <div class="settings-row-desc">{ i18n.t("ai_settings.intro") }</div>
                 </div>
                 <div class="settings-row-control">{ connection_badge }</div>
             </div>
@@ -317,7 +363,7 @@ pub fn ai_settings() -> Html {
                             </div>
                             {
                                 // Ad removal has no default model — tell the admin how to enable it.
-                                if ai_status.available && !ai_status.ad_removal_ready {
+                                if ai_status.connected && !ai_status.ad_removal_ready {
                                     html! {
                                         <div class="settings-row">
                                             <div><div class="settings-row-desc">{ i18n.t("ai_settings.ad_removal_hint") }</div></div>

@@ -214,3 +214,39 @@ pub async fn set_ai_settings(db_pool: &DatabasePool, update: AiSettingsUpdate) -
     });
     Ok(())
 }
+
+/// Whether an admin has AI features turned on (`AISettings.Enabled`, default on).
+pub async fn ai_enabled(db_pool: &DatabasePool) -> Result<bool, String> {
+    let v = dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query_scalar::<bool>(r#"SELECT enabled FROM "AISettings" WHERE aisettingsid = 1"#)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| e.to_string())?
+                .unwrap_or(true)
+        },
+        mysql(pool) => {
+            sqlx::query_scalar::<_, i8>("SELECT Enabled FROM AISettings WHERE AISettingsID = 1")
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| e.to_string())?
+                .is_none_or(|v| v != 0)
+        },
+    });
+    Ok(v)
+}
+
+/// Turn AI features on or off for the whole server.
+pub async fn set_ai_enabled(db_pool: &DatabasePool, enabled: bool) -> Result<(), String> {
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"UPDATE "AISettings" SET enabled = $1, updatedat = CURRENT_TIMESTAMP WHERE aisettingsid = 1"#)
+                .bind(enabled).execute(pool).await.map_err(|e| e.to_string())?;
+        },
+        mysql(pool) => {
+            sqlx::query("UPDATE AISettings SET Enabled = ?, UpdatedAt = CURRENT_TIMESTAMP WHERE AISettingsID = 1")
+                .bind(enabled).execute(pool).await.map_err(|e| e.to_string())?;
+        },
+    });
+    Ok(())
+}
