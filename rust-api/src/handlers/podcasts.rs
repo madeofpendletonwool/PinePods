@@ -113,6 +113,10 @@ pub struct PodcastEpisode {
     pub downloaded: bool,
     pub is_youtube: bool,
     pub is_video: bool,
+    /// With a search: 0 when every term is in the title, 1 when some are, 2 when it matched on
+    /// the description alone. Results come in this order. Absent without a search.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_rank: Option<i32>,
 }
 
 #[derive(Serialize, utoipa::ToSchema)]
@@ -631,6 +635,101 @@ pub async fn check_episode_in_db(
     Ok(Json(crate::models::EpisodeInDbResponse { episode_in_db }))
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct ResolveFeedEpisodeRequest {
+    pub user_id: i32,
+    /// The podcast's feed address.
+    pub feed_url: String,
+    /// The episode's audio address, as the feed lists it.
+    pub episode_url: String,
+    pub episode_title: String,
+    /// The podcast's Podcast Index ID, when known.
+    pub podcast_index_id: Option<i64>,
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct ResolveFeedEpisodeResponse {
+    pub episode_id: i32,
+    pub podcast_id: i32,
+    /// Whether the user subscribes to the podcast.
+    pub subscribed: bool,
+}
+
+/// The server's ID for an episode of any feed, so it can be played with progress kept, queued,
+/// saved, downloaded or transcribed without subscribing. A podcast the user doesn't subscribe to
+/// gets a row that stays out of their library, sync and refreshes; subscribing later keeps it.
+#[utoipa::path(
+    post,
+    path = "/resolve_feed_episode",
+    tag = "podcasts",
+    summary = "Resolve an episode of any feed",
+    request_body = ResolveFeedEpisodeRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = ResolveFeedEpisodeResponse),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Not your user"),
+        (status = 404, description = "The feed has no such episode"),
+    ),
+)]
+pub async fn resolve_feed_episode(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<ResolveFeedEpisodeRequest>,
+) -> Result<Json<ResolveFeedEpisodeResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+    if !check_user_access(&state, &api_key, request.user_id).await? {
+        return Err(AppError::forbidden("You can only resolve episodes for yourself!"));
+    }
+    let user_id = request.user_id;
+    let feed_url = request.feed_url.trim();
+    if feed_url.is_empty() || (request.episode_url.is_empty() && request.episode_title.is_empty()) {
+        return Err(AppError::bad_request("feed_url and the episode's url or title are required"));
+    }
+    if feed_url.starts_with("local://") {
+        return Err(AppError::not_found("Episode not found"));
+    }
+
+    let db = &state.db_pool;
+    let existing = db.podcast_row_for_feed(user_id, feed_url).await?;
+    let podcast_id = match existing {
+        Some(id) => {
+            db.mark_subscription_use(id, user_id, false, crate::services::sync::SyncOrigin::Pinepods).await?;
+            id
+        }
+        None => {
+            let (values, body) = db.get_podcast_values_with_body(feed_url, user_id, None, None).await?;
+            let get = |k: &str| values.get(k).cloned().unwrap_or_default();
+            let podcast_values = PodcastValues {
+                user_id,
+                pod_title: get("podcastname"),
+                pod_artwork: get("artworkurl"),
+                pod_author: get("author"),
+                categories: serde_json::from_str(values.get("categories").map(String::as_str).unwrap_or("{}")).unwrap_or_default(),
+                pod_description: get("description"),
+                pod_episode_count: get("episodecount").parse().unwrap_or(0),
+                pod_feed_url: feed_url.to_string(),
+                pod_website: get("websiteurl"),
+                pod_explicit: get("explicit") == "True",
+            };
+            db.add_unsubscribed_podcast(&podcast_values, request.podcast_index_id.unwrap_or(0), Some(&body)).await?
+        }
+    };
+
+    let mut episode_id = db.find_podcast_episode(podcast_id, &request.episode_url, &request.episode_title).await?;
+    if episode_id.is_none() && existing.is_some() {
+        // The feed may have published it since the row was made: read the feed once more.
+        let (values, body) = db.get_podcast_values_with_body(feed_url, user_id, None, None).await?;
+        let artwork = values.get("artworkurl").cloned().unwrap_or_default();
+        db.add_episodes(podcast_id, feed_url, &artwork, false, None, None, Some(&body)).await?;
+        episode_id = db.find_podcast_episode(podcast_id, &request.episode_url, &request.episode_title).await?;
+    }
+    let episode_id = episode_id.ok_or_else(|| AppError::not_found("Episode not found"))?;
+    let subscribed = db.podcast_subscribed(podcast_id).await?;
+    Ok(Json(ResolveFeedEpisodeResponse { episode_id, podcast_id, subscribed }))
+}
+
 /// Where an added episode lands. Bottom is last. Top is under the episode playing: the
 /// client's own hint when it sent one, else what any of the user's devices is playing,
 /// else the very top. `position` falls back to the user's setting.
@@ -1078,16 +1177,8 @@ pub async fn add_history(
     if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only add history for yourself!"));
     }
-    require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube).await?;
+    super::progress::record_play_start(&state, request.user_id, request.episode_id, request.is_youtube, request.episode_pos as f64).await?;
 
-    // Record the history
-    state.db_pool.record_podcast_history(
-        request.episode_id, 
-        request.user_id, 
-        request.episode_pos, 
-        request.is_youtube
-    ).await?;
-    
     Ok(Json(crate::models::HistoryResponse {
         detail: "History recorded successfully.".to_string(),
     }))
@@ -1503,7 +1594,9 @@ pub struct PodcastEpisodesQuery {
     pub offset: Option<i64>,
     pub sort_by: Option<String>,    // "date" | "duration" | "title"
     pub sort_order: Option<String>, // "asc" | "desc"
-    pub search: Option<String>,     // free-text term, matched against title and description
+    /// Words (or "quoted phrases") that must each appear in the title or the description's text.
+    /// Episodes with them in the title come first.
+    pub search: Option<String>,
     pub filter: Option<String>,     // "all" | "completed" | "in_progress"
 }
 
@@ -1556,6 +1649,16 @@ pub async fn podcast_episodes(
             filter,
         )
         .await?;
+
+    let terms = crate::services::search_text::SearchTerms::parse(search);
+    let episodes = if terms.is_empty() {
+        episodes
+    } else {
+        episodes
+            .into_iter()
+            .map(|e| PodcastEpisode { match_rank: Some(terms.title_rank(&e.episodetitle)), ..e })
+            .collect()
+    };
 
     Ok(Json(PodcastEpisodesResponse { episodes, total }))
 }
@@ -2543,6 +2646,61 @@ pub async fn get_extended_stats(
     }
 }
 
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct ListeningReportQuery {
+    pub user_id: i32,
+    /// First day of the period (`YYYY-MM-DD`, the user's timezone). With `end`; both omitted
+    /// for all time.
+    pub start: Option<String>,
+    /// Last day of the period, inclusive.
+    pub end: Option<String>,
+}
+
+/// What the user listened to over a period or all time: totals, top podcasts, episodes,
+/// categories and people, when they listened, sessions, time saved, apps and downloads.
+#[utoipa::path(
+    get,
+    path = "/listening_report",
+    tag = "podcasts",
+    summary = "Get a listening report",
+    params(ListeningReportQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "The report", body = crate::database::ListeningReport),
+        (status = 400, description = "A malformed or one-sided period"),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Another user's report"),
+    ),
+)]
+pub async fn get_listening_report(
+    Query(query): Query<ListeningReportQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<crate::database::ListeningReport>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only get stats for your own account."));
+    }
+    let day = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| AppError::bad_request("Dates are YYYY-MM-DD"));
+    let range = match (query.start.as_deref(), query.end.as_deref()) {
+        (None, None) => None,
+        (Some(s), Some(e)) => {
+            let (s, e) = (day(s)?, day(e)?);
+            if e < s {
+                return Err(AppError::bad_request("The period ends before it starts"));
+            }
+            Some((s, e))
+        }
+        _ => return Err(AppError::bad_request("Give both start and end, or neither")),
+    };
+    Ok(Json(state.db_pool.listening_report(query.user_id, range).await?))
+}
+
 // Get PinePods version - matches Python get_pinepods_version endpoint exactly
 #[utoipa::path(
     get,
@@ -2854,7 +3012,7 @@ pub struct RecordListenDurationRequest {
     pub episode_duration: Option<f64>,
 }
 
-// Record listen duration - matches Python api record_listen_duration function exactly
+// The position report of apps older than `POST /progress`.
 #[utoipa::path(
     post,
     path = "/record_listen_duration",
@@ -2887,38 +3045,16 @@ pub async fn record_listen_duration(
     if key_id != data.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only record your own listen duration"));
     }
-    require_episode_owner(&state, data.user_id, data.episode_id, data.is_youtube).await?;
-
-    if data.is_youtube {
-        state.db_pool.record_youtube_listen_duration(data.episode_id, data.user_id, data.listen_duration).await?;
-    } else {
-        state.db_pool.record_listen_duration(data.episode_id, data.user_id, data.listen_duration, crate::services::sync::SyncOrigin::Pinepods).await?;
-        if let Some(d) = data.episode_duration.filter(|d| d.is_finite() && *d >= 1.0) {
-            state.db_pool.set_episode_duration_if_missing(data.episode_id, d.round() as i32).await?;
-        }
-    }
-
-    // Check if episode should be auto-completed based on user's setting
-    let auto_complete_seconds = state.db_pool.get_user_auto_complete_seconds(data.user_id).await.unwrap_or(0);
-    
-    if auto_complete_seconds > 0 {
-        // Get episode duration
-        let episode_duration = if data.is_youtube {
-            state.db_pool.get_youtube_episode_duration(data.episode_id).await.unwrap_or(0)
-        } else {
-            state.db_pool.get_episode_duration(data.episode_id).await.unwrap_or(0)
-        };
-        
-        if episode_duration > 0 {
-            let remaining_time = episode_duration as f64 - data.listen_duration;
-            
-            // Auto-complete if remaining time <= auto_complete_seconds
-            // Also handle cases where listen_duration exceeds episode_duration (dynamic ads, etc.)
-            if remaining_time <= auto_complete_seconds as f64 || data.listen_duration >= episode_duration as f64 {
-                let _ = state.db_pool.mark_episode_completed(data.episode_id, data.user_id, data.is_youtube, crate::services::sync::SyncOrigin::Pinepods).await;
-            }
-        }
-    }
+    super::progress::record_untimed_position(
+        &state,
+        &api_key,
+        data.user_id,
+        data.episode_id,
+        data.is_youtube,
+        data.listen_duration,
+        data.episode_duration,
+    )
+    .await?;
 
     Ok(Json(serde_json::json!({ "detail": "Listen duration recorded." })))
 }
@@ -2992,7 +3128,7 @@ pub async fn increment_listen_time(
         return Err(AppError::forbidden("You can only increment your own listen time."));
     }
 
-    state.db_pool.increment_listen_time(user_id).await?;
+    super::progress::record_untimed_minute(&state, &api_key, user_id).await?;
     Ok(Json(serde_json::json!({ "detail": "Listen time incremented." })))
 }
 
@@ -4232,6 +4368,78 @@ pub async fn proxy_trending(
         .await
         .map_err(|e| AppError::external_error(&format!("Failed to parse trending response: {}", e)))?;
 
+    Ok(Json(body))
+}
+
+#[derive(Deserialize, Debug, utoipa::IntoParams)]
+pub struct ProxyEpisodesParams {
+    /// Comma-separated PodcastIndex feed ids (at most 200).
+    pub feeds: String,
+    #[serde(default)]
+    pub max: Option<u32>,
+    #[serde(default)]
+    pub since: Option<i64>,
+}
+
+// Proxy PodcastIndex /episodes/byfeedid for several feeds: their newest episodes, newest
+// first. Powers the Discover page's playable episode rows.
+#[utoipa::path(
+    get,
+    path = "/proxy_episodes",
+    tag = "podcasts",
+    summary = "Proxy recent episodes of several podcasts",
+    params(ProxyEpisodesParams),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 400, description = "No feed ids"),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 503, description = "The search service isn't reachable or answered with an error"),
+    ),
+)]
+pub async fn proxy_episodes(
+    Query(params): Query<ProxyEpisodesParams>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    let feeds: Vec<&str> = params
+        .feeds
+        .split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()))
+        .take(200)
+        .collect();
+    if feeds.is_empty() {
+        return Err(AppError::bad_request("List one or more feed ids"));
+    }
+
+    let url = search_service_url("/api/episodes");
+    let mut query_params: Vec<(&str, String)> = vec![("feeds", feeds.join(","))];
+    if let Some(v) = params.max {
+        query_params.push(("max", v.min(200).to_string()));
+    }
+    if let Some(v) = params.since {
+        query_params.push(("since", v.to_string()));
+    }
+
+    let response = reqwest::Client::new()
+        .get(&url)
+        .query(&query_params)
+        .send()
+        .await
+        .map_err(|e| search_unreachable(&url, e))?;
+    if !response.status().is_success() {
+        return Err(search_failed(&url, response.status()));
+    }
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to parse episodes response: {}", e)))?;
     Ok(Json(body))
 }
 

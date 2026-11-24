@@ -42,9 +42,14 @@ void main() {
   });
 
   group('normalizeBottomBarOrder', () {
-    test('a saved order from before People keeps its order and gains People at the end', () {
+    test('a saved order from before People and Inbox keeps its order and gains them at the end', () {
       final saved = ['Search', 'Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists'];
-      expect(normalizeBottomBarOrder(saved), [...saved, 'People']);
+      expect(normalizeBottomBarOrder(saved), [...saved, 'Inbox', 'People']);
+    });
+
+    test('a saved order from before Inbox gains it at the end', () {
+      final saved = ['Home', 'Feed', 'Saved', 'Podcasts', 'People', 'Downloads', 'History', 'Playlists', 'Search'];
+      expect(normalizeBottomBarOrder(saved), [...saved, 'Inbox']);
     });
 
     test('unknown and duplicate entries are dropped', () {

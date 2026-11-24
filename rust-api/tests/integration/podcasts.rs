@@ -241,6 +241,36 @@ async fn password_protected_feeds_send_their_credentials_on_every_fetch() {
     }
 }
 
+/// Blank username and password fields mean a public feed: no `Authorization: Basic Og==`, which
+/// some hosts answer with a 401 (#1128).
+#[tokio::test(flavor = "multi_thread")]
+async fn blank_feed_credentials_send_no_authorization() {
+    let app = TestApp::new().await;
+    let user = app.user("public").await;
+    let feed = Feed::with_episodes("Public Show", 2);
+    let url = app.feed("public.xml", &feed);
+
+    let body = app
+        .post("/api/data/add_custom_podcast")
+        .key(&user)
+        .json(&json!({ "user_id": user.id, "feed_url": url, "username": "", "password": "" }))
+        .send()
+        .await
+        .ok_json();
+    let podcast_id = body["data"]["podcastid"].as_i64().unwrap_or_else(|| panic!("{body}")) as i32;
+    eventually("public episodes", || async { (app.episodes(&user, podcast_id).await.len() == 2).then_some(()) }).await;
+
+    app.feed("public.xml", &feed.episode(Episode::new(3)));
+    app.refresh().await;
+    assert_eq!(app.episodes(&user, podcast_id).await.len(), 3);
+
+    let hits = app.fixtures().hits("public.xml");
+    assert!(hits.len() >= 2, "{hits:?}");
+    for h in &hits {
+        assert_eq!(h.headers.get("authorization"), None, "blank credentials were sent: {h:?}");
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn merged_podcasts_show_as_one_and_can_be_split_again() {
     let app = TestApp::new().await;
@@ -440,4 +470,68 @@ async fn paging_through_tied_episodes_shows_each_one_once() {
             assert_eq!((seen.len(), unique.len()), (60, 60), "{sort_by} {order}: pages repeated or skipped episodes");
         }
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn podcast_list_counts_each_users_unplayed_episodes() {
+    let app = TestApp::new().await;
+    let a = app.user("finisher").await;
+    let b = app.user("newcomer").await;
+    let url = app.feed("unplayed.xml", &Feed::with_episodes("Unplayed Show", 4));
+    let pod_a = app.subscribe(&a, &url, 4).await;
+    app.subscribe(&b, &url, 4).await;
+    for n in 1..=2 {
+        let ep = app.episode_id(&a, pod_a, &format!("Episode {n}")).await;
+        app.post("/api/data/mark_episode_completed")
+            .key(&a)
+            .json(&json!({ "episode_id": ep, "user_id": a.id, "is_youtube": false }))
+            .send()
+            .await
+            .assert_ok();
+    }
+
+    let counts = |body: serde_json::Value| {
+        let p = &body["pods"][0];
+        (p["episodecount"].as_i64().unwrap(), p["unplayed_count"].as_i64().unwrap())
+    };
+    let a_pods = app.get(&format!("/api/data/return_pods/{}", a.id)).key(&a).send().await.ok_json();
+    assert_eq!(counts(a_pods), (4, 2));
+    let b_pods = app.get(&format!("/api/data/return_pods/{}", b.id)).key(&b).send().await.ok_json();
+    assert_eq!(counts(b_pods), (4, 4), "another user's plays don't count");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_podcast_count_display_setting_round_trips_and_is_private() {
+    let app = TestApp::new().await;
+    let user = app.user("counter").await;
+    let other = app.user("snoop").await;
+    let get = format!("/api/data/get_podcast_count_display/{}", user.id);
+
+    let setting = app.get(&get).key(&user).send().await.ok_json();
+    assert_eq!(setting["display"], "total", "{setting}");
+
+    app.put("/api/data/update_podcast_count_display")
+        .key(&user)
+        .json(&json!({ "user_id": user.id, "display": "unplayed" }))
+        .send()
+        .await
+        .assert_ok();
+    let setting = app.get(&get).key(&user).send().await.ok_json();
+    assert_eq!(setting["display"], "unplayed", "{setting}");
+
+    let bad = app
+        .put("/api/data/update_podcast_count_display")
+        .key(&user)
+        .json(&json!({ "user_id": user.id, "display": "sideways" }))
+        .send()
+        .await;
+    assert!(bad.status.is_client_error(), "unknown value rejected: {}", bad.status);
+
+    app.get(&get).key(&other).send().await.assert_status(403);
+    app.put("/api/data/update_podcast_count_display")
+        .key(&other)
+        .json(&json!({ "user_id": user.id, "display": "total" }))
+        .send()
+        .await
+        .assert_status(403);
 }

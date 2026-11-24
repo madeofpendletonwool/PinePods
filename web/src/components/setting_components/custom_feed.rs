@@ -4,7 +4,7 @@ use crate::requests::setting_reqs::call_add_custom_feed;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 
 #[function_component(CustomFeed)]
 pub fn custom_feed() -> Html {

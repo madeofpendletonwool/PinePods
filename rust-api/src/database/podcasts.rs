@@ -134,7 +134,34 @@ impl DatabasePool {
         feed_body: Option<&str>,
         origin: crate::services::sync::SyncOrigin,
     ) -> AppResult<(i32, Option<i32>)> {
-        let log = crate::services::sync::events::should_log(self, podcast_values.user_id, origin).await
+        self.add_podcast_row(podcast_values, podcast_index_id, username, password, feed_body, origin, true).await
+    }
+
+    /// Add a podcast row the user hasn't subscribed to, so one of its episodes can be played,
+    /// queued, downloaded or transcribed. An existing row (subscribed or not) is reused.
+    pub async fn add_unsubscribed_podcast(
+        &self,
+        podcast_values: &crate::handlers::podcasts::PodcastValues,
+        podcast_index_id: i64,
+        feed_body: Option<&str>,
+    ) -> AppResult<i32> {
+        let (podcast_id, _) = self.add_podcast_row(podcast_values, podcast_index_id, None, None, feed_body, crate::services::sync::SyncOrigin::Pinepods, false).await?;
+        Ok(podcast_id)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn add_podcast_row(
+        &self,
+        podcast_values: &crate::handlers::podcasts::PodcastValues,
+        podcast_index_id: i64,
+        username: Option<&str>,
+        password: Option<&str>,
+        feed_body: Option<&str>,
+        origin: crate::services::sync::SyncOrigin,
+        subscribed: bool,
+    ) -> AppResult<(i32, Option<i32>)> {
+        let log = subscribed
+            && crate::services::sync::events::should_log(self, podcast_values.user_id, origin).await
             && crate::services::sync::shareable_feed(&podcast_values.pod_feed_url, username, password, false);
         dialect_match!(self, {
             pg(pool) => {
@@ -147,6 +174,7 @@ impl DatabasePool {
                 
                 if let Some(row) = existing {
                     let podcast_id: i32 = row.try_get("podcastid")?;
+                    self.mark_subscription_use(podcast_id, podcast_values.user_id, subscribed, origin).await?;
                     // Check if there are episodes
                     let episode_count = q::query(r#"SELECT COUNT(*) as count FROM "Episodes" WHERE feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $1)"#)
                         .bind(podcast_id)
@@ -174,8 +202,10 @@ impl DatabasePool {
                 let row = q::query(
                     r#"INSERT INTO "Podcasts" 
                        (podcastname, artworkurl, author, categories, description, episodecount, 
-                        feedurl, websiteurl, explicit, userid, feedcutoffdays, username, password, podcastindexid)
-                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                        feedurl, websiteurl, explicit, userid, feedcutoffdays, username, password, podcastindexid,
+                        subscribed, unsubscribedsince)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+                               CASE WHEN $15 THEN NULL ELSE CURRENT_TIMESTAMP END)
                        RETURNING podcastid"#
                 )
                 .bind(&podcast_values.pod_title)
@@ -192,16 +222,19 @@ impl DatabasePool {
                 .bind(username)
                 .bind(password)
                 .bind(podcast_index_id)
+                .bind(subscribed)
                 .fetch_one(&mut *tx)
                 .await?;
                 
                 let podcast_id: i32 = row.try_get("podcastid")?;
                 
                 // Update UserStats table
-                q::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded + 1 WHERE userid = $1"#)
-                    .bind(podcast_values.user_id)
-                    .execute(&mut *tx)
-                    .await?;
+                if subscribed {
+                    q::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded + 1 WHERE userid = $1"#)
+                        .bind(podcast_values.user_id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
                 if log {
                     q::pick(crate::services::sync::events::subscription_pg, crate::services::sync::events::subscription_lite)(self, &mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
                 }
@@ -234,6 +267,7 @@ impl DatabasePool {
                 
                 if let Some(row) = existing {
                     let podcast_id: i32 = row.try_get("PodcastID")?;
+                    self.mark_subscription_use(podcast_id, podcast_values.user_id, subscribed, origin).await?;
                     // Check if there are episodes
                     let episode_count = sqlx::query("SELECT COUNT(*) as count FROM Episodes WHERE FeedID = (SELECT FeedID FROM Podcasts WHERE PodcastID = ?)")
                         .bind(podcast_id)
@@ -261,8 +295,9 @@ impl DatabasePool {
                 let result = sqlx::query(
                     "INSERT INTO Podcasts 
                      (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, 
-                      FeedURL, WebsiteURL, Explicit, UserID, FeedCutoffDays, Username, Password, PodcastIndexID)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                      FeedURL, WebsiteURL, Explicit, UserID, FeedCutoffDays, Username, Password, PodcastIndexID,
+                      Subscribed, UnsubscribedSince)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, IF(?, NULL, CURRENT_TIMESTAMP))"
                 )
                 .bind(&podcast_values.pod_title)
                 .bind(&podcast_values.pod_artwork)
@@ -278,16 +313,20 @@ impl DatabasePool {
                 .bind(username)
                 .bind(password)
                 .bind(podcast_index_id)
+                .bind(subscribed)
+                .bind(subscribed)
                 .execute(&mut *tx)
                 .await?;
                 
                 let podcast_id = result.last_insert_id() as i32;
                 
                 // Update UserStats table
-                sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = ?")
-                    .bind(podcast_values.user_id)
-                    .execute(&mut *tx)
-                    .await?;
+                if subscribed {
+                    sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = ?")
+                        .bind(podcast_values.user_id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
                 if log {
                     crate::services::sync::events::subscription_mysql(self, &mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
                 }
@@ -309,6 +348,171 @@ impl DatabasePool {
                     podcast_values.pod_title, podcast_values.user_id, episode_count);
                 
                 Ok((podcast_id, first_episode_id))
+            },
+        })
+    }
+
+    /// An add found the user's existing row for the feed. Subscribing to a row kept only for
+    /// episodes the user used flips it to subscribed (counted and synced like a new subscription);
+    /// using an episode of it again keeps it from being cleaned up.
+    pub(crate) async fn mark_subscription_use(&self, podcast_id: i32, user_id: i32, subscribe: bool, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
+        if !subscribe {
+            dialect_match!(self, {
+                pg(pool) => {
+                    q::query(r#"UPDATE "Podcasts" SET unsubscribedsince = CURRENT_TIMESTAMP WHERE podcastid = $1 AND subscribed = FALSE"#)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                },
+                mysql(pool) => {
+                    sqlx::query("UPDATE Podcasts SET UnsubscribedSince = CURRENT_TIMESTAMP WHERE PodcastID = ? AND Subscribed = 0")
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                },
+            });
+            return Ok(());
+        }
+        let Some((feed_url, username, password)) = self.unsubscribed_row(podcast_id).await? else {
+            return Ok(());
+        };
+        let log = crate::services::sync::events::should_log(self, user_id, origin).await
+            && crate::services::sync::shareable_feed(&feed_url, username.as_deref(), password.as_deref(), false);
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
+                let flipped = q::query(r#"UPDATE "Podcasts" SET subscribed = TRUE, unsubscribedsince = NULL WHERE podcastid = $1 AND subscribed = FALSE"#)
+                    .bind(podcast_id)
+                    .execute(&mut *tx)
+                    .await?
+                    .rows_affected() > 0;
+                if flipped {
+                    q::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded + 1 WHERE userid = $1"#)
+                        .bind(user_id)
+                        .execute(&mut *tx)
+                        .await?;
+                    if log {
+                        q::pick(crate::services::sync::events::subscription_pg, crate::services::sync::events::subscription_lite)(self, &mut tx, user_id, &feed_url, "add").await;
+                    }
+                }
+                tx.commit().await?;
+            },
+            mysql(pool) => {
+                let mut tx = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
+                let flipped = sqlx::query("UPDATE Podcasts SET Subscribed = 1, UnsubscribedSince = NULL WHERE PodcastID = ? AND Subscribed = 0")
+                    .bind(podcast_id)
+                    .execute(&mut *tx)
+                    .await?
+                    .rows_affected() > 0;
+                if flipped {
+                    sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = ?")
+                        .bind(user_id)
+                        .execute(&mut *tx)
+                        .await?;
+                    if log {
+                        crate::services::sync::events::subscription_mysql(self, &mut tx, user_id, &feed_url, "add").await;
+                    }
+                }
+                tx.commit().await?;
+            },
+        });
+        Ok(())
+    }
+
+    /// Feed URL and credentials of a row the user hasn't subscribed to; None when subscribed.
+    async fn unsubscribed_row(&self, podcast_id: i32) -> AppResult<Option<(String, Option<String>, Option<String>)>> {
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT feedurl, username, password FROM "Podcasts" WHERE podcastid = $1 AND subscribed = FALSE"#)
+                    .bind(podcast_id)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(match row {
+                    Some(r) => Some((r.try_get("feedurl")?, r.try_get("username")?, r.try_get("password")?)),
+                    None => None,
+                })
+            },
+            mysql(pool) => {
+                let row = sqlx::query("SELECT FeedURL, Username, Password FROM Podcasts WHERE PodcastID = ? AND Subscribed = 0")
+                    .bind(podcast_id)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(match row {
+                    Some(r) => Some((r.try_get("FeedURL")?, r.try_get("Username")?, r.try_get("Password")?)),
+                    None => None,
+                })
+            },
+        })
+    }
+
+    /// The user's row for a feed, subscribed or not.
+    pub async fn podcast_row_for_feed(&self, user_id: i32, feed_url: &str) -> AppResult<Option<i32>> {
+        dialect_match!(self, {
+            pg(pool) => {
+                Ok(q::query_scalar(r#"SELECT podcastid FROM "Podcasts" WHERE userid = $1 AND feedurl = $2"#)
+                    .bind(user_id)
+                    .bind(feed_url)
+                    .fetch_optional(pool)
+                    .await?)
+            },
+            mysql(pool) => {
+                Ok(sqlx::query_scalar("SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?")
+                    .bind(user_id)
+                    .bind(feed_url)
+                    .fetch_optional(pool)
+                    .await?)
+            },
+        })
+    }
+
+    /// An episode of the podcast row's feed, by audio URL, else by title.
+    pub async fn find_podcast_episode(&self, podcast_id: i32, episode_url: &str, episode_title: &str) -> AppResult<Option<i32>> {
+        dialect_match!(self, {
+            pg(pool) => {
+                Ok(q::query_scalar(r#"SELECT e.episodeid FROM "Episodes" e
+                       JOIN "Podcasts" p ON p.feedid = e.feedid
+                       WHERE p.podcastid = $1 AND (e.episodeurl = $2 OR e.episodetitle = $3)
+                       ORDER BY CASE WHEN e.episodeurl = $2 THEN 0 ELSE 1 END, e.episodepubdate DESC
+                       LIMIT 1"#)
+                    .bind(podcast_id)
+                    .bind(episode_url)
+                    .bind(episode_title)
+                    .fetch_optional(pool)
+                    .await?)
+            },
+            mysql(pool) => {
+                Ok(sqlx::query_scalar("SELECT e.EpisodeID FROM Episodes e
+                       JOIN Podcasts p ON p.FeedID = e.FeedID
+                       WHERE p.PodcastID = ? AND (e.EpisodeURL = ? OR e.EpisodeTitle = ?)
+                       ORDER BY CASE WHEN e.EpisodeURL = ? THEN 0 ELSE 1 END, e.EpisodePubDate DESC
+                       LIMIT 1")
+                    .bind(podcast_id)
+                    .bind(episode_url)
+                    .bind(episode_title)
+                    .bind(episode_url)
+                    .fetch_optional(pool)
+                    .await?)
+            },
+        })
+    }
+
+    /// Whether the user subscribed to this podcast row (false for a row kept only for episodes
+    /// they used, and for a row that doesn't exist).
+    pub async fn podcast_subscribed(&self, podcast_id: i32) -> AppResult<bool> {
+        dialect_match!(self, {
+            pg(pool) => {
+                let v: Option<bool> = q::query_scalar(r#"SELECT subscribed FROM "Podcasts" WHERE podcastid = $1"#)
+                    .bind(podcast_id)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(v.unwrap_or(false))
+            },
+            mysql(pool) => {
+                let v: Option<bool> = sqlx::query_scalar("SELECT Subscribed FROM Podcasts WHERE PodcastID = ?")
+                    .bind(podcast_id)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(v.unwrap_or(false))
             },
         })
     }
@@ -335,6 +539,7 @@ impl DatabasePool {
                 
                 if let Some(row) = existing {
                     let podcast_id: i32 = row.try_get("podcastid")?;
+                    self.mark_subscription_use(podcast_id, podcast_values.user_id, true, origin).await?;
                     return Ok(podcast_id);
                 }
                 
@@ -396,6 +601,7 @@ impl DatabasePool {
                 
                 if let Some(row) = existing {
                     let podcast_id: i32 = row.try_get("PodcastID")?;
+                    self.mark_subscription_use(podcast_id, podcast_values.user_id, true, origin).await?;
                     return Ok(podcast_id);
                 }
                 
@@ -528,7 +734,7 @@ impl DatabasePool {
                 // Locking the row first makes a concurrent import of this feed wait (its episode
                 // inserts check the row), instead of adding episodes between the deletes below.
                 let podcast = q::query(
-                    r#"SELECT feedurl, username, password, COALESCE(isyoutubechannel, FALSE) AS yt, feedid FROM "Podcasts" WHERE podcastid = $1 FOR UPDATE"#
+                    r#"SELECT feedurl, username, password, COALESCE(isyoutubechannel, FALSE) AS yt, feedid, subscribed FROM "Podcasts" WHERE podcastid = $1 FOR UPDATE"#
                 )
                 .bind(podcast_id)
                 .fetch_optional(&mut *tx)
@@ -543,6 +749,8 @@ impl DatabasePool {
                 );
 
                 let feed_id: Option<i32> = podcast.try_get("feedid")?;
+                // A row kept only for episodes the user used was never a subscription to sync or count.
+                let subscribed: bool = podcast.try_get("subscribed")?;
                 // The feed's episodes are shared: only this user's rows for them go, and the
                 // episodes themselves only with the last subscription.
                 let episodes = feed_episodes_sql(feed_id, podcast_id, true);
@@ -592,12 +800,14 @@ impl DatabasePool {
                 q::pick(remove_unsubscribed_episodes_pg, remove_unsubscribed_episodes_lite)(&mut tx, feed_id, &episodes).await?;
 
                 // Update user stats
-                q::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = $1"#)
-                    .bind(user_id)
-                    .execute(&mut *tx)
-                    .await?;
+                if subscribed {
+                    q::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = $1"#)
+                        .bind(user_id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
 
-                if log && shareable {
+                if log && shareable && subscribed {
                     q::pick(events::subscription_pg, events::subscription_lite)(self, &mut tx, user_id, &feed_url, "remove").await;
                 }
                 tx.commit().await?;
@@ -606,7 +816,7 @@ impl DatabasePool {
             mysql(pool) => {
                 let mut tx = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
                 let podcast = sqlx::query(
-                    "SELECT FeedURL, Username, Password, IsYouTubeChannel AS yt, FeedID FROM Podcasts WHERE PodcastID = ? FOR UPDATE"
+                    "SELECT FeedURL, Username, Password, IsYouTubeChannel AS yt, FeedID, Subscribed FROM Podcasts WHERE PodcastID = ? FOR UPDATE"
                 )
                 .bind(podcast_id)
                 .fetch_optional(&mut *tx)
@@ -621,6 +831,8 @@ impl DatabasePool {
                 );
 
                 let feed_id: Option<i32> = podcast.try_get("FeedID")?;
+                // A row kept only for episodes the user used was never a subscription to sync or count.
+                let subscribed: bool = podcast.try_get("Subscribed")?;
                 let episodes = feed_episodes_sql(feed_id, podcast_id, false);
                 let files: Vec<Option<String>> = if feed_url.starts_with("local://") {
                     Vec::new()
@@ -668,12 +880,14 @@ impl DatabasePool {
                 remove_unsubscribed_episodes_mysql(&mut tx, feed_id, &episodes).await?;
 
                 // Update user stats
-                sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = ?")
-                    .bind(user_id)
-                    .execute(&mut *tx)
-                    .await?;
+                if subscribed {
+                    sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = ?")
+                        .bind(user_id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
 
-                if log && shareable {
+                if log && shareable && subscribed {
                     events::subscription_mysql(self, &mut tx, user_id, &feed_url, "remove").await;
                 }
                 tx.commit().await?;
@@ -686,7 +900,7 @@ impl DatabasePool {
     pub async fn get_user_podcast_count(&self, user_id: i32) -> AppResult<u32> {
         dialect_match!(self, {
             pg(pool) => {
-                let row = q::query(r#"SELECT COUNT(*) as count FROM "Podcasts" WHERE userid = $1"#)
+                let row = q::query(r#"SELECT COUNT(*) as count FROM "Podcasts" WHERE userid = $1 AND subscribed = TRUE"#)
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
@@ -694,7 +908,7 @@ impl DatabasePool {
                 Ok(row.try_get::<i64, _>("count")? as u32)
             },
             mysql(pool) => {
-                let row = sqlx::query("SELECT COUNT(*) as count FROM Podcasts WHERE UserID = ?")
+                let row = sqlx::query("SELECT COUNT(*) as count FROM Podcasts WHERE UserID = ? AND Subscribed = 1")
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
@@ -734,9 +948,15 @@ impl DatabasePool {
                                          (SELECT MAX(v.publishedat) FROM "YouTubeVideos" v WHERE v.podcastid = "Podcasts".podcastid)),
                                 'YYYY-MM-DD"T"HH24:MI:SS') as newest_episode_date,
                         (SELECT COUNT(*) FROM "UserEpisodeHistory" h JOIN "Episodes" e ON e.episodeid = h.episodeid
-                         WHERE h.userid = $1 AND e.feedid = "Podcasts".feedid) as play_count
+                         WHERE h.userid = $1 AND e.feedid = "Podcasts".feedid) as play_count,
+                        (SELECT COUNT(*) FROM "Episodes" e
+                         WHERE e.feedid = "Podcasts".feedid
+                           AND NOT EXISTS (SELECT 1 FROM "UserEpisodeState" s
+                                           WHERE s.userid = $1 AND s.episodeid = e.episodeid AND s.completed = TRUE))
+                        + (SELECT COUNT(*) FROM "YouTubeVideos" v
+                           WHERE v.podcastid = "Podcasts".podcastid AND COALESCE(v.completed, FALSE) = FALSE) as unplayed_count
                     FROM "Podcasts"
-                    WHERE userid = $1 AND COALESCE(displaypodcast, TRUE) = TRUE
+                    WHERE userid = $1 AND COALESCE(displaypodcast, TRUE) = TRUE AND subscribed = TRUE
                     ORDER BY podcastname"#
                 )
                 .bind(user_id)
@@ -765,6 +985,7 @@ impl DatabasePool {
                         oldest_episode_date: row.try_get("oldest_episode_date")?,
                         newest_episode_date: row.try_get("newest_episode_date")?,
                         play_count: row.try_get("play_count")?,
+                        unplayed_count: row.try_get("unplayed_count")?,
                     });
                 }
                 Ok(podcasts)
@@ -796,11 +1017,18 @@ impl DatabasePool {
                                              (SELECT MAX(v.PublishedAt) FROM YouTubeVideos v WHERE v.PodcastID = Podcasts.PodcastID)),
                                     '%Y-%m-%dT%H:%i:%s') as newest_episode_date,
                         (SELECT COUNT(*) FROM UserEpisodeHistory h JOIN Episodes e ON e.EpisodeID = h.EpisodeID
-                         WHERE h.UserID = ? AND e.FeedID = Podcasts.FeedID) as play_count
+                         WHERE h.UserID = ? AND e.FeedID = Podcasts.FeedID) as play_count,
+                        (SELECT COUNT(*) FROM Episodes e
+                         WHERE e.FeedID = Podcasts.FeedID
+                           AND NOT EXISTS (SELECT 1 FROM UserEpisodeState s
+                                           WHERE s.UserID = ? AND s.EpisodeID = e.EpisodeID AND s.Completed = 1))
+                        + (SELECT COUNT(*) FROM YouTubeVideos v
+                           WHERE v.PodcastID = Podcasts.PodcastID AND COALESCE(v.Completed, 0) = 0) as unplayed_count
                     FROM Podcasts
-                    WHERE UserID = ? AND COALESCE(DisplayPodcast, 1) = 1
+                    WHERE UserID = ? AND COALESCE(DisplayPodcast, 1) = 1 AND Subscribed = 1
                     ORDER BY PodcastName"
                 )
+                .bind(user_id)
                 .bind(user_id)
                 .bind(user_id)
                 .fetch_all(pool)
@@ -828,6 +1056,7 @@ impl DatabasePool {
                         oldest_episode_date: row.try_get("oldest_episode_date")?,
                         newest_episode_date: row.try_get("newest_episode_date")?,
                         play_count: row.try_get("play_count")?,
+                        unplayed_count: row.try_get("unplayed_count")?,
                     });
                 }
                 Ok(podcasts)
@@ -865,7 +1094,7 @@ impl DatabasePool {
                     FROM "Podcasts" p
                     LEFT JOIN "Episodes" e ON p.feedid = e.feedid
                     LEFT JOIN "UserEpisodeHistory" ueh ON e.episodeid = ueh.episodeid AND ueh.userid = $1
-                    WHERE p.userid = $1 AND COALESCE(p.displaypodcast, TRUE) = TRUE
+                    WHERE p.userid = $1 AND COALESCE(p.displaypodcast, TRUE) = TRUE AND p.subscribed = TRUE
                     GROUP BY p.podcastid, p.podcastname, p.artworkurl, p.description,
                              p.episodecount, p.websiteurl, p.feedurl, p.author,
                              p.categories, p.explicit, p.podcastindexid, p.isyoutubechannel, p.isfavorite
@@ -932,7 +1161,7 @@ impl DatabasePool {
                     FROM Podcasts p
                     LEFT JOIN Episodes e ON p.FeedID = e.FeedID
                     LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
-                    WHERE p.UserID = ? AND COALESCE(p.DisplayPodcast, 1) = 1
+                    WHERE p.UserID = ? AND COALESCE(p.DisplayPodcast, 1) = 1 AND p.Subscribed = 1
                     GROUP BY p.PodcastID, p.PodcastName, p.ArtworkURL, p.Description,
                              p.EpisodeCount, p.WebsiteURL, p.FeedURL, p.Author,
                              p.Categories, p.Explicit, p.PodcastIndexID, p.IsYouTubeChannel, p.IsFavorite
@@ -1206,7 +1435,7 @@ impl DatabasePool {
             pg(pool) => {
                 let row = q::query(
                     r#"SELECT podcastid FROM "Podcasts" 
-                       WHERE userid = $1 AND podcastname = $2 AND feedurl = $3"#
+                       WHERE userid = $1 AND podcastname = $2 AND feedurl = $3 AND subscribed = TRUE"#
                 )
                 .bind(user_id)
                 .bind(podcast_name)
@@ -1219,7 +1448,7 @@ impl DatabasePool {
             mysql(pool) => {
                 let row = sqlx::query(
                     "SELECT PodcastID FROM Podcasts 
-                     WHERE UserID = ? AND PodcastName = ? AND FeedURL = ?"
+                     WHERE UserID = ? AND PodcastName = ? AND FeedURL = ? AND Subscribed = 1"
                 )
                 .bind(user_id)
                 .bind(podcast_name)
@@ -1236,7 +1465,7 @@ impl DatabasePool {
     pub async fn get_podcast_id(&self, user_id: i32, podcast_feed: &str, podcast_title: &str) -> AppResult<Option<i32>> {
         dialect_match!(self, {
             pg(pool) => {
-                let row = q::query(r#"SELECT podcastid FROM "Podcasts" WHERE feedurl = $1 AND podcastname = $2 AND userid = $3"#)
+                let row = q::query(r#"SELECT podcastid FROM "Podcasts" WHERE feedurl = $1 AND podcastname = $2 AND userid = $3 AND subscribed = TRUE"#)
                     .bind(podcast_feed)
                     .bind(podcast_title)
                     .bind(user_id)
@@ -1250,7 +1479,7 @@ impl DatabasePool {
                 }
             },
             mysql(pool) => {
-                let row = sqlx::query("SELECT PodcastID FROM Podcasts WHERE FeedURL = ? AND PodcastName = ? AND UserID = ?")
+                let row = sqlx::query("SELECT PodcastID FROM Podcasts WHERE FeedURL = ? AND PodcastName = ? AND UserID = ? AND Subscribed = 1")
                     .bind(podcast_feed)
                     .bind(podcast_title)
                     .bind(user_id)
@@ -1548,7 +1777,7 @@ impl DatabasePool {
                     SELECT podcastid, podcastname, feedurl, description, author, artworkurl, 
                            explicit, episodecount, categories, websiteurl, podcastindexid, isyoutubechannel,
                            userid, autodownload, startskip, endskip, username, password, notificationsenabled, feedcutoffdays,
-                           playbackspeed, playbackspeedcustomized
+                           playbackspeed, playbackspeedcustomized, subscribed
                     FROM "Podcasts" 
                     WHERE podcastid = $1 AND userid = $2
                 "#)
@@ -1563,7 +1792,7 @@ impl DatabasePool {
                         SELECT podcastid, podcastname, feedurl, description, author, artworkurl, 
                                explicit, episodecount, categories, websiteurl, podcastindexid, isyoutubechannel,
                                userid, autodownload, startskip, endskip, username, password, notificationsenabled, feedcutoffdays,
-                               playbackspeed, playbackspeedcustomized
+                               playbackspeed, playbackspeedcustomized, subscribed
                         FROM "Podcasts" 
                         WHERE podcastid = $1 AND userid = 1
                     "#)
@@ -1613,6 +1842,7 @@ impl DatabasePool {
                     "notificationsenabled": row.try_get::<bool, _>("notificationsenabled").unwrap_or(false),
                     "feedcutoffdays": row.try_get::<i32, _>("feedcutoffdays").unwrap_or(0),
                     "playbackspeedcustomized": row.try_get::<bool, _>("playbackspeedcustomized").unwrap_or(false),
+                    "subscribed": row.try_get::<bool, _>("subscribed").unwrap_or(true),
                     "playbackspeed": row.try_get::<f64, _>("playbackspeed").unwrap_or(1.0)
                 }))
             },
@@ -1622,7 +1852,7 @@ impl DatabasePool {
                     SELECT PodcastID, PodcastName, FeedURL, Description, Author, ArtworkURL, 
                            Explicit, EpisodeCount, Categories, WebsiteURL, PodcastIndexID, IsYouTubeChannel,
                            UserID, AutoDownload, StartSkip, EndSkip, Username, Password, NotificationsEnabled, FeedCutoffDays,
-                           PlaybackSpeed, PlaybackSpeedCustomized
+                           PlaybackSpeed, PlaybackSpeedCustomized, Subscribed
                     FROM Podcasts 
                     WHERE PodcastID = ? AND UserID = ?
                 "#)
@@ -1637,7 +1867,7 @@ impl DatabasePool {
                         SELECT PodcastID, PodcastName, FeedURL, Description, Author, ArtworkURL, 
                                Explicit, EpisodeCount, Categories, WebsiteURL, PodcastIndexID, IsYouTubeChannel,
                                UserID, AutoDownload, StartSkip, EndSkip, Username, Password, NotificationsEnabled, FeedCutoffDays,
-                               PlaybackSpeed, PlaybackSpeedCustomized
+                               PlaybackSpeed, PlaybackSpeedCustomized, Subscribed
                         FROM Podcasts 
                         WHERE PodcastID = ? AND UserID = 1
                     "#)
@@ -1687,6 +1917,7 @@ impl DatabasePool {
                     "notificationsenabled": row.try_get::<i8, _>("NotificationsEnabled").unwrap_or(0) != 0,
                     "feedcutoffdays": row.try_get::<i32, _>("FeedCutoffDays").unwrap_or(0),
                     "playbackspeedcustomized": row.try_get::<i8, _>("PlaybackSpeedCustomized").unwrap_or(0) != 0,
+                    "subscribed": row.try_get::<i8, _>("Subscribed").unwrap_or(1) != 0,
                     "playbackspeed": if let Ok(speed) = row.try_get::<bigdecimal::BigDecimal, _>("PlaybackSpeed") {
                         speed.to_f64().unwrap_or(1.0)
                     } else {
@@ -2120,7 +2351,7 @@ impl DatabasePool {
                 let rows = q::query(
                     r#"SELECT podcastid, podcastname, artworkurl, author, description, feedurl
                        FROM "Podcasts" 
-                       WHERE userid = $1 AND (podcastindexid = 0 OR podcastindexid IS NULL) 
+                       WHERE userid = $1 AND subscribed = TRUE AND (podcastindexid = 0 OR podcastindexid IS NULL) 
                        AND (ignorepodcastindex = FALSE OR ignorepodcastindex IS NULL)
                        ORDER BY podcastname"#
                 )
@@ -2147,7 +2378,7 @@ impl DatabasePool {
                 let rows = sqlx::query(
                     "SELECT PodcastID, PodcastName, ArtworkURL, Author, Description, FeedURL
                      FROM Podcasts 
-                     WHERE UserID = ? AND (PodcastIndexID = 0 OR PodcastIndexID IS NULL) 
+                     WHERE UserID = ? AND Subscribed = 1 AND (PodcastIndexID = 0 OR PodcastIndexID IS NULL) 
                      AND (IgnorePodcastIndex = 0 OR IgnorePodcastIndex IS NULL)
                      ORDER BY PodcastName"
                 )
@@ -2242,7 +2473,7 @@ impl DatabasePool {
                 let rows = q::query(
                     r#"SELECT podcastid, podcastname, artworkurl, author, description, feedurl
                        FROM "Podcasts" 
-                       WHERE userid = $1 AND ignorepodcastindex = TRUE
+                       WHERE userid = $1 AND subscribed = TRUE AND ignorepodcastindex = TRUE
                        ORDER BY podcastname"#
                 )
                 .bind(user_id)
@@ -2268,7 +2499,7 @@ impl DatabasePool {
                 let rows = sqlx::query(
                     "SELECT PodcastID, PodcastName, ArtworkURL, Author, Description, FeedURL
                      FROM Podcasts 
-                     WHERE UserID = ? AND IgnorePodcastIndex = 1
+                     WHERE UserID = ? AND Subscribed = 1 AND IgnorePodcastIndex = 1
                      ORDER BY PodcastName"
                 )
                 .bind(user_id)

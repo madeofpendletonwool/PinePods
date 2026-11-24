@@ -6,7 +6,7 @@
 
 use crate::components::context::UIState;
 use gloo::events::{EventListener, EventListenerOptions, EventListenerPhase};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -50,7 +50,25 @@ pub fn seek_to(seconds: f64) {
     let seconds = seconds.max(0.0);
     if with_media(|m| m.set_current_time(seconds)).is_some() {
         Dispatch::<UIState>::global().reduce_mut(|s| s.update_current_time(seconds));
+        crate::components::media_session::update_position();
     }
+}
+
+/// Live (position, duration, playback rate) of whatever is playing.
+pub fn position_and_rate() -> Option<(f64, f64, f64)> {
+    with_media(|m| (m.current_time(), m.duration(), m.playback_rate()))
+}
+
+/// Play or pause whatever is loaded. The element's play/pause events update
+/// `audio_playing`, as for the on-screen button.
+pub fn set_playing(play: bool) {
+    with_media(|m| {
+        if play {
+            let _ = m.play();
+        } else {
+            let _ = m.pause();
+        }
+    });
 }
 
 pub fn seek_by(delta: f64) {

@@ -105,7 +105,7 @@ impl DatabasePool {
                             AND "DownloadedEpisodes".userid = $1
                         WHERE "Episodes".episodepubdate >= NOW() - INTERVAL '30 days'
                         AND "Episodes".episodepubdate > $6
-                        AND "Podcasts".userid = $1
+                        AND "Podcasts".userid = $1 AND "Podcasts".subscribed = TRUE
 
                         UNION ALL
 
@@ -238,7 +238,7 @@ impl DatabasePool {
                             AND DownloadedEpisodes.UserID = ?
                         WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                         AND Episodes.EpisodePubDate > ?
-                        AND Podcasts.UserID = ?
+                        AND Podcasts.UserID = ? AND Podcasts.Subscribed = 1
 
                         UNION ALL
 
@@ -483,173 +483,6 @@ impl DatabasePool {
         Ok(())
     }
 
-    // Mark episode as completed - matches Python mark_episode_completed function
-    pub async fn mark_episode_completed(&self, episode_id: i32, user_id: i32, is_youtube: bool, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
-        // Completing an episode also removes it from the queue (if present) so a
-        // finished item never lingers in "up next". Runs for both podcast and
-        // YouTube completions; no-op when not queued. Doing this here makes queue
-        // removal reliable regardless of which client auto-advance path fired.
-        self.remove_queued_episode(episode_id, user_id, is_youtube).await?;
-        let log = !is_youtube && crate::services::sync::events::should_log(self, user_id, origin).await;
-
-        dialect_match!(self, {
-            pg(pool) => {
-                if is_youtube {
-                    // Get YouTube video duration
-                    let duration_row = q::query(
-                        r#"SELECT duration FROM "YouTubeVideos" WHERE videoid = $1"#
-                    )
-                    .bind(episode_id)
-                    .fetch_optional(pool)
-                    .await?;
-
-                    if let Some(row) = duration_row {
-                        let duration: Option<i32> = row.try_get("duration").ok();
-                        
-                        if let Some(duration) = duration {
-                            // Update completion status
-                            q::query(
-                                r#"UPDATE "YouTubeVideos" SET completed = TRUE WHERE videoid = $1"#
-                            )
-                            .bind(episode_id)
-                            .execute(pool)
-                            .await?;
-
-                            // Update history
-                            q::query(
-                                r#"INSERT INTO "UserVideoHistory" (userid, videoid, listendate, listenduration)
-                                   VALUES ($1, $2, NOW(), $3)
-                                   ON CONFLICT (userid, videoid)
-                                   DO UPDATE SET listenduration = $4, listendate = NOW()"#
-                            )
-                            .bind(user_id)
-                            .bind(episode_id)
-                            .bind(duration)
-                            .bind(duration)
-                            .execute(pool)
-                            .await?;
-                        }
-                    }
-                } else {
-                    // Get episode duration
-                    let duration_row = q::query(
-                        r#"SELECT episodeduration FROM "Episodes" WHERE episodeid = $1"#
-                    )
-                    .bind(episode_id)
-                    .fetch_optional(pool)
-                    .await?;
-
-                    if let Some(row) = duration_row {
-                        let duration: Option<i32> = row.try_get("episodeduration").ok();
-                        
-                        if let Some(duration) = duration {
-                            let mut tx = q::begin(pool).await?;
-                            // Update completion status
-                            q::pick(set_completed_pg, set_completed_lite)(&mut tx, user_id, &[episode_id], true).await?;
-
-                            // Update history
-                            q::query(
-                                r#"INSERT INTO "UserEpisodeHistory" (userid, episodeid, listendate, listenduration)
-                                   VALUES ($1, $2, NOW(), $3)
-                                   ON CONFLICT (userid, episodeid)
-                                   DO UPDATE SET listenduration = $4, listendate = NOW()"#
-                            )
-                            .bind(user_id)
-                            .bind(episode_id)
-                            .bind(duration)
-                            .bind(duration)
-                            .execute(&mut *tx)
-                            .await?;
-                            if log {
-                                q::pick(crate::services::sync::events::episode_pg, crate::services::sync::events::episode_lite)(self, &mut tx, user_id, episode_id, crate::services::sync::events::EpisodeEvent::Completed).await;
-                            }
-                            tx.commit().await?;
-                        }
-                    }
-                }
-                Ok(())
-            },
-            mysql(pool) => {
-                if is_youtube {
-                    // Get YouTube video duration
-                    let duration_row = sqlx::query(
-                        "SELECT Duration FROM YouTubeVideos WHERE VideoID = ?"
-                    )
-                    .bind(episode_id)
-                    .fetch_optional(pool)
-                    .await?;
-
-                    if let Some(row) = duration_row {
-                        let duration: Option<i32> = row.try_get("Duration").ok();
-                        
-                        if let Some(duration) = duration {
-                            // Update completion status
-                            sqlx::query(
-                                "UPDATE YouTubeVideos SET Completed = 1 WHERE VideoID = ?"
-                            )
-                            .bind(episode_id)
-                            .execute(pool)
-                            .await?;
-
-                            // Update history
-                            sqlx::query(
-                                "INSERT INTO UserVideoHistory (UserID, VideoID, ListenDate, ListenDuration)
-                                 VALUES (?, ?, NOW(), ?)
-                                 ON DUPLICATE KEY UPDATE
-                                     ListenDuration = ?,
-                                     ListenDate = NOW()"
-                            )
-                            .bind(user_id)
-                            .bind(episode_id)
-                            .bind(duration)
-                            .bind(duration)
-                            .execute(pool)
-                            .await?;
-                        }
-                    }
-                } else {
-                    // Get episode duration
-                    let duration_row = sqlx::query(
-                        "SELECT EpisodeDuration FROM Episodes WHERE EpisodeID = ?"
-                    )
-                    .bind(episode_id)
-                    .fetch_optional(pool)
-                    .await?;
-
-                    if let Some(row) = duration_row {
-                        let duration: Option<i32> = row.try_get("EpisodeDuration").ok();
-                        
-                        if let Some(duration) = duration {
-                            let mut tx = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
-                            // Update completion status
-                            set_completed_mysql(&mut tx, user_id, &[episode_id], true).await?;
-
-                            // Update history
-                            sqlx::query(
-                                "INSERT INTO UserEpisodeHistory (UserID, EpisodeID, ListenDate, ListenDuration)
-                                 VALUES (?, ?, NOW(), ?)
-                                 ON DUPLICATE KEY UPDATE
-                                     ListenDuration = ?,
-                                     ListenDate = NOW()"
-                            )
-                            .bind(user_id)
-                            .bind(episode_id)
-                            .bind(duration)
-                            .bind(duration)
-                            .execute(&mut *tx)
-                            .await?;
-                            if log {
-                                crate::services::sync::events::episode_mysql(self, &mut tx, user_id, episode_id, crate::services::sync::events::EpisodeEvent::Completed).await;
-                            }
-                            tx.commit().await?;
-                        }
-                    }
-                }
-                Ok(())
-            },
-        })
-    }
-
     // Increment played count - matches Python increment_played function
     pub async fn increment_played(&self, user_id: i32) -> AppResult<()> {
         dialect_match!(self, {
@@ -768,7 +601,7 @@ impl DatabasePool {
                 
                 if is_youtube {
                     // Handle YouTube video
-                    q::query(r#"UPDATE "YouTubeVideos" SET completed = FALSE WHERE videoid = $1"#)
+                    q::query(r#"UPDATE "YouTubeVideos" SET completed = FALSE, listenposition = 0 WHERE videoid = $1"#)
                         .bind(episode_id)
                         .execute(&mut *transaction)
                         .await?;
@@ -800,7 +633,7 @@ impl DatabasePool {
                 
                 if is_youtube {
                     // Handle YouTube video
-                    sqlx::query("UPDATE YouTubeVideos SET Completed = 0 WHERE VideoID = ?")
+                    sqlx::query("UPDATE YouTubeVideos SET Completed = 0, ListenPosition = 0 WHERE VideoID = ?")
                         .bind(episode_id)
                         .execute(&mut *transaction)
                         .await?;
@@ -1393,7 +1226,7 @@ impl DatabasePool {
         
         // Use same auth for chapters if it's from the same domain
         if chapters_url.starts_with(feed_url) {
-            if let (Some(user), Some(pass)) = (username, password) {
+            if let Some((user, pass)) = crate::services::http::feed_credentials(username, password) {
                 request = request.basic_auth(user, Some(pass));
             }
         }
@@ -1663,11 +1496,16 @@ impl DatabasePool {
             _          => "Episodepubdate",
         };
         let order_dir = if sort_order == "asc" { "ASC" } else { "DESC" };
-        let has_search = !search.is_empty();
+        // Every search term must appear in the title or the description's visible text (the raw
+        // description until that is filled). Episodes with the terms in their title come first.
+        let terms = crate::services::search_text::SearchTerms::parse(search);
+        let has_search = !terms.is_empty();
+        let patterns = terms.like_patterns();
+        let n_terms = patterns.len();
         // Each branch keeps only the rows that can reach the requested page, sorted the same way
-        // as the outer query. The completed/in-progress filter runs on the combined rows, so a
-        // filtered page needs every row.
-        let filter_is_all = !matches!(filter, "completed" | "in_progress" | "incomplete");
+        // as the outer query. The completed/in-progress filter runs on the combined rows, and a
+        // search reorders them by title match, so either needs every row.
+        let filter_is_all = !has_search && !matches!(filter, "completed" | "in_progress" | "incomplete");
         dialect_match!(self, {
             pg(pool) => {
                 let lim: i64 = limit.unwrap_or(i64::MAX);
@@ -1706,22 +1544,23 @@ impl DatabasePool {
                     "incomplete"  => " WHERE \"Completed\" = FALSE",
                     _             => "",
                 };
-                let ep_search_clause = if has_search {
-                    " AND (\"Episodes\".episodetitle ILIKE $3 OR \"Episodes\".episodedescription ILIKE $3)"
-                } else { "" };
-                let yt_search_clause = if has_search {
-                    " AND (\"YouTubeVideos\".videotitle ILIKE $3 OR \"YouTubeVideos\".videodescription ILIKE $3)"
-                } else { "" };
-                let search_pattern = if has_search {
-                    format!("%{}%", search)
+                use crate::services::search_text::SearchSql;
+                // Search terms take $3.. ; the limits follow them.
+                let term_param = |i: usize| format!("${}", i + 3);
+                let ep_search_clause = SearchSql::new(
+                    &terms, "ILIKE", "\"Episodes\".episodetitle",
+                    "COALESCE(\"Episodes\".descriptiontext, \"Episodes\".episodedescription)", term_param,
+                ).filter;
+                let yt_search_clause = SearchSql::new(
+                    &terms, "ILIKE", "\"YouTubeVideos\".videotitle",
+                    "COALESCE(\"YouTubeVideos\".descriptiontext, \"YouTubeVideos\".videodescription)", term_param,
+                ).filter;
+                let rank_order = if has_search {
+                    format!("{}, ", SearchSql::new(&terms, "ILIKE", "\"Episodetitle\"", "", term_param).rank)
                 } else { String::new() };
-
-                // Bind positions shift when a search pattern is present (it takes $3).
-                let (pb_lim_pos, outer_lim_pos, outer_off_pos) = if has_search {
-                    ("$4", "$5", "$6")
-                } else {
-                    ("$3", "$4", "$5")
-                };
+                let pb_lim_pos = format!("${}", n_terms + 3);
+                let outer_lim_pos = format!("${}", n_terms + 4);
+                let outer_off_pos = format!("${}", n_terms + 5);
 
                 let rows_sql = format!(
                     r#"SELECT * FROM (
@@ -1804,8 +1643,9 @@ impl DatabasePool {
                         ORDER BY {pg_order_col} {order_dir} NULLS LAST, "Episodeid"
                         LIMIT {pb_lim_pos})
                     ) combined{filter_clause}
-                    ORDER BY {pg_order_col} {order_dir} NULLS LAST, is_youtube, "Episodeid"
+                    ORDER BY {rank_order}{pg_order_col} {order_dir} NULLS LAST, is_youtube, "Episodeid"
                     LIMIT {outer_lim_pos} OFFSET {outer_off_pos}"#,
+                    rank_order = rank_order,
                     ep_search_clause = ep_search_clause,
                     yt_search_clause = yt_search_clause,
                     pb_lim_pos = pb_lim_pos,
@@ -1817,13 +1657,13 @@ impl DatabasePool {
                 );
 
                 // SAFETY: rows_sql is built from static literals plus the validated
-                // sort_by/sort_order/filter/has_search dispatch above. User-supplied search text
-                // is bound as $3, never interpolated.
+                // sort_by/sort_order/filter dispatch and numbered placeholders. User-supplied
+                // search terms are bound as $3.., never interpolated.
                 let mut q = q::query(sqlx::AssertSqlSafe(rows_sql.as_str()))
                     .bind(user_id)
                     .bind(&podcast_ids);
-                if has_search {
-                    q = q.bind(search_pattern.clone());
+                for p in &patterns {
+                    q = q.bind(p.clone());
                 }
                 let rows = q
                     .bind(per_branch_limit)
@@ -1866,8 +1706,8 @@ impl DatabasePool {
                 let mut count_q = q::query(sqlx::AssertSqlSafe(count_sql.as_str()))
                     .bind(user_id)
                     .bind(&podcast_ids);
-                if has_search {
-                    count_q = count_q.bind(search_pattern.clone());
+                for p in &patterns {
+                    count_q = count_q.bind(p.clone());
                 }
                 let total: i64 = count_q.fetch_one(pool).await?.try_get("total")?;
 
@@ -1892,6 +1732,7 @@ impl DatabasePool {
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
                         is_video: row.try_get("is_video")?,
+                        match_rank: None,
                     });
                 }
 
@@ -1934,14 +1775,19 @@ impl DatabasePool {
                     "incomplete"  => " WHERE Completed = 0",
                     _             => "",
                 };
-                let ep_search_clause = if has_search {
-                    " AND (Episodes.EpisodeTitle LIKE ? OR Episodes.EpisodeDescription LIKE ?)"
-                } else { "" };
-                let yt_search_clause = if has_search {
-                    " AND (YouTubeVideos.VideoTitle LIKE ? OR YouTubeVideos.VideoDescription LIKE ?)"
-                } else { "" };
-                let search_pattern = if has_search {
-                    format!("%{}%", search)
+                use crate::services::search_text::SearchSql;
+                // Each term's pattern is bound twice per branch (title, text) and twice more for
+                // the title-match ordering.
+                let ep_search_clause = SearchSql::new(
+                    &terms, "LIKE", "Episodes.EpisodeTitle",
+                    "COALESCE(Episodes.DescriptionText, Episodes.EpisodeDescription)", |_| "?".into(),
+                ).filter;
+                let yt_search_clause = SearchSql::new(
+                    &terms, "LIKE", "YouTubeVideos.VideoTitle",
+                    "COALESCE(YouTubeVideos.DescriptionText, YouTubeVideos.VideoDescription)", |_| "?".into(),
+                ).filter;
+                let rank_order = if has_search {
+                    format!("{}, ", SearchSql::new(&terms, "LIKE", "Episodetitle", "", |_| "?".into()).rank)
                 } else { String::new() };
 
                 // Main query: LIMIT pushed inside each branch so joins only fire on the rows
@@ -2029,8 +1875,9 @@ impl DatabasePool {
                         ORDER BY {my_order_col} {order_dir}, Episodeid
                         LIMIT ?)
                     ) combined{mysql_filter}
-                    ORDER BY {my_order_col} {order_dir}, is_youtube, Episodeid
+                    ORDER BY {rank_order}{my_order_col} {order_dir}, is_youtube, Episodeid
                     LIMIT ? OFFSET ?",
+                    rank_order = rank_order,
                     ph = id_placeholders,
                     ep_search_clause = ep_search_clause,
                     yt_search_clause = yt_search_clause,
@@ -2043,20 +1890,28 @@ impl DatabasePool {
                 // placeholder string and validated sort_by/sort_order/filter/has_search splices.
                 // The user-supplied search text is bound as a parameter, never interpolated.
                 let mut q = sqlx::query(sqlx::AssertSqlSafe(rows_sql.as_str()));
-                // Episodes branch: 5x UserID joins + IN list + (optional 2x search) + per-branch LIMIT.
+                // Episodes branch: 5x UserID joins + IN list + (2 per search term) + per-branch LIMIT.
                 q = q.bind(user_id).bind(user_id).bind(user_id).bind(user_id).bind(user_id);
                 for id in &podcast_ids { q = q.bind(*id); }
-                if has_search {
-                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                for p in &patterns {
+                    q = q.bind(p.clone()).bind(p.clone());
                 }
                 q = q.bind(per_branch_limit);
-                // YouTubeVideos branch: 4x UserID joins + IN list + (optional 2x search) + per-branch LIMIT.
+                // YouTubeVideos branch: 4x UserID joins + IN list + (2 per search term) + per-branch LIMIT.
                 q = q.bind(user_id).bind(user_id).bind(user_id).bind(user_id);
                 for id in &podcast_ids { q = q.bind(*id); }
-                if has_search {
-                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                for p in &patterns {
+                    q = q.bind(p.clone()).bind(p.clone());
                 }
                 q = q.bind(per_branch_limit);
+                // Title-match ordering: every term for "all in title", then again for "any".
+                if has_search {
+                    for _ in 0..2 {
+                        for p in &patterns {
+                            q = q.bind(p.clone());
+                        }
+                    }
+                }
                 // Outer LIMIT/OFFSET.
                 q = q.bind(lim).bind(off);
 
@@ -2091,17 +1946,17 @@ impl DatabasePool {
                     mysql_filter = mysql_filter,
                 );
                 let mut count_q = sqlx::query(sqlx::AssertSqlSafe(count_sql.as_str()));
-                // Episodes branch: UserID (join), UserID (where), IN list, (optional 2x search).
+                // Episodes branch: UserID (join), UserID (where), IN list, (2 per search term).
                 count_q = count_q.bind(user_id).bind(user_id);
                 for id in &podcast_ids { count_q = count_q.bind(*id); }
-                if has_search {
-                    count_q = count_q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                for p in &patterns {
+                    count_q = count_q.bind(p.clone()).bind(p.clone());
                 }
-                // YouTubeVideos branch: UserID (where), IN list, (optional 2x search).
+                // YouTubeVideos branch: UserID (where), IN list, (2 per search term).
                 count_q = count_q.bind(user_id);
                 for id in &podcast_ids { count_q = count_q.bind(*id); }
-                if has_search {
-                    count_q = count_q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                for p in &patterns {
+                    count_q = count_q.bind(p.clone()).bind(p.clone());
                 }
                 let total: i64 = count_q.fetch_one(pool).await?.try_get("total")?;
 
@@ -2126,202 +1981,13 @@ impl DatabasePool {
                         downloaded: row.try_get::<i8, _>("downloaded")? != 0,
                         is_youtube: row.try_get::<i8, _>("is_youtube")? != 0,
                         is_video: row.try_get::<i8, _>("is_video")? != 0,
+                        match_rank: None,
                     });
                 }
 
                 Ok((episodes, total))
             },
         })
-    }
-
-    // Record listen duration - matches Python record_listen_duration function exactly
-    pub async fn record_listen_duration(&self, episode_id: i32, user_id: i32, listen_duration: f64, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
-        use crate::services::sync::events::{self, EpisodeEvent};
-        debug!("Recording listen duration: episode_id={}, user_id={}, duration={}", episode_id, user_id, listen_duration);
-        
-        if listen_duration < 0.0 {
-            warn!("Skipped updating listen duration for user {} and episode {} due to invalid duration: {}", user_id, episode_id, listen_duration);
-            return Ok(());
-        }
-        
-        let listen_duration_int = listen_duration as i32;
-        let log = events::should_log(self, user_id, origin).await;
-        
-        dialect_match!(self, {
-            pg(pool) => {
-                let mut tx = q::begin(pool).await?;
-                // Check if record exists and get existing duration
-                let existing_row = q::query(r#"SELECT listenduration FROM "UserEpisodeHistory" WHERE userid = $1 AND episodeid = $2"#)
-                    .bind(user_id)
-                    .bind(episode_id)
-                    .fetch_optional(&mut *tx)
-                    .await?;
-                
-                let changed = if let Some(row) = existing_row {
-                    let existing_duration: Option<i32> = row.try_get("listenduration")?;
-                    let existing_duration = existing_duration.unwrap_or(0);
-                    
-                    // Update only if new duration is greater than existing
-                    if listen_duration_int > existing_duration {
-                        q::query(r#"UPDATE "UserEpisodeHistory" SET listenduration = $1, listendate = NOW() WHERE userid = $2 AND episodeid = $3"#)
-                            .bind(listen_duration_int)
-                            .bind(user_id)
-                            .bind(episode_id)
-                            .execute(&mut *tx)
-                            .await?;
-                        debug!("Updated listen duration for user {} episode {} from {} to {}", user_id, episode_id, existing_duration, listen_duration_int);
-                        true
-                    } else {
-                        debug!("No update required for user {} and episode {} as existing duration {} is greater than or equal to new duration {}", user_id, episode_id, existing_duration, listen_duration_int);
-                        false
-                    }
-                } else {
-                    // Insert new record
-                    q::query(r#"INSERT INTO "UserEpisodeHistory" (userid, episodeid, listendate, listenduration) VALUES ($1, $2, NOW(), $3)"#)
-                        .bind(user_id)
-                        .bind(episode_id)
-                        .bind(listen_duration_int)
-                        .execute(&mut *tx)
-                        .await?;
-                    debug!("Inserted new listen duration record for user {} episode {} with duration {}", user_id, episode_id, listen_duration_int);
-                    true
-                };
-                if changed && log {
-                    q::pick(events::episode_pg, events::episode_lite)(self, &mut tx, user_id, episode_id, EpisodeEvent::Progress(listen_duration_int)).await;
-                }
-                tx.commit().await?;
-            },
-            mysql(pool) => {
-                let mut tx = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
-                // Check if record exists and get existing duration
-                let existing_row = sqlx::query("SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = ? AND EpisodeID = ?")
-                    .bind(user_id)
-                    .bind(episode_id)
-                    .fetch_optional(&mut *tx)
-                    .await?;
-                
-                let changed = if let Some(row) = existing_row {
-                    let existing_duration: Option<i32> = row.try_get("ListenDuration")?;
-                    let existing_duration = existing_duration.unwrap_or(0);
-                    
-                    // Update only if new duration is greater than existing
-                    if listen_duration_int > existing_duration {
-                        sqlx::query("UPDATE UserEpisodeHistory SET ListenDuration = ?, ListenDate = NOW() WHERE UserID = ? AND EpisodeID = ?")
-                            .bind(listen_duration_int)
-                            .bind(user_id)
-                            .bind(episode_id)
-                            .execute(&mut *tx)
-                            .await?;
-                        debug!("Updated listen duration for user {} episode {} from {} to {}", user_id, episode_id, existing_duration, listen_duration_int);
-                        true
-                    } else {
-                        debug!("No update required for user {} and episode {} as existing duration {} is greater than or equal to new duration {}", user_id, episode_id, existing_duration, listen_duration_int);
-                        false
-                    }
-                } else {
-                    // Insert new record
-                    sqlx::query("INSERT INTO UserEpisodeHistory (UserID, EpisodeID, ListenDate, ListenDuration) VALUES (?, ?, NOW(), ?)")
-                        .bind(user_id)
-                        .bind(episode_id)
-                        .bind(listen_duration_int)
-                        .execute(&mut *tx)
-                        .await?;
-                    debug!("Inserted new listen duration record for user {} episode {} with duration {}", user_id, episode_id, listen_duration_int);
-                    true
-                };
-                if changed && log {
-                    events::episode_mysql(self, &mut tx, user_id, episode_id, EpisodeEvent::Progress(listen_duration_int)).await;
-                }
-                tx.commit().await?;
-            },
-        });
-        Ok(())
-    }
-
-    // Record YouTube listen duration - matches Python record_youtube_listen_duration function exactly  
-    pub async fn record_youtube_listen_duration(&self, video_id: i32, user_id: i32, listen_duration: f64) -> AppResult<()> {
-        debug!("Recording YouTube listen duration: video_id={}, user_id={}, duration={}", video_id, user_id, listen_duration);
-        
-        if listen_duration < 0.0 {
-            warn!("Skipped updating listen duration for user {} and video {} due to invalid duration: {}", user_id, video_id, listen_duration);
-            return Ok(());
-        }
-        
-        let listen_duration_int = listen_duration as i32;
-        
-        dialect_match!(self, {
-            pg(pool) => {
-                // Check if record exists and get existing duration
-                let existing_row = q::query(r#"SELECT listenduration FROM "UserVideoHistory" WHERE userid = $1 AND videoid = $2"#)
-                    .bind(user_id)
-                    .bind(video_id)
-                    .fetch_optional(pool)
-                    .await?;
-                
-                if let Some(row) = existing_row {
-                    let existing_duration: Option<i32> = row.try_get("listenduration")?;
-                    let existing_duration = existing_duration.unwrap_or(0);
-                    
-                    // Update only if new duration is greater than existing
-                    if listen_duration_int > existing_duration {
-                        q::query(r#"UPDATE "UserVideoHistory" SET listenduration = $1, listendate = NOW() WHERE userid = $2 AND videoid = $3"#)
-                            .bind(listen_duration_int)
-                            .bind(user_id)
-                            .bind(video_id)
-                            .execute(pool)
-                            .await?;
-                        debug!("Updated YouTube listen duration for user {} video {} from {} to {}", user_id, video_id, existing_duration, listen_duration_int);
-                    } else {
-                        debug!("No update required for user {} and video {} as existing duration {} is greater than or equal to new duration {}", user_id, video_id, existing_duration, listen_duration_int);
-                    }
-                } else {
-                    // Insert new record
-                    q::query(r#"INSERT INTO "UserVideoHistory" (userid, videoid, listendate, listenduration) VALUES ($1, $2, NOW(), $3)"#)
-                        .bind(user_id)
-                        .bind(video_id)
-                        .bind(listen_duration_int)
-                        .execute(pool)
-                        .await?;
-                    debug!("Inserted new YouTube listen duration record for user {} video {} with duration {}", user_id, video_id, listen_duration_int);
-                }
-            },
-            mysql(pool) => {
-                // Check if record exists and get existing duration
-                let existing_row = sqlx::query("SELECT ListenDuration FROM UserVideoHistory WHERE UserID = ? AND VideoID = ?")
-                    .bind(user_id)
-                    .bind(video_id)
-                    .fetch_optional(pool)
-                    .await?;
-                
-                if let Some(row) = existing_row {
-                    let existing_duration: Option<i32> = row.try_get("ListenDuration")?;
-                    let existing_duration = existing_duration.unwrap_or(0);
-                    
-                    // Update only if new duration is greater than existing
-                    if listen_duration_int > existing_duration {
-                        sqlx::query("UPDATE UserVideoHistory SET ListenDuration = ?, ListenDate = NOW() WHERE UserID = ? AND VideoID = ?")
-                            .bind(listen_duration_int)
-                            .bind(user_id)
-                            .bind(video_id)
-                            .execute(pool)
-                            .await?;
-                        debug!("Updated YouTube listen duration for user {} video {} from {} to {}", user_id, video_id, existing_duration, listen_duration_int);
-                    } else {
-                        debug!("No update required for user {} and video {} as existing duration {} is greater than or equal to new duration {}", user_id, video_id, existing_duration, listen_duration_int);
-                    }
-                } else {
-                    // Insert new record
-                    sqlx::query("INSERT INTO UserVideoHistory (UserID, VideoID, ListenDate, ListenDuration) VALUES (?, ?, NOW(), ?)")
-                        .bind(user_id)
-                        .bind(video_id)
-                        .bind(listen_duration_int)
-                        .execute(pool)
-                        .await?;
-                    debug!("Inserted new YouTube listen duration record for user {} video {} with duration {}", user_id, video_id, listen_duration_int);
-                }
-            },
-        });
-        Ok(())
     }
 
     // Get episode duration in seconds
@@ -2529,26 +2195,6 @@ impl DatabasePool {
         });
 
         Ok(completed_count)
-    }
-
-    // Increment listen time - matches Python increment_listen_time function exactly
-    pub async fn increment_listen_time(&self, user_id: i32) -> AppResult<()> {
-        dialect_match!(self, {
-            pg(pool) => {
-                q::query(r#"UPDATE "UserStats" SET TimeListened = TimeListened + 1 WHERE UserID = $1"#)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await?;
-                Ok(())
-            },
-            mysql(pool) => {
-                sqlx::query("UPDATE UserStats SET TimeListened = TimeListened + 1 WHERE UserID = ?")
-                    .bind(user_id)
-                    .execute(pool)
-                    .await?;
-                Ok(())
-            },
-        })
     }
 
     // Get an episode's URL (verifying the user owns the podcast). Used by the stream

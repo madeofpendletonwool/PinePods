@@ -193,24 +193,23 @@ class PinepodsMediaService : MediaLibraryService() {
 
     @androidx.annotation.OptIn(UnstableApi::class)
     private fun initializePlayer() {
-        // Configure load control for better buffering (fixes rewind rebuffering issue)
+        // Keep about ten minutes of a stream buffered so playback rides out a dead zone.
+        // Loading stops at the max and only resumes below the min, so the two sit close
+        // together to stay near ten minutes ahead. Ten minutes of podcast audio is ~10 MB;
+        // the byte cap only bites on unusually high bitrates.
         val loadControl = DefaultLoadControl.Builder()
-            .setAllocator(DefaultAllocator(true, 16))
+            .setAllocator(DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE))
             .setBufferDurationsMs(
-                60_000,    // min buffer: 60s (increased from buggy 45s)
-                180_000,   // max buffer: 3min
+                540_000,   // min buffer: 9 min
+                600_000,   // max buffer: 10 min
                 2_500,     // buffer for playback start: 2.5s (Media3 default)
                 5_000      // buffer for rebuffer: 5s (Media3 default)
             )
+            .setTargetBufferBytes(48 * 1024 * 1024)
             .setBackBuffer(60_000, true)  // Keep 60s back buffer for rewind without rebuffering
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        // Configure audio attributes for podcast playback
-        val audioAttributes = AudioAttributes.Builder()
-            .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
-            .setUsage(C.USAGE_MEDIA)
-            .build()
 
         // Podcast enclosures commonly sit behind tracking-redirect chains that
         // hop between http and https; ExoPlayer refuses those by default, which
@@ -236,7 +235,7 @@ class PinepodsMediaService : MediaLibraryService() {
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
-            .setAudioAttributes(audioAttributes, true)
+            .setAudioAttributes(audioAttributes(pauseForInterruptions()), true)
             .setHandleAudioBecomingNoisy(true)  // Auto-pause when headphones disconnect
             // Default wake mode; overridden per-episode in playEpisode() so that
             // downloaded/local playback uses WAKE_MODE_LOCAL (CPU only) instead of
@@ -810,6 +809,29 @@ class PinepodsMediaService : MediaLibraryService() {
         player?.volume = volume.coerceIn(0f, 1f)
     }
 
+    // Media3 pauses for a "may duck" focus loss (a notification sound) when the
+    // content is speech and only lowers the volume otherwise, so the content type
+    // is what decides whether another app's short sounds pause playback.
+    private fun audioAttributes(pauseForInterruptions: Boolean): AudioAttributes =
+        AudioAttributes.Builder()
+            .setContentType(
+                if (pauseForInterruptions) C.AUDIO_CONTENT_TYPE_SPEECH else C.AUDIO_CONTENT_TYPE_MUSIC
+            )
+            .setUsage(C.USAGE_MEDIA)
+            .build()
+
+    // Kept natively too, so a cold start from Android Auto without Dart applies it.
+    private fun pauseForInterruptions(): Boolean =
+        getSharedPreferences(PLAYBACK_PREFS, MODE_PRIVATE).getBoolean(KEY_PAUSE_FOR_INTERRUPTIONS, true)
+
+    fun setPauseForInterruptions(enabled: Boolean) {
+        if (enabled == pauseForInterruptions()) return
+        Log.d(TAG, "setPauseForInterruptions: $enabled")
+        getSharedPreferences(PLAYBACK_PREFS, MODE_PRIVATE).edit()
+            .putBoolean(KEY_PAUSE_FOR_INTERRUPTIONS, enabled).apply()
+        player?.setAudioAttributes(audioAttributes(enabled), true)
+    }
+
     fun setVolumeBoost(enabled: Boolean) {
         Log.d(TAG, "setVolumeBoost: $enabled")
         try {
@@ -873,6 +895,8 @@ class PinepodsMediaService : MediaLibraryService() {
         private const val NOTIFICATION_CHANNEL_ID = "pinepods_playback"
         private const val NOTIFICATION_ID = 1
         private const val STREAM_CACHE_BYTES = 256L * 1024 * 1024
+        private const val PLAYBACK_PREFS = "pinepods_playback"
+        private const val KEY_PAUSE_FOR_INTERRUPTIONS = "pause_for_interruptions"
 
         // One SimpleCache per directory per process, so it outlives the service.
         private var streamCache: SimpleCache? = null

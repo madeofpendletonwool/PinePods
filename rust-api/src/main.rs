@@ -73,6 +73,7 @@ async fn main() -> AppResult<()> {
 
     // Initialize task management
     let task_manager = Arc::new(TaskManager::new(redis_client.clone(), db_pool.clone(), instance_id.clone()));
+    task_manager.spawn_liveness();
     let task_spawner = Arc::new(TaskSpawner::new(task_manager.clone(), db_pool.clone()));
     let websocket_manager = Arc::new(WebSocketManager::new());
     let now_playing_manager = Arc::new(handlers::nowplaying::NowPlayingManager::new());
@@ -96,6 +97,12 @@ async fn main() -> AppResult<()> {
         ai_available: services::ai_client::AiAvailability::new(),
         merged_episodes: Default::default(),
     };
+
+    // Apply the admin's AI on/off switch before anything can queue AI work.
+    match services::ai_settings::ai_enabled(&app_state.db_pool).await {
+        Ok(on) => app_state.ai_available.set_enabled(on),
+        Err(e) => tracing::warn!("Could not read the AI on/off setting, leaving AI on: {}", e),
+    }
 
     // Start the AI sidecar health monitor (no-op if PINEPODS_AI_URL is unset).
     services::ai_client::spawn_health_monitor(app_state.ai_available.clone());

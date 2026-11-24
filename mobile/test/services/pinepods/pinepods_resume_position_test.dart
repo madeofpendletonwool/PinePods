@@ -1,8 +1,7 @@
-// Regression tests for where playback resumes. The episode data a screen hands
-// to playPinepodsEpisode can be stale (loaded before the last listen), and the
-// server can be behind when progress made offline is still in the outbox.
-// Resume must take the furthest known position, and the play-start record must
-// not replace newer unsynced progress in the outbox.
+// Where playback resumes. The episode data a screen hands to
+// playPinepodsEpisode can be stale (loaded before the last listen), so the
+// server is asked; progress made on this device that the server doesn't have
+// yet comes before both. Starting an episode never reports a position.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -14,6 +13,7 @@ import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/services/offline/offline_action_queue.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/services/pinepods/progress_tracker.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
 
 import '../../support/factories.dart';
@@ -86,35 +86,50 @@ void main() {
     await service.playPinepodsEpisode(pinepodsEpisode: buildPinepodsEpisode(listenDuration: 100));
 
     expect(playedEpisode().position, 300000);
-    expect(await queue.pendingPosition(101, false), 300);
+    expect(await queue.pendingProgress(101, false), isNull, reason: 'starting is not progress');
   });
 
-  test('resumes from unsynced offline progress and keeps it in the outbox', () async {
-    serverPosition(100);
-    await queue.enqueuePosition(101, 42, 900, false);
+  test('resumes behind the list data when the user went back on another device', () async {
+    serverPosition(40);
+
+    await service.playPinepodsEpisode(pinepodsEpisode: buildPinepodsEpisode(listenDuration: 500));
+
+    expect(playedEpisode().position, 40000);
+  });
+
+  test('resumes from unsynced progress, even when it is behind the server', () async {
+    serverPosition(500);
+    await queue.enqueuePosition(101, 42, 90, false);
 
     await service.playPinepodsEpisode(pinepodsEpisode: buildPinepodsEpisode(listenDuration: 100));
 
-    expect(playedEpisode().position, 900000);
-    expect(await queue.pendingPosition(101, false), 900);
+    expect(playedEpisode().position, 90000);
+    expect(await queue.pendingPosition(101, false), 90, reason: 'still waiting to be sent');
   });
 
-  test('local download resumes from unsynced offline progress', () async {
+  test('local download resumes from unsynced progress without asking the server', () async {
     when(() => audio.findDownloadedEpisode(any())).thenAnswer(
       (_) async => buildEpisode()..filepath = '/tmp',
     );
-    await queue.enqueuePosition(101, 42, 900, false);
+    await queue.enqueuePosition(101, 42, 400, false);
 
     await service.playPinepodsEpisode(pinepodsEpisode: buildPinepodsEpisode(listenDuration: 100));
 
-    expect(playedEpisode().position, 900000);
-    expect(await queue.pendingPosition(101, false), 900);
+    expect(playedEpisode().position, 400000);
     verifyNever(() => api.getEpisodeMetadata(any(), any(), isYoutube: any(named: 'isYoutube')));
   });
 
-  test('completed episodes still start from the beginning', () async {
-    serverPosition(500);
-    await queue.enqueuePosition(101, 42, 900, false);
+  test('falls back to the list data when the server cannot be asked', () async {
+    when(() => api.getEpisodeMetadata(any(), any(), isYoutube: any(named: 'isYoutube')))
+        .thenThrow(Exception('offline'));
+
+    await service.playPinepodsEpisode(pinepodsEpisode: buildPinepodsEpisode(listenDuration: 100));
+
+    expect(playedEpisode().position, 100000);
+  });
+
+  test('an episode left at its end starts over', () async {
+    serverPosition(600); // the whole 600s: finished
 
     await service.playPinepodsEpisode(
       pinepodsEpisode: buildPinepodsEpisode(listenDuration: 600, completed: true),
@@ -123,7 +138,33 @@ void main() {
     expect(playedEpisode().position, 0);
   });
 
-  test('pendingPosition ignores other episodes and YouTube ids', () async {
+  test('a finished episode being replayed resumes inside the replay', () async {
+    serverPosition(250);
+
+    await service.playPinepodsEpisode(
+      pinepodsEpisode: buildPinepodsEpisode(listenDuration: 600, completed: true),
+    );
+
+    expect(playedEpisode().position, 250000);
+  });
+
+  test('an episode finished offline and not yet sent starts over', () async {
+    serverPosition(100);
+    await queue.enqueueProgress(ProgressUpdate(
+      episodeId: 101,
+      userId: 42,
+      isYoutube: false,
+      position: 600,
+      at: DateTime.now(),
+      finished: true,
+    ));
+
+    await service.playPinepodsEpisode(pinepodsEpisode: buildPinepodsEpisode(listenDuration: 100));
+
+    expect(playedEpisode().position, 0);
+  });
+
+  test('pending progress is per episode and per kind', () async {
     await queue.enqueuePosition(101, 42, 50, true);
     await queue.enqueuePosition(202, 42, 70, false);
 

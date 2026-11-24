@@ -13,18 +13,18 @@ use crate::requests::setting_reqs::call_get_default_volume;
 use crate::requests::pod_req::call_get_episode_id;
 use crate::requests::pod_req::FetchPodcasting2DataRequest;
 use crate::requests::pod_req::{
-    call_add_history, call_check_episode_in_db, call_fetch_podcasting_2_data,
+    call_check_episode_in_db, call_fetch_podcasting_2_data,
     call_get_episode_skip_segments,
     call_get_auto_play_next_status, call_get_next_playlist_episode, call_get_next_podcast_episode,
-    call_get_episode_metadata, call_get_play_episode_details, call_get_podcast_id_from_ep,
+    call_get_play_episode_details, call_get_podcast_id_from_ep,
     call_get_queued_episodes,
-    call_increment_listen_time, call_increment_played, call_mark_episode_completed,
-    call_move_queue_episode_to_top, call_record_listen_duration,
-    call_update_episode_duration, EpisodeRequest, HistoryAddRequest, MarkEpisodeCompletedRequest,
-    QueuePodcastRequest, RecordListenDurationRequest, UpdateEpisodeDurationRequest,
+    call_increment_played,
+    call_move_queue_episode_to_top,
+    call_update_episode_duration,
+    QueuePodcastRequest, UpdateEpisodeDurationRequest,
 };
 use gloo_timers::callback::Interval;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::cell::Cell;
 #[cfg(not(feature = "server_build"))]
 use std::path::Path;
@@ -65,6 +65,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let video_container_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
+    crate::components::media_session::use_media_session(
+        props.episode_id,
+        props.title.clone(),
+        props.episode.podcastname.clone(),
+        props.artwork_url.clone(),
+        audio_state.audio_playing.unwrap_or(false),
+        audio_state.playback_speed,
+    );
     let show_modal = use_state(|| false);
 
     // Memoize the audio playing state to reduce re-renders
@@ -87,7 +95,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     };
 
     // Add error handling state
-    let last_playback_position = use_state(|| 0.0);
 
     // Local state for current time to avoid triggering global re-renders every second
     let current_time_local = use_state(|| 0.0);
@@ -139,59 +146,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         });
     }
 
-    // Add periodic state saving
-    {
-        let props = props.clone();
-        let audio_ref = audio_ref.clone();
-        let last_position = last_playback_position.clone();
-
-        use_effect_with((), move |_| {
-            let props = props.clone();
-            let audio_ref = audio_ref.clone();
-            let last_position = last_position.clone();
-
-            let interval = Interval::new(5000, move || {
-                if let Some(audio) = audio_ref.cast::<HtmlAudioElement>() {
-                    last_position.set(audio.current_time());
-
-                    if let Some(window) = web_sys::window() {
-                        if let Ok(Some(storage)) = window.local_storage() {
-                            let _ = storage.set_item(
-                                &format!("audio_position_{}", props.episode_id),
-                                &audio.current_time().to_string(),
-                            );
-                        }
-                    }
-                }
-            });
-
-            move || {
-                interval.cancel();
-            }
-        });
-    }
-
-    // Restore previous state on mount
-    use_effect_with((), {
-        let audio_ref = audio_ref.clone();
-        let props = props.clone();
-
-        move |_| {
-            if let Some(window) = web_sys::window() {
-                if let Ok(Some(storage)) = window.local_storage() {
-                    if let Ok(Some(position)) =
-                        storage.get_item(&format!("audio_position_{}", props.episode_id))
-                    {
-                        if let Ok(position) = position.parse::<f64>() {
-                            if let Some(audio) = audio_ref.cast::<HtmlAudioElement>() {
-                                audio.set_current_time(position);
-                            }
-                        }
-                    }
-                }
-            }
-            || ()
-        }
+    // Progress is recorded by one page-wide recorder (see `progress`).
+    use_effect_with((), |_| {
+        crate::components::progress::start();
+        || ()
     });
 
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -583,11 +541,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     use_effect_with((offline_status.clone(), episode_id.clone()), {
         let audio_dispatch = _audio_dispatch.clone();
         let progress = progress.clone(); // Clone for the interval closure
-        let closure_api_key = api_key.clone();
-        let closure_server_name = server_name.clone();
-        let closure_user_id = user_id.clone();
-        let closure_episode_id = episode_id.clone();
-        let offline_status = offline_status.clone();
         let current_time_local = current_time_local.clone();
         let current_time_formatted_local = current_time_formatted_local.clone();
         move |_| {
@@ -656,6 +609,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             } else if let Some(audio_element) = live_state.audio_element.as_ref() {
                                 audio_element.set_current_time(seg.end_time);
                             }
+                            let kind = if seg.kind == "ad" {
+                                crate::components::progress::Skipped::Ad
+                            } else {
+                                crate::components::progress::Skipped::Silence
+                            };
+                            crate::components::progress::skipped(kind, seg.end_time - time_in_seconds);
                         }
                     }
 
@@ -676,11 +635,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     // Episode completion check only happens when we have valid duration
                     if !duration.is_nan() && duration > 0.0 {
                         let end_pos_sec = end_pos.clone();
-                        let complete_api_key = closure_api_key.clone();
-                        let complete_server_name = closure_server_name.clone();
-                        let complete_user_id = closure_user_id.clone();
-                        let complete_episode_id = closure_episode_id.clone();
-                        let offline_status_loop = offline_status.unwrap_or(false);
                         if time_in_seconds >= (duration - end_pos_sec.unwrap()) {
                             web_sys::console::log_1(&"Episode completed".into());
                             // Pause and trigger ended event on the appropriate media element
@@ -693,46 +647,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 let event = web_sys::Event::new("ended").unwrap();
                                 audio_element.dispatch_event(&event).unwrap();
                             }
-                            // Call the endpoint to mark episode as completed
-                            if offline_status_loop {
-                                // If offline, store the episode in the local database
-                            } else {
-                                // If online, call the endpoint
-                                wasm_bindgen_futures::spawn_local(async move {
-                                    if let (
-                                        Some(complete_api_key),
-                                        Some(complete_server_name),
-                                        Some(complete_user_id),
-                                        Some(complete_episode_id),
-                                    ) = (
-                                        complete_api_key.as_ref(),
-                                        complete_server_name.as_ref(),
-                                        complete_user_id.as_ref(),
-                                        complete_episode_id.as_ref(),
-                                    ) {
-                                        let request = MarkEpisodeCompletedRequest {
-                                            episode_id: *complete_episode_id, // Dereference the option
-                                            user_id: *complete_user_id, // Dereference the option
-                                            is_youtube: is_youtube_vid,
-                                        };
-
-                                        match call_mark_episode_completed(
-                                            &complete_server_name,
-                                            &complete_api_key,
-                                            &request,
-                                        )
-                                        .await
-                                        {
-                                            Ok(_) => {}
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!("Error: {}", e).into(),
-                                                );
-                                            }
-                                        }
-                                    }
-                                });
-                            }
+                            // Finished: recorded with the position, sent when there's a connection.
+                            crate::components::progress::finished();
 
                             // Stop the interval
                             if let Some(handle) = interval_handle.take() {
@@ -741,122 +657,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             }
                         }
                     }
-            });
-
-            interval_handle_clone.set(Some(interval));
-            let interval_handle = interval_handle_clone;
-            // Return a cleanup function that will be run when the component unmounts or the dependencies of the effect change
-            move || {
-                if let Some(handle) = interval_handle.take() {
-                    handle.cancel();
-                }
-            }
-        }
-    });
-
-    // Effect for recording the listen duration
-    let audio_state_clone = audio_state.clone();
-    use_effect_with((offline_status.clone(), episode_id.clone()), {
-        let server_name = server_name.clone(); // Assuming this is defined elsewhere in your component
-        let api_key = api_key.clone(); // Assuming this is defined elsewhere in your component
-        let user_id = user_id.clone(); // Assuming this is defined elsewhere in your component
-        let offline_status = offline_status.clone();
-        let episode_id = episode_id.clone();
-
-        move |_| {
-            // Create an interval task
-            let interval_handle = Rc::new(Cell::new(None));
-            let interval_handle_clone = interval_handle.clone();
-
-            let interval = gloo_timers::callback::Interval::new(30_000, move || {
-                let state_clone = audio_state_clone.clone(); // Access the latest state
-                let offline_status_loop = offline_status.unwrap_or(false);
-                let episode_id_loop = episode_id.clone();
-                let api_key = api_key.clone();
-                let server_name = server_name.clone();
-
-                if offline_status_loop {
-                } else {
-                    if state_clone.audio_playing.unwrap_or_default() {
-                        // Get current time from media or audio element
-                        let listen_duration = if let Some(media_element) = state_clone.media_element.as_ref() {
-                            media_element.current_time()
-                        } else if let Some(audio_element) = state_clone.audio_element.as_ref() {
-                            audio_element.current_time()
-                        } else {
-                            return; // No media element available
-                        };
-                            let request_data = RecordListenDurationRequest {
-                                episode_id: episode_id_loop.unwrap().clone(),
-                                user_id: user_id.unwrap().clone(),
-                                listen_duration,
-                                is_youtube: Some(is_youtube_vid),
-                            };
-
-                            wasm_bindgen_futures::spawn_local(async move {
-                                match call_record_listen_duration(
-                                    &server_name.clone().unwrap(),
-                                    &api_key.clone().unwrap().unwrap(),
-                                    request_data,
-                                )
-                                .await
-                                {
-                                    Ok(_response) => {}
-                                    Err(_e) => {}
-                                }
-                            });
-                    }
-                }
-            });
-
-            interval_handle_clone.set(Some(interval));
-
-            // Cleanup function to cancel the interval task when dependencies change
-            move || {
-                if let Some(interval) = interval_handle.take() {
-                    interval.cancel();
-                }
-            }
-        }
-    });
-
-    // Effect for incrementing user listen time
-    let state_increment_clone = audio_state.clone();
-    use_effect_with((offline_status.clone(), episode_id.clone()), {
-        let server_name = server_name.clone(); // Make sure `server_name` is cloned from the parent scope
-        let api_key = api_key.clone(); // Make sure `api_key` is cloned from the parent scope
-        let user_id = user_id.clone(); // Make sure `user_id` is cloned from the parent scope
-        let offline_status = offline_status.clone();
-
-        move |_| {
-            let interval_handle: Rc<Cell<Option<Interval>>> = Rc::new(Cell::new(None));
-            let interval_handle_clone = interval_handle.clone();
-
-            let interval = Interval::new(60000, move || {
-                let offline_status_loop = offline_status.unwrap_or(false);
-                // Check if audio is playing before making the API call
-                if offline_status_loop {
-                } else {
-                    if state_increment_clone.audio_playing.unwrap_or_default() {
-                        let server_name = server_name.clone();
-                        let api_key = api_key.clone();
-                        let user_id = user_id.clone();
-
-                        // Spawn a new async task for the API call
-                        wasm_bindgen_futures::spawn_local(async move {
-                            match call_increment_listen_time(
-                                &server_name.unwrap(),
-                                &api_key.unwrap().unwrap(),
-                                user_id.unwrap(),
-                            )
-                            .await
-                            {
-                                Ok(_response) => {}
-                                Err(_e) => {}
-                            }
-                        });
-                    }
-                }
             });
 
             interval_handle_clone.set(Some(interval));
@@ -1931,7 +1731,40 @@ pub fn on_play_pause(
     })
 }
 
+/// Play `episode`. One straight from a feed is resolved to its server id first, so its
+/// progress is kept and it can be queued like any other; if that fails it plays untracked.
 pub fn on_play_click(
+    episode: Episode,
+    api_key: String,
+    user_id: i32,
+    server_name: String,
+    audio_dispatch: Dispatch<UIState>,
+    audio_state: Rc<UIState>,
+    is_local: bool,
+    skip_queue: bool,
+    playlist_id: Option<i32>,
+) -> Callback<MouseEvent> {
+    if !crate::requests::pod_req::is_resolvable_feed_episode(&episode) {
+        return play_episode(episode, api_key, user_id, server_name, audio_dispatch, audio_state, is_local, skip_queue, playlist_id);
+    }
+    Callback::from(move |e: MouseEvent| {
+        let (episode, api_key, server_name) = (episode.clone(), api_key.clone(), server_name.clone());
+        let (audio_dispatch, audio_state) = (audio_dispatch.clone(), audio_state.clone());
+        spawn_local(async move {
+            let episode = match crate::requests::pod_req::resolve_feed_episode(&server_name, &api_key, user_id, &episode).await {
+                Ok(resolved) => resolved,
+                Err(err) => {
+                    web_sys::console::log_1(&format!("Playing without keeping progress: {err}").into());
+                    episode
+                }
+            };
+            play_episode(episode, api_key, user_id, server_name, audio_dispatch, audio_state, is_local, skip_queue, playlist_id).emit(e);
+        });
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn play_episode(
     mut episode: Episode,
     api_key: String,
     user_id: i32,
@@ -1971,7 +1804,6 @@ pub fn on_play_click(
         let audio_dispatch = audio_dispatch.clone();
         let playlist_id = playlist_id;
 
-        let episode_pos: f32 = 0.0;
         let check_server_name = server_name.clone();
         let check_api_key = api_key.clone();
         let check_user_id = user_id.clone();
@@ -2040,30 +1872,7 @@ pub fn on_play_click(
                 global_state.episode_in_db = Some(episode_exists);
             });
 
-            // Now proceed with adding the history entry if the episode exists
             if episode_exists {
-                let history_server_name = check_server_name.clone();
-                let history_api_key = check_api_key.clone();
-
-                let history_add = HistoryAddRequest {
-                    episode_id: episode.episodeid,
-                    episode_pos,
-                    user_id,
-                    is_youtube: episode.is_youtube,
-                };
-
-                let add_history_future =
-                    call_add_history(&history_server_name, history_api_key, &history_add);
-                match add_history_future.await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        web_sys::console::log_1(&JsValue::from_str(&format!(
-                            "Failed to add history: {:?}",
-                            e
-                        )));
-                    }
-                }
-
                 if !skip_queue {
                     // Check if podcast has auto-play-next enabled — if so, skip queue add
                     let mut should_queue = true;
@@ -2286,7 +2095,18 @@ pub fn on_play_click(
                         .await
                         {
                             Ok((playback_speed, start_skip, end_skip, _playback_speed_customized)) => {
-                                let start_pos_sec = episode.listenduration.max(start_skip) as f64;
+                                // Where the user left off, on whichever device that was.
+                                let resume = crate::components::progress::resume_position(
+                                    &server_name_for_player,
+                                    &api_key_for_player,
+                                    user_id,
+                                    episode.episodeid,
+                                    episode.is_youtube,
+                                    episode.listenduration as f64,
+                                    final_duration_sec,
+                                )
+                                .await;
+                                let start_pos_sec = resume.max(start_skip as f64);
                                 let end_pos_sec = end_skip as f64;
 
                                 let dispatch_for_media = audio_dispatch_for_duration.clone();
@@ -2444,7 +2264,13 @@ pub fn on_play_click_offline(
         let episode_artwork_for_wasm = episode_info_for_closure.episodeartwork.clone();
         let episode_duration_for_wasm = episode_info_for_closure.episodeduration.clone();
         let episode_id_for_wasm = episode_info_for_closure.episodeid.clone();
-        let listen_duration_for_closure = episode_info_for_closure.listenduration;
+        // Progress made on this device that hasn't reached the server counts first.
+        let listen_duration_for_closure = crate::components::progress::local_resume(
+            episode_info_for_closure.episodeid,
+            episode.is_youtube,
+            episode_info_for_closure.listenduration as f64,
+            episode_info_for_closure.episodeduration as f64,
+        );
         let episode_is_youtube_for_wasm = episode.is_youtube.clone();
 
         let episode = episode.clone();

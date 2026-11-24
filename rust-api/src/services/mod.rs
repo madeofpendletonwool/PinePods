@@ -1,6 +1,7 @@
 pub mod ad_detection;
 pub mod ai_client;
 pub mod ai_settings;
+pub mod audio_duration;
 pub mod audio_processing;
 pub mod auth;
 pub mod download_metadata;
@@ -17,6 +18,7 @@ pub mod podping;
 pub mod recommendations;
 pub mod refresh_schedule;
 pub mod scheduler;
+pub mod search_text;
 pub mod sync;
 pub mod task_manager;
 pub mod tasks;

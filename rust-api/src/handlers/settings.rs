@@ -1841,8 +1841,7 @@ async fn backup_server_streaming(
             let username = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
             
             let mut cmd = Command::new("mysqldump");
-            cmd.arg("--host").arg(&host)
-               .arg("--port").arg(&port)
+            cmd.args(crate::database::mysql_cli_target(&host, &port))
                .arg("--user").arg(&username)
                .arg(format!("--password={}", database_pass))
                .arg("--skip-ssl")
@@ -2832,13 +2831,16 @@ pub async fn add_custom_podcast(
         return Ok(Json(serde_json::json!({ "data": podcast_details })));
     }
 
-    // Regular podcast feed handling
-    // Get podcast values from feed URL
+    // Regular podcast feed handling. Blank credentials are no credentials, and are stored as such.
+    let (username, password) = match crate::services::http::feed_credentials(request.username.as_deref(), request.password.as_deref()) {
+        Some((user, pass)) => (Some(user), Some(pass)),
+        None => (None, None),
+    };
     let (podcast_values, feed_body) = state.db_pool.get_podcast_values_with_body(
         &request.feed_url,
         request.user_id,
-        request.username.as_deref(),
-        request.password.as_deref()
+        username,
+        password,
     ).await?;
 
     // Add podcast with 30 episode cutoff (matches Python default)
@@ -2846,8 +2848,8 @@ pub async fn add_custom_podcast(
         &podcast_values,
         request.user_id,
         30,
-        request.username.as_deref(),
-        request.password.as_deref(),
+        username,
+        password,
         Some(&feed_body),
         crate::services::sync::SyncOrigin::Pinepods,
     ).await?;
@@ -3889,8 +3891,8 @@ pub async fn adjust_skip_times(
     Ok(Json(serde_json::json!({ "detail": "Skip times updated." })))
 }
 
-// Report whether the optional AI sidecar (#726) is available, so clients can
-// show/hide AI features (transcription, later ad-detection/RAG).
+// Report whether AI features can be used, so clients can show or hide them. `available` is the
+// one to gate on: the sidecar is connected and an admin hasn't turned AI off.
 #[utoipa::path(
     get,
     path = "/ai_status",
@@ -3929,6 +3931,8 @@ pub async fn ai_status(
     let downloads_enabled = state.db_pool.download_status().await.unwrap_or(false);
     Ok(Json(serde_json::json!({
         "available": available,
+        "enabled": state.ai_available.is_enabled(),
+        "connected": state.ai_available.is_connected(),
         "transcription_ready": transcription_ready,
         "ad_removal_ready": ad_removal_ready,
         "downloads_enabled": downloads_enabled,
@@ -4761,6 +4765,44 @@ pub async fn update_ai_settings(
     Ok(Json(serde_json::json!({ "detail": "AI settings updated." })))
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct AiEnabledRequest {
+    pub enabled: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/ai_enabled",
+    tag = "settings",
+    summary = "Turn every AI feature on or off for the server (admin)",
+    request_body = AiEnabledRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Admin access required"),
+    ),
+)]
+pub async fn set_ai_enabled(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AiEnabledRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if !state.db_pool.user_admin_check(key_id).await? {
+        return Err(AppError::forbidden("Admin access required."));
+    }
+
+    crate::services::ai_settings::set_ai_enabled(&state.db_pool, request.enabled)
+        .await
+        .map_err(|e| AppError::internal(&e))?;
+    state.ai_available.set_enabled(request.enabled);
+
+    Ok(Json(serde_json::json!({ "enabled": request.enabled })))
+}
+
 #[utoipa::path(
     get,
     path = "/ytdlp_settings",
@@ -4905,6 +4947,13 @@ pub async fn get_ai_models(
     Ok(Json(serde_json::json!({ "models": models })))
 }
 
+/// Trim whitespace and zero-width characters that ride along when a model name is
+/// copied from a web page; a trailing space becomes `%20` in the download URL.
+fn clean_model_name(value: Option<String>) -> Option<String> {
+    let invisible = |c: char| c.is_whitespace() || matches!(c, '\u{200b}' | '\u{200c}' | '\u{200d}' | '\u{2060}' | '\u{feff}');
+    value.map(|v| v.trim_matches(invisible).to_string()).filter(|v| !v.is_empty())
+}
+
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct AiPullModelRequest {
     pub kind: String, // "whisper" | "gguf" | "ollama"
@@ -4944,11 +4993,11 @@ pub async fn ai_pull_model(
     }
 
     let spec = crate::services::ai_client::PullSpec {
-        kind: request.kind,
-        model: request.model,
-        repo: request.repo,
-        filename: request.filename,
-        url: request.url,
+        kind: request.kind.trim().to_string(),
+        model: clean_model_name(Some(request.model)).unwrap_or_default(),
+        repo: clean_model_name(request.repo),
+        filename: clean_model_name(request.filename),
+        url: clean_model_name(request.url),
     };
     let task_id = state.task_spawner.spawn_pull_model(spec, key_id).await?;
 
@@ -6401,5 +6450,18 @@ mod backup_error_tests {
         let err = backup_failure_error(false, stderr);
         assert!(matches!(err, AppError::Internal(ref m) if m.contains("Connection refused")), "{err:?}");
         assert!(matches!(backup_failure_error(true, ""), AppError::Internal(ref m) if m.contains("no output")));
+    }
+}
+
+#[cfg(test)]
+mod model_name_tests {
+    use super::clean_model_name;
+
+    #[test]
+    fn copied_model_names_lose_stray_whitespace() {
+        assert_eq!(clean_model_name(Some("whisper-small-q4_0.gguf ".into())).as_deref(), Some("whisper-small-q4_0.gguf"));
+        assert_eq!(clean_model_name(Some("\u{a0}oxide-lab/whisper-small-GGUF\u{200b}".into())).as_deref(), Some("oxide-lab/whisper-small-GGUF"));
+        assert_eq!(clean_model_name(Some("  ".into())), None);
+        assert_eq!(clean_model_name(None), None);
     }
 }

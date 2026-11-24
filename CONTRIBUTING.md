@@ -5,7 +5,7 @@ Not a whole lot of rules here. To contribute to this project please simply fork 
 There's a dev guide on the doc site to help get you set up:
 https://www.pinepods.online/docs/Developing/Developing
 
-Priorities right now is getting the app to a full v1 state. If you're looking for something big and exciting take a look at the Youtube Subscriptions issue, otherwise there's plenty of quick and easy visual fixes or quick and easy functionality additions. Category button improvments, remove shared episode reference job, known timezone issue, downloads page visual improvments... etc. 
+Priorities right now is getting the app to a full v1 state. If you're looking for something big and exciting take a look at the Youtube Subscriptions issue, otherwise there's plenty of quick and easy visual fixes or quick and easy functionality additions. Category button improvements, remove shared episode reference job, known timezone issue, downloads page visual improvements... etc. 
 
 Here's the docs repo: https://github.com/madeofpendletonwool/Pinepods-Docs
 There's also Pinepods Firewood, a project I've been working on for a CLI interface to either share pocasts to or browse podcasts on your Pinepods server. Entirely built in Rust!

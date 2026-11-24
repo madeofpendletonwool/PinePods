@@ -31,6 +31,7 @@ void main() {
       when(() => settings.volumeBoost).thenReturn(false);
       when(() => settings.fastForwardInterval).thenReturn(30);
       when(() => settings.rewindInterval).thenReturn(10);
+      when(() => settings.pauseForInterruptions).thenReturn(resume);
       final calls = <MethodCall>[];
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -60,6 +61,7 @@ void main() {
       final expected = resume ? 120000 : 0;
       expect(play.arguments['startPosition'], expected);
       expect(episode.position, expected);
+      expect(play.arguments['pauseForInterruptions'], resume);
       await service.stop();
       await tester.pump(const Duration(milliseconds: 1));
     });
@@ -77,6 +79,7 @@ void main() {
     when(() => settings.volumeBoost).thenReturn(false);
     when(() => settings.fastForwardInterval).thenReturn(30);
     when(() => settings.rewindInterval).thenReturn(10);
+    when(() => settings.pauseForInterruptions).thenReturn(true);
     var stopped = false;
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(NativeAudioPlayerService.platform, (call) async {

@@ -726,6 +726,46 @@
         ]
       }
     },
+    "/api/data/ai_enabled": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Turn every AI feature on or off for the server (admin)",
+        "operationId": "set_ai_enabled",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiEnabledRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Admin access required"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/ai_models": {
       "get": {
         "tags": [
@@ -4849,6 +4889,49 @@
         ]
       }
     },
+    "/api/data/get_podcast_count_display/{user_id}": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Get the Podcasts page episode count setting",
+        "operationId": "get_podcast_count_display",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodcastCountDisplaySetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Another user's setting"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/get_podcast_details": {
       "get": {
         "tags": [
@@ -5889,6 +5972,326 @@
         ]
       }
     },
+    "/api/data/inbox": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "List the inbox",
+        "description": "Episodes of subscribed podcasts released in the last `days` days (see the inbox settings) that the user hasn't played, finished, queued, saved, downloaded or dismissed. Podcasts with their inbox turned off are left out. Newest first unless `sort=oldest`.",
+        "operationId": "get_inbox",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, at most 200 (default 50).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "label_id",
+            "in": "query",
+            "description": "Only episodes with this label.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "unlabeled",
+            "in": "query",
+            "description": "Only episodes without any label.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "podcast_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "`newest` (default) or `oldest`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/inbox/clear": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Dismiss everything in the inbox",
+        "description": "With `podcast_id`, `label_id` or `unlabeled`, only what that filter shows.",
+        "operationId": "clear_inbox",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClearInboxRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxChanged"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/inbox/count": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "How many episodes are in the inbox",
+        "operationId": "get_inbox_count",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxCount"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/inbox/dismiss": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Take episodes out of the inbox",
+        "operationId": "dismiss_inbox",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxEpisodesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxChanged"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/inbox/restore": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Undo dismissing episodes",
+        "description": "They show in the inbox again if nothing else (a play, queue entry, save, ...) took them out.",
+        "operationId": "restore_inbox",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxEpisodesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxChanged"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/inbox/settings": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Get the inbox settings",
+        "operationId": "get_inbox_settings",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Change the inbox settings",
+        "operationId": "set_inbox_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Days out of range"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/increment_listen_time/{user_id}": {
       "put": {
         "tags": [
@@ -6002,6 +6405,254 @@
         ]
       }
     },
+    "/api/data/labels": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "List the user's episode labels",
+        "operationId": "list_labels",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EpisodeLabel"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Create an episode label",
+        "operationId": "create_label",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodeLabel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad name or color"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "409": {
+            "description": "A label with that name exists"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/labels/assignments": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Which labels are on which episodes",
+        "description": "Every label on every episode of the user's, for showing labels on episode lists.",
+        "operationId": "list_label_assignments",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LabelAssignment"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/labels/{label_id}": {
+      "put": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Rename or recolor an episode label",
+        "operationId": "update_label",
+        "parameters": [
+          {
+            "name": "label_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad name or color"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such label"
+          },
+          "409": {
+            "description": "A label with that name exists"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Delete an episode label",
+        "description": "Takes it off every episode. Smart playlists filtering on it stop doing so.",
+        "operationId": "delete_label",
+        "parameters": [
+          {
+            "name": "label_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such label"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/labels/{label_id}/episodes": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Put a label on episodes or take it off",
+        "operationId": "set_label_episodes",
+        "parameters": [
+          {
+            "name": "label_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelEpisodesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxChanged"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such label, or an episode that isn't the user's"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/list_backup_files": {
       "post": {
         "tags": [
@@ -6094,6 +6745,76 @@
           },
           "401": {
             "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/listening_report": {
+      "get": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Get a listening report",
+        "operationId": "get_listening_report",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "description": "First day of the period (`YYYY-MM-DD`, the user's timezone). With `end`; both omitted\nfor all time.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "Last day of the period, inclusive.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListeningReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed or one-sided period"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Another user's report"
           }
         },
         "security": [
@@ -7366,6 +8087,100 @@
         ]
       }
     },
+    "/api/data/podcast/{podcast_id}/inbox": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Whether a podcast's episodes show in the inbox",
+        "operationId": "get_podcast_inbox",
+        "parameters": [
+          {
+            "name": "podcast_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodcastInbox"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such podcast"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Show or hide a podcast's episodes in the inbox",
+        "operationId": "set_podcast_inbox",
+        "parameters": [
+          {
+            "name": "podcast_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PodcastInbox"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodcastInbox"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such podcast"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/podcast/{podcast_id}/refresh": {
       "post": {
         "tags": [
@@ -7710,6 +8525,7 @@
           {
             "name": "search",
             "in": "query",
+            "description": "Words (or \"quoted phrases\") that must each appear in the title or the description's text.\nEpisodes with them in the title come first.",
             "required": false,
             "schema": {
               "type": [
@@ -7801,6 +8617,48 @@
         ]
       }
     },
+    "/api/data/progress": {
+      "post": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Record listening progress",
+        "operationId": "record_progress",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgressRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The stored state of each episode after its update",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Too many updates in one request"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/proxy_categories": {
       "get": {
         "tags": [
@@ -7819,6 +8677,75 @@
           },
           "401": {
             "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/proxy_episodes": {
+      "get": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Proxy recent episodes of several podcasts",
+        "operationId": "proxy_episodes",
+        "parameters": [
+          {
+            "name": "feeds",
+            "in": "query",
+            "description": "Comma-separated PodcastIndex feed ids (at most 200).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "No feed ids"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "503": {
+            "description": "The search service isn't reachable or answered with an error"
           }
         },
         "security": [
@@ -8772,6 +9699,51 @@
             }
           }
         }
+      }
+    },
+    "/api/data/resolve_feed_episode": {
+      "post": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Resolve an episode of any feed",
+        "operationId": "resolve_feed_episode",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveFeedEpisodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveFeedEpisodeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Not your user"
+          },
+          "404": {
+            "description": "The feed has no such episode"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
       }
     },
     "/api/data/restore_backup_file": {
@@ -10264,6 +11236,48 @@
           },
           "401": {
             "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/update_podcast_count_display": {
+      "put": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Set the Podcasts page episode count setting",
+        "operationId": "update_podcast_count_display",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PodcastCountDisplaySetting"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodcastCountDisplaySetting"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Another user's setting"
           }
         },
         "security": [
@@ -12607,6 +13621,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "w",
+            "in": "query",
+            "description": "Return a thumbnail at most this many pixels wide (rounded up to one of a few fixed\nsizes, max 1024). Images already that small, or that can't be decoded, come back as-is.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -13216,6 +14244,34 @@
         ]
       }
     },
+    "/api/tasks/clear_finished": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "Clear finished tasks",
+        "description": "Removes every completed or failed task from the caller's activity list.",
+        "operationId": "clear_finished_tasks",
+        "responses": {
+          "200": {
+            "description": "Number of tasks removed",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/tasks/user/{user_id}": {
       "get": {
         "tags": [
@@ -13295,6 +14351,84 @@
           },
           "403": {
             "description": "Task does not belong to the requesting user"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/tasks/{task_id}/cancel": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "Cancel a queued task",
+        "description": "Cancels a task that is still waiting its turn, such as a queued transcription. Tasks already running can't be cancelled.",
+        "operationId": "cancel_task",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task cancelled"
+          },
+          "400": {
+            "description": "Task is not queued or can't be cancelled"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such task for this user"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/tasks/{task_id}/dismiss": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "Dismiss a finished task",
+        "description": "Removes a completed or failed task from the caller's activity list.",
+        "operationId": "dismiss_task",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task removed"
+          },
+          "400": {
+            "description": "Task is still queued or running"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such task for this user"
           }
         },
         "security": [
@@ -13495,6 +14629,17 @@
           },
           "hash_pw": {
             "type": "string"
+          }
+        }
+      },
+      "AiEnabledRequest": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
           }
         }
       },
@@ -14007,6 +15152,31 @@
           "podcast_id": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "ClearInboxRequest": {
+        "type": "object",
+        "properties": {
+          "podcast_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Only this podcast's episodes."
+          },
+          "label_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Only episodes with this label."
+          },
+          "unlabeled": {
+            "type": "boolean",
+            "description": "Only episodes without a label."
           }
         }
       },
@@ -14726,6 +15896,17 @@
           },
           "icon_name": {
             "type": "string"
+          },
+          "label_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Only episodes with any of these labels (see `/api/data/labels`)."
           }
         }
       },
@@ -14888,6 +16069,23 @@
               "null"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "DaySeconds": {
+        "type": "object",
+        "required": [
+          "date",
+          "seconds"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "`YYYY-MM-DD`, local."
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -15461,6 +16659,32 @@
           }
         }
       },
+      "EpisodeLabel": {
+        "type": "object",
+        "required": [
+          "label_id",
+          "name",
+          "color",
+          "episode_count"
+        ],
+        "properties": {
+          "label_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "episode_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Episodes of the user's podcasts that have the label."
+          }
+        }
+      },
       "EpisodeMetadataRequest": {
         "type": "object",
         "required": [
@@ -15487,6 +16711,22 @@
               "boolean",
               "null"
             ]
+          }
+        }
+      },
+      "EpisodeRef": {
+        "type": "object",
+        "description": "One episode or YouTube video.",
+        "required": [
+          "episode_id"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_youtube": {
+            "type": "boolean"
           }
         }
       },
@@ -16169,6 +17409,59 @@
           }
         }
       },
+      "InboxChanged": {
+        "type": "object",
+        "required": [
+          "changed"
+        ],
+        "properties": {
+          "changed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many episodes changed.",
+            "minimum": 0
+          }
+        }
+      },
+      "InboxCount": {
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "InboxEpisodesRequest": {
+        "type": "object",
+        "required": [
+          "episodes"
+        ],
+        "properties": {
+          "episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EpisodeRef"
+            }
+          }
+        }
+      },
+      "InboxSettings": {
+        "type": "object",
+        "required": [
+          "days"
+        ],
+        "properties": {
+          "days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many days back the inbox reaches, 1 to 365 (default 30)."
+          }
+        }
+      },
       "InitRequest": {
         "type": "object",
         "required": [
@@ -16196,6 +17489,65 @@
           }
         }
       },
+      "LabelAssignment": {
+        "type": "object",
+        "required": [
+          "label_id",
+          "episode_id",
+          "is_youtube"
+        ],
+        "properties": {
+          "label_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "episode_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_youtube": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LabelEpisodesRequest": {
+        "type": "object",
+        "required": [
+          "episodes",
+          "assigned"
+        ],
+        "properties": {
+          "episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EpisodeRef"
+            }
+          },
+          "assigned": {
+            "type": "boolean",
+            "description": "True puts the label on, false takes it off."
+          }
+        }
+      },
+      "LabelRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "1 to 64 characters, unique per user ignoring case."
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One of blue, green, yellow, orange, red, purple, pink, teal, gray (default blue)."
+          }
+        }
+      },
       "LanguageUpdateRequest": {
         "type": "object",
         "required": [
@@ -16214,6 +17566,204 @@
       },
       "ListBackupFilesRequest": {
         "type": "object"
+      },
+      "ListeningReport": {
+        "type": "object",
+        "required": [
+          "timezone",
+          "months",
+          "seconds",
+          "active_days",
+          "episodes",
+          "podcasts",
+          "finished",
+          "top_podcasts",
+          "top_episodes",
+          "top_categories",
+          "top_people",
+          "by_hour",
+          "by_dow",
+          "daily",
+          "by_month",
+          "longest_streak",
+          "sessions",
+          "time_saved",
+          "ad_heavy",
+          "by_client",
+          "downloaded_seconds"
+        ],
+        "properties": {
+          "start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The period, inclusive (`YYYY-MM-DD`); null for all time."
+          },
+          "end": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "recorded_since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The first day in the listening record. Days and hours before it aren't known."
+          },
+          "months": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Months with listening in the record, newest first (`YYYY-MM`)."
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "active_days": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "episodes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "podcasts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "finished": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "top_podcasts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportPodcast"
+            }
+          },
+          "top_episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportEpisode"
+            }
+          },
+          "top_categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NamedSeconds"
+            }
+          },
+          "top_people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportPerson"
+            }
+          },
+          "by_hour": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "by_dow": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Sunday first."
+          },
+          "daily": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DaySeconds"
+            }
+          },
+          "by_month": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonthSeconds"
+            },
+            "description": "Each month of the period, when it spans more than one."
+          },
+          "biggest_day": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DaySeconds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "busiest_week": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DaySeconds",
+                "description": "The Monday-to-Sunday week with the most listening; `date` is its Monday."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "longest_streak": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sessions": {
+            "$ref": "#/components/schemas/SessionStats"
+          },
+          "average_speed": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Across the apps that report speed; null without any."
+          },
+          "time_saved": {
+            "$ref": "#/components/schemas/SavedStats"
+          },
+          "ad_heavy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportPodcast"
+            },
+            "description": "Podcasts by ads skipped."
+          },
+          "by_client": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NamedSeconds"
+            },
+            "description": "`web`, `desktop`, `android`, `ios`, `sync` or `unknown`."
+          },
+          "downloaded_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Played from a file on the device."
+          },
+          "release_lag": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ReleaseLag"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
       },
       "LoginResponse": {
         "type": "object",
@@ -16363,6 +17913,23 @@
           }
         }
       },
+      "MonthSeconds": {
+        "type": "object",
+        "required": [
+          "month",
+          "seconds"
+        ],
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "`YYYY-MM`."
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "MsgSeverity": {
         "type": "string",
         "description": "Durable in-app notification severity. Mirrored on the frontend\n(`web/src/components/context.rs`). `warning`/`error` count toward the bell\nbadge; `info`/`success` do not.",
@@ -16372,6 +17939,22 @@
           "warning",
           "error"
         ]
+      },
+      "NamedSeconds": {
+        "type": "object",
+        "required": [
+          "name",
+          "seconds"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
       },
       "NextPlaylistEpisodeRequest": {
         "type": "object",
@@ -17003,6 +18586,30 @@
           }
         }
       },
+      "PodcastCountDisplay": {
+        "type": "string",
+        "description": "Which episode count the Podcasts page shows for each podcast.",
+        "enum": [
+          "total",
+          "unplayed"
+        ]
+      },
+      "PodcastCountDisplaySetting": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "display"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "display": {
+            "$ref": "#/components/schemas/PodcastCountDisplay"
+          }
+        }
+      },
       "PodcastCredits": {
         "type": "object",
         "required": [
@@ -17136,6 +18743,14 @@
           },
           "is_video": {
             "type": "boolean"
+          },
+          "match_rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "With a search: 0 when every term is in the title, 1 when some are, 2 when it matched on\nthe description alone. Results come in this order. Absent without a search."
           }
         }
       },
@@ -17291,6 +18906,18 @@
           }
         }
       },
+      "PodcastInbox": {
+        "type": "object",
+        "required": [
+          "inbox"
+        ],
+        "properties": {
+          "inbox": {
+            "type": "boolean",
+            "description": "New episodes of the podcast show in the inbox."
+          }
+        }
+      },
       "PodcastListResponse": {
         "type": "object",
         "required": [
@@ -17358,7 +18985,8 @@
           "explicit",
           "is_favorite",
           "is_video",
-          "play_count"
+          "play_count",
+          "unplayed_count"
         ],
         "properties": {
           "podcastid": {
@@ -17445,6 +19073,11 @@
           "play_count": {
             "type": "integer",
             "format": "int64"
+          },
+          "unplayed_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Episodes (and videos) of this podcast the user hasn't finished."
           }
         }
       },
@@ -17555,6 +19188,158 @@
           },
           "client": {
             "$ref": "#/components/schemas/ClientStatus"
+          }
+        }
+      },
+      "ProgressRequest": {
+        "type": "object",
+        "required": [
+          "updates"
+        ],
+        "properties": {
+          "sent_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The client's clock when it sent this request, in unix milliseconds. Only its difference\nfrom each update's `at` is used, so the client's clock doesn't have to be right."
+          },
+          "client": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The app sending this: `web`, `desktop`, `android` or `ios`. Recorded with the listening\ntime for stats; anything else counts as unknown."
+          },
+          "updates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgressUpdate"
+            }
+          }
+        }
+      },
+      "ProgressResponse": {
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgressResult"
+            }
+          }
+        }
+      },
+      "ProgressResult": {
+        "type": "object",
+        "description": "The stored state of the episode after the update.",
+        "required": [
+          "episode_id",
+          "is_youtube",
+          "found",
+          "applied",
+          "position",
+          "completed"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_youtube": {
+            "type": "boolean"
+          },
+          "found": {
+            "type": "boolean",
+            "description": "False when the episode isn't in the user's library (any more)."
+          },
+          "applied": {
+            "type": "boolean",
+            "description": "Whether this update's position became the stored one. False when a newer one was\nalready stored; `position` is then that newer one."
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "completed": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the stored position was observed, in unix seconds on the server's clock."
+          }
+        }
+      },
+      "ProgressUpdate": {
+        "type": "object",
+        "required": [
+          "episode_id",
+          "position"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_youtube": {
+            "type": "boolean"
+          },
+          "position": {
+            "type": "number",
+            "format": "double",
+            "description": "Seconds into the episode."
+          },
+          "at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The client's clock when it observed this position, in unix milliseconds. Now if absent."
+          },
+          "listened": {
+            "type": "number",
+            "format": "double",
+            "description": "Seconds actually played since this client's previous report for the episode."
+          },
+          "duration": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "The player's length for the episode in seconds, if it knows it."
+          },
+          "finished": {
+            "type": "boolean",
+            "description": "The episode was played to the end."
+          },
+          "speed_saved": {
+            "type": "number",
+            "format": "double",
+            "description": "Of the `listened` seconds: episode time gained by playing faster than 1x (negative when\nslower)."
+          },
+          "silence_skipped": {
+            "type": "number",
+            "format": "double",
+            "description": "Seconds of silence skipped since the previous report."
+          },
+          "ads_skipped": {
+            "type": "number",
+            "format": "double",
+            "description": "Seconds of ads skipped since the previous report."
+          },
+          "downloaded": {
+            "type": "boolean",
+            "description": "Played from a file on the device rather than streamed."
           }
         }
       },
@@ -17932,6 +19717,35 @@
           }
         }
       },
+      "ReleaseLag": {
+        "type": "object",
+        "description": "How soon after release episodes were first played.",
+        "required": [
+          "median_days",
+          "within_day",
+          "within_week",
+          "episodes"
+        ],
+        "properties": {
+          "median_days": {
+            "type": "number",
+            "format": "double"
+          },
+          "within_day": {
+            "type": "number",
+            "format": "double",
+            "description": "Share (0–1) first played within a day of release, and within a week."
+          },
+          "within_week": {
+            "type": "number",
+            "format": "double"
+          },
+          "episodes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "RemoteDeviceEntry": {
         "type": "object",
         "required": [
@@ -18121,6 +19935,107 @@
           }
         }
       },
+      "ReportEpisode": {
+        "type": "object",
+        "required": [
+          "is_youtube",
+          "title",
+          "podcast",
+          "artwork",
+          "seconds"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Null when its podcast is no longer in the library."
+          },
+          "is_youtube": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          },
+          "podcast": {
+            "type": "string"
+          },
+          "artwork": {
+            "type": "string"
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ReportPerson": {
+        "type": "object",
+        "required": [
+          "person_id",
+          "name",
+          "seconds",
+          "episodes"
+        ],
+        "properties": {
+          "person_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "episodes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ReportPodcast": {
+        "type": "object",
+        "required": [
+          "name",
+          "artwork",
+          "seconds",
+          "episodes"
+        ],
+        "properties": {
+          "podcast_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Null when it is no longer in the library."
+          },
+          "name": {
+            "type": "string"
+          },
+          "artwork": {
+            "type": "string"
+          },
+          "seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "episodes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ResetCodeRequest": {
         "type": "object",
         "required": [
@@ -18144,6 +20059,62 @@
         "properties": {
           "code_created": {
             "type": "boolean"
+          }
+        }
+      },
+      "ResolveFeedEpisodeRequest": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "feed_url",
+          "episode_url",
+          "episode_title"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "feed_url": {
+            "type": "string",
+            "description": "The podcast's feed address."
+          },
+          "episode_url": {
+            "type": "string",
+            "description": "The episode's audio address, as the feed lists it."
+          },
+          "episode_title": {
+            "type": "string"
+          },
+          "podcast_index_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The podcast's Podcast Index ID, when known."
+          }
+        }
+      },
+      "ResolveFeedEpisodeResponse": {
+        "type": "object",
+        "required": [
+          "episode_id",
+          "podcast_id",
+          "subscribed"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "podcast_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "subscribed": {
+            "type": "boolean",
+            "description": "Whether the user subscribes to the podcast."
           }
         }
       },
@@ -18418,6 +20389,28 @@
           }
         }
       },
+      "SavedStats": {
+        "type": "object",
+        "required": [
+          "speed",
+          "silence",
+          "ads"
+        ],
+        "properties": {
+          "speed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "silence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ads": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ScheduleBackupRequest": {
         "type": "object",
         "required": [
@@ -18674,6 +20667,36 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "SessionStats": {
+        "type": "object",
+        "required": [
+          "count",
+          "average_seconds",
+          "longest_seconds"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "average_seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "longest_seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "longest_started_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the longest began, unix seconds."
           }
         }
       },
@@ -19496,6 +21519,13 @@
             ],
             "format": "int32",
             "description": "Total item count a grouped run is working through (for \"x of N\")."
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "API process running the task. A pending/running task whose process is gone\n(restart, crash) is failed on the next read instead of sitting there for days."
           }
         }
       },
@@ -20047,6 +22077,17 @@
           },
           "icon_name": {
             "type": "string"
+          },
+          "label_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Only episodes with any of these labels (see `/api/data/labels`)."
           }
         }
       },
@@ -20566,6 +22607,10 @@
     {
       "name": "playlists",
       "description": "Smart and manual playlists"
+    },
+    {
+      "name": "inbox",
+      "description": "The inbox of new episodes not dealt with yet, and episode labels"
     },
     {
       "name": "settings",

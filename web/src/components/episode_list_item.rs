@@ -1,17 +1,20 @@
+use crate::components::art_accent::{accent_style, use_art_accent};
 use crate::components::audio::on_play_click;
+use crate::components::click_events::open_podcast_by_id;
 use crate::components::context::{AppState, EpisodeStatusState, PodcastFeedState, UIState, UserPreferencesState};
 use crate::components::gen_components::{on_shownotes_click, EpisodeModal, FallbackImage};
 
 use crate::components::context_menu_button::{ContextMenuButton, PageType};
 use crate::components::gen_funcs::{
-    format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target, use_long_press,
+    card_description, format_datetime, match_date_format, parse_date, use_long_press,
 };
-use crate::components::gen_funcs::{format_time, strip_images_from_html};
+use crate::components::gen_funcs::format_time;
 use crate::components::safehtml::RawHtml;
+use crate::components::inbox_actions::{self, InboxAction};
+use crate::components::labels::LabelChips;
 use crate::requests::episode::Episode;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use yew_router::history::BrowserHistory;
-use wasm_bindgen::prelude::*;
 use web_sys::{DragEvent, MouseEvent};
 use yew::prelude::*;
 use yew::Callback;
@@ -68,12 +71,54 @@ pub struct EpisodeListItemProps {
     /// Forwarded to [`ContextMenuButton`]: whether the active collection is the default Saved bucket.
     #[prop_or(false)]
     pub active_collection_is_default: bool,
+    /// Show the podcast name above the title. Off on a podcast's own page.
+    #[prop_or(true)]
+    pub show_podcast: bool,
+    /// Set by [`EpisodeListItem`] once an episode straight from a feed has its server id: open
+    /// the actions menu right away (it was what the user asked for).
+    #[prop_or(false)]
+    pub open_menu: bool,
+    /// Set by [`EpisodeListItem`]: an episode straight from a feed got its server id; the flag
+    /// asks to open the actions menu.
+    #[prop_or_default]
+    pub on_resolved: Callback<(Episode, bool)>,
 }
 
+/// An episode row. An episode straight from the feed of a podcast the user doesn't subscribe to
+/// is resolved to its server id when it's first played or its menu opened, and from then on
+/// shown as that episode, so its progress is kept and every action works.
 #[function_component(EpisodeListItem)]
 pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
+    let resolved = use_state(|| None::<(Episode, bool)>);
+    {
+        // The row being reused for another episode drops the old resolution.
+        let resolved = resolved.clone();
+        use_effect_with(props.episode.episodeurl.clone(), move |url| {
+            if resolved.as_ref().is_some_and(|(e, _)| &e.episodeurl != url) {
+                resolved.set(None);
+            }
+        });
+    }
+    let mut body = props.clone();
+    if let Some((episode, open_menu)) = (*resolved).clone() {
+        if episode.episodeurl == props.episode.episodeurl {
+            body.episode = episode;
+            body.open_menu = open_menu;
+        }
+    }
+    body.on_resolved = {
+        let resolved = resolved.clone();
+        Callback::from(move |r: (Episode, bool)| resolved.set(Some(r)))
+    };
+    let key = body.episode.episodeid.to_string();
+    html! { <EpisodeListItemBody {key} ..body /> }
+}
+
+#[function_component(EpisodeListItemBody)]
+fn episode_list_item_body(props: &EpisodeListItemProps) -> Html {
     let (i18n, _) = use_translation();
     let i18n_completed = i18n.t("episode_list_item.completed").to_string();
+    let inbox_busy = use_state(|| false);
     // Use selective subscriptions to only re-render when relevant state changes
     let episode_id = props.episode.episodeid;
 
@@ -85,9 +130,15 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
             state.completed_episodes.contains(&episode_id),
             state.downloaded_episodes.is_server_download(episode_id),
             state.downloaded_episodes.is_local_download(episode_id),
+            state.saved_episodes.iter().any(|e| e.episodeid == episode_id),
+            state
+                .queued_episode_ids
+                .as_ref()
+                .map_or(false, |ids| ids.contains(&episode_id)),
         )
     });
-    let (is_completed, is_downloaded_server, is_downloaded_local) = *episode_status;
+    let (is_completed, is_downloaded_server, is_downloaded_local, is_saved, is_queued) =
+        *episode_status;
 
     let user_prefs = use_selector(|state: &UserPreferencesState| {
         (
@@ -220,6 +271,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 
     let on_play_pause = {
         let episode = props.episode.clone();
+        let on_resolved = props.on_resolved.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
@@ -242,6 +294,21 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                 // element's play/pause event listeners keep `audio_playing` in sync afterwards.
                 audio_dispatch.reduce_mut(|state| {
                     state.toggle_playback();
+                });
+            } else if crate::requests::pod_req::is_resolvable_feed_episode(&episode) {
+                let (episode, api_key, server_name) = (episode.clone(), api_key.clone(), server_name.clone());
+                let on_resolved = on_resolved.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let episode = match crate::requests::pod_req::resolve_feed_episode(&server_name, &api_key, user_id, &episode).await {
+                        Ok(resolved) => {
+                            on_resolved.emit((resolved.clone(), false));
+                            resolved
+                        }
+                        Err(_) => episode,
+                    };
+                    let audio_dispatch = Dispatch::<UIState>::global();
+                    let state = audio_dispatch.get();
+                    on_play_click(episode, api_key, user_id, server_name, audio_dispatch, state, false, false, None).emit(e);
                 });
             } else {
                 let episode_id = episode.episodeid;
@@ -268,14 +335,11 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     Episode Information
     */
 
-    // Sanitize + strip images in ONE memo so the (expensive) HTML parse and DOM walk happen
-    // once per episode-id, not on every parent re-render. Previously strip_images_from_html
-    // ran inline at the call site, so every display_count bump re-parsed every visible card's
-    // description.
-    let episode_description = use_memo(
-        props.episode.episodedescription.clone(),
-        |desc| strip_images_from_html(&sanitize_html_with_blank_target(desc)),
-    );
+    // Sanitized once per description for the whole session (see `card_description`):
+    // cards remount as the virtual list scrolls, so a per-mount memo isn't enough.
+    let episode_description = use_memo(props.episode.episodedescription.clone(), |desc| {
+        card_description(desc).to_string()
+    });
 
     let (_listen_duration_str, listen_duration_percentage) = {
         let lds = format_time(props.episode.listenduration);
@@ -288,6 +352,37 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     };
 
     let episode_duration_str = format_time(props.episode.episodeduration);
+    let remaining_str = (props.episode.listenduration > 0
+        && props.episode.episodeduration > props.episode.listenduration)
+        .then(|| {
+            i18n.t("episode_list_item.time_left")
+                .replace("{time}", &format_time(props.episode.episodeduration - props.episode.listenduration))
+        });
+
+    let art_src = if props.episode.episodeartwork.is_empty() {
+        props.episode.artworkurl.clone()
+    } else {
+        props.episode.episodeartwork.clone()
+    };
+    let accent = use_art_accent(&art_src);
+
+    let show_podcast = props.show_podcast && !props.episode.podcastname.is_empty();
+    let on_podcast_click = {
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let podcast_id = props.episode.podcastid;
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            open_podcast_by_id(
+                server_name.clone(),
+                api_key.clone(),
+                user_id,
+                podcast_id,
+                BrowserHistory::new(),
+                e,
+            );
+        })
+    };
 
     // is_completed is already defined via use_selector above
 
@@ -309,18 +404,70 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     // Episodes with episodeid <= 0 come from external feeds (unsubscribed podcasts).
     // Only show the context menu for episodes the user can actually interact with.
     let can_use_context_menu = props.episode.episodeid > 0;
+    // An episode straight from a feed gets its server id when its menu is first opened.
+    let resolvable = crate::requests::pod_req::is_resolvable_feed_episode(&props.episode);
+    let resolving = use_state(|| false);
+    let resolve_for_menu = {
+        let episode = props.episode.clone();
+        let on_resolved = props.on_resolved.clone();
+        let resolving = resolving.clone();
+        let (server_name, api_key) = (server_name.clone(), api_key.clone());
+        let failed = i18n.t("episode_list_item.resolve_failed").to_string();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            if *resolving {
+                return;
+            }
+            resolving.set(true);
+            let (episode, on_resolved, resolving) = (episode.clone(), on_resolved.clone(), resolving.clone());
+            let (server_name, api_key, failed) = (server_name.clone(), api_key.clone(), failed.clone());
+            wasm_bindgen_futures::spawn_local(async move {
+                match crate::requests::pod_req::resolve_feed_episode(&server_name, &api_key, user_id, &episode).await {
+                    Ok(resolved) => on_resolved.emit((resolved, true)),
+                    Err(_) => {
+                        resolving.set(false);
+                        Dispatch::<crate::components::context::NotificationState>::global()
+                            .reduce_mut(|s| s.error_message = Some(failed));
+                    }
+                }
+            });
+        })
+    };
 
     let show_context_menu = use_state(|| false);
     let context_menu_position = use_state(|| (0, 0));
 
     // Long press handler - simulate clicking the context button
     let context_button_ref = use_node_ref();
+    {
+        // Resolved from a feed episode because its menu was asked for: open it now.
+        let context_button_ref = context_button_ref.clone();
+        use_effect_with(props.open_menu, move |open| {
+            if *open {
+                if let Some(button) = context_button_ref
+                    .cast::<web_sys::Element>()
+                    .and_then(|div| div.query_selector("button").ok().flatten())
+                    .and_then(|b| wasm_bindgen::JsCast::dyn_into::<web_sys::HtmlElement>(b).ok())
+                {
+                    button.click();
+                }
+            }
+        });
+    }
     let on_long_press = {
         let context_button_ref = context_button_ref.clone();
         let show_context_menu = show_context_menu.clone();
         let context_menu_position = context_menu_position.clone();
 
+        let resolve_for_menu = resolve_for_menu.clone();
         Callback::from(move |event: TouchEvent| {
+            if resolvable {
+                event.prevent_default();
+                if let Ok(click) = MouseEvent::new("click") {
+                    resolve_for_menu.emit(click);
+                }
+                return;
+            }
             if !can_use_context_menu { return; }
             if let Some(touch) = event.touches().get(0) {
                 event.prevent_default();
@@ -397,23 +544,109 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
         )
     };
 
-    #[wasm_bindgen]
-    extern "C" {
-        #[wasm_bindgen(js_namespace = window)]
-        fn toggleDescription(guid: &str, expanded: bool);
-    }
+    // A real link, so ctrl/cmd/middle-click opens the episode in a new tab; a plain click
+    // stays in the app.
+    let episode_href = (props.episode.episodeid > 0).then(|| {
+        if props.episode.is_youtube {
+            format!("/episode?episode_id={}&youtube=true", props.episode.episodeid)
+        } else {
+            format!("/episode?episode_id={}", props.episode.episodeid)
+        }
+    });
+    let on_title_click = {
+        let open = on_shownotes_click.clone();
+        Callback::from(move |e: MouseEvent| {
+            if e.ctrl_key() || e.meta_key() || e.shift_key() || e.alt_key() || e.button() != 0 {
+                return;
+            }
+            e.prevent_default();
+            open.emit(e);
+        })
+    };
+
+    let pct = if is_completed { 100 } else { listen_duration_percentage };
+    let row_style = format!(
+        "user-select: {};{}",
+        if *is_pressing_state { "none" } else { "auto" },
+        accent_style(&accent),
+    );
+    let play_title = if is_active_and_playing {
+        i18n.t("episode_list_item.pause").to_string()
+    } else if props.episode.listenduration > 0 && !is_completed {
+        i18n.t("episode_list_item.resume").to_string()
+    } else {
+        i18n.t("episode_list_item.play").to_string()
+    };
+    let has_media = !props.episode.episodeurl.is_empty();
+
+    // One-tap triage on inbox cards. Queue, save and played take the card out through the shared
+    // episode state; dismissing tells the page directly.
+    let inbox_buttons = if props.page_type == PageType::Inbox {
+        let busy = inbox_busy.clone();
+        let button = |action: InboxAction, icon: &str, label: String| {
+            let episode = props.episode.clone();
+            let on_removed = props.on_episode_removed.clone();
+            let disabled = *busy;
+            let busy = busy.clone();
+            let onclick = Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                if *busy {
+                    return;
+                }
+                busy.set(true);
+                let id = episode.episodeid;
+                let on_removed = on_removed.clone();
+                let busy_done = busy.clone();
+                inbox_actions::run(action, episode.clone(), move || {
+                    busy_done.set(false);
+                    if action == InboxAction::Dismiss {
+                        on_removed.emit(id);
+                    }
+                });
+            });
+            html! {
+                <button class="ep-inbox-btn" title={label.clone()} aria-label={label.clone()} {disabled} {onclick}>
+                    <i class={classes!("ph", icon.to_string())}></i>
+                    <span>{ label }</span>
+                </button>
+            }
+        };
+        let label_click = {
+            let episode = props.episode.clone();
+            Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                crate::components::labels::open_picker(vec![crate::requests::inbox_req::EpisodeRef::from(&episode)]);
+            })
+        };
+        let label_text = i18n.t("labels.labels").to_string();
+        html! {
+            <div class="ep-inbox-actions">
+                { button(InboxAction::PlayNext, "ph-skip-forward", i18n.t("inbox.play_next").to_string()) }
+                { button(InboxAction::Queue, "ph-queue", i18n.t("inbox.queue").to_string()) }
+                { button(InboxAction::Save, "ph-star", i18n.t("inbox.save").to_string()) }
+                { button(InboxAction::MarkPlayed, "ph-check", i18n.t("inbox.mark_played").to_string()) }
+                <button class="ep-inbox-btn" title={label_text.clone()} aria-label={label_text.clone()} onclick={label_click}>
+                    <i class="ph ph-tag"></i>
+                    <span>{ label_text }</span>
+                </button>
+                { button(InboxAction::Dismiss, "ph-x", i18n.t("inbox.dismiss").to_string()) }
+            </div>
+        }
+    } else {
+        html! {}
+    };
 
     html! {
         <div>
             <div
                 class={classes!(
                     "ep-row",
+                    accent.is_some().then_some("ep-row--art"),
+                    _is_current_episode.then_some("ep-row--current"),
                     if *is_pressing_state { "ep-row--pressing" } else { "" },
                     if props.is_delete_mode { "ep-row--select" } else { "" }
                 )}
-                style={format!("user-select: {};",
-                    if *is_pressing_state { "none" } else { "auto" }
-                )}
+                style={row_style}
                 ontouchstart={ on_touch_start.clone() }
                 ontouchend={ on_touch_end.clone() }
                 ontouchmove={ on_touch_move.clone() }
@@ -467,27 +700,51 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     }
                 }
 
-                <div class="ep-art-wrap">
-                    <FallbackImage
-                        src={if props.episode.episodeartwork.is_empty() {
-                            props.episode.artworkurl.clone()
-                        } else {
-                            props.episode.episodeartwork.clone()
-                        }}
+                <div
+                    class={classes!("ep-art-wrap", has_media.then_some("ep-art-wrap--playable"))}
+                    onclick={has_media.then(|| on_play_pause.clone())}
+                    title={has_media.then(|| play_title.clone())}
+                >
+                    <FallbackImage size={Some(192)}
+                        src={art_src.clone()}
                         fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                         alt={format!("Cover for {}", props.episode.episodetitle)}
                         class="ep-art-img"
                     />
-                    if is_completed {
+                    if _is_current_episode {
+                        <div class="ep-art-overlay ep-art-overlay--current">
+                            if is_active_and_playing {
+                                <span class="ep-eq" aria-hidden="true"><span></span><span></span><span></span></span>
+                            } else {
+                                <i class="ph ph-pause"></i>
+                            }
+                        </div>
+                    } else if has_media {
+                        <div class="ep-art-overlay ep-art-overlay--hover">
+                            <i class="ph ph-play"></i>
+                        </div>
+                    }
+                    if is_completed && !_is_current_episode {
                         <div class="ep-art-badge"><i class="ph ph-check-circle"></i></div>
                     }
                 </div>
 
                 <div class="ep-body">
-                    <div class="ep-title cursor-pointer" onclick={on_shownotes_click.clone()}>
+                    if show_podcast {
+                        if props.episode.podcastid > 0 {
+                            <button class="ep-podcast" onclick={on_podcast_click.clone()}>
+                                { props.episode.podcastname.clone() }
+                            </button>
+                        } else {
+                            <span class="ep-podcast">{ props.episode.podcastname.clone() }</span>
+                        }
+                    }
+                    <a class="ep-title cursor-pointer" href={episode_href} onclick={on_title_click}>
                         { props.episode.episodetitle.clone() }
-                    </div>
-                    <hr class="ep-divider" />
+                    </a>
+                    if !show_podcast {
+                        <hr class="ep-divider" />
+                    }
                     <div class="ep-desc cursor-pointer"
                         onclick={
                             let episode_id = props.episode.episodeid;
@@ -502,46 +759,94 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     </div>
                     <div class="ep-meta">
                         <span>{ (*formatted_pub_date).clone() }</span>
+                        <span class="ep-meta-sep">{ "\u{00B7}" }</span>
                         {
                             if is_completed {
                                 if is_narrow_viewport {
-                                    html! { <span>{ &i18n_completed }</span> }
+                                    html! { <span class="ep-meta-played"><i class="ph ph-check"></i>{ " " }{ &i18n_completed }</span> }
                                 } else {
-                                    html! { <span>{ format!("{} \u{2014} {}", episode_duration_str, &i18n_completed) }</span> }
+                                    html! {
+                                        <>
+                                            <span>{ episode_duration_str.clone() }</span>
+                                            <span class="ep-meta-played"><i class="ph ph-check"></i>{ " " }{ &i18n_completed }</span>
+                                        </>
+                                    }
                                 }
-                            } else if props.episode.listenduration > 0 {
-                                html! {
-                                    <>
-                                        <div class="ep-progress">
-                                            <div class="ep-progress-fill" style={ format!("width: {}%;", listen_duration_percentage) }></div>
-                                        </div>
-                                        <span>{ episode_duration_str }</span>
-                                    </>
-                                }
+                            } else if let Some(left) = remaining_str.clone() {
+                                html! { <span class="ep-meta-left">{ left }</span> }
                             } else {
-                                html! { <span>{ episode_duration_str }</span> }
+                                html! { <span>{ episode_duration_str.clone() }</span> }
                             }
                         }
+                        <span class="ep-meta-icons">
+                            if is_saved {
+                                <i class="ph ph-star" title={i18n.t("episode_list_item.saved").to_string()}></i>
+                            }
+                            if is_queued {
+                                <i class="ph ph-queue" title={i18n.t("episode_list_item.queued").to_string()}></i>
+                            }
+                            if is_downloaded_server || is_downloaded_local {
+                                <i class="ph ph-download-simple" title={i18n.t("episode_list_item.downloaded").to_string()}></i>
+                            }
+                        </span>
+                        <LabelChips episode_id={props.episode.episodeid} is_youtube={props.episode.is_youtube} editable={true} />
                     </div>
+                    if props.page_type == PageType::Inbox {
+                        { inbox_buttons }
+                    }
                 </div>
 
-                if !props.episode.episodeurl.is_empty() {
+                if has_media {
                     <div class="ep-actions">
                         <button
-                            class="ico"
+                            class={classes!(
+                                "ep-play",
+                                is_active_and_playing.then_some("ep-play--playing"),
+                                (is_completed && !_is_current_episode).then_some("ep-play--done"),
+                            )}
                             onclick={on_play_pause.clone()}
-                            title="Play / Pause"
+                            title={play_title.clone()}
+                            aria-label={play_title.clone()}
                         >
+                            <svg class="ep-play-ring" viewBox="0 0 42 42" aria-hidden="true">
+                                <circle class="ep-play-track" cx="21" cy="21" r="19.75" />
+                                if pct > 0 {
+                                    <circle
+                                        class="ep-play-arc"
+                                        cx="21" cy="21" r="19.75"
+                                        pathLength="100"
+                                        stroke-dasharray={format!("{} 100", pct)}
+                                    />
+                                }
+                            </svg>
                             {
                                 if is_loading {
                                     html! { <i class="ph ph-spinner" style="animation: spin 1s linear infinite;"></i> }
                                 } else if is_active_and_playing {
                                     html! { <i class="ph ph-pause"></i> }
+                                } else if is_completed && !_is_current_episode {
+                                    html! {
+                                        <>
+                                            <i class="ph ph-check ep-play-done"></i>
+                                            <i class="ph ph-play ep-play-replay"></i>
+                                        </>
+                                    }
                                 } else {
                                     html! { <i class="ph ph-play"></i> }
                                 }
                             }
                         </button>
+                        if resolvable {
+                            <div class="context-button-wrapper">
+                                <button class="ico" onclick={resolve_for_menu.clone()} disabled={*resolving}>
+                                    if *resolving {
+                                        <i class="ph ph-spinner" style="animation: spin 1s linear infinite;"></i>
+                                    } else {
+                                        <i class="ph ph-dots-three"></i>
+                                    }
+                                </button>
+                            </div>
+                        }
                         if can_use_context_menu {
                             <div ref={context_button_ref.clone()}>
                                 <ContextMenuButton
@@ -580,7 +885,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                 <EpisodeModal
                     episode_id={props.episode.episodeid}
                     episode_url={props.episode.episodeurl.clone()}
-                    episode_artwork={props.episode.episodeartwork.clone()}
+                    episode_artwork={art_src.clone()}
                     episode_title={props.episode.episodetitle.clone()}
                     description={(*episode_description).clone()}
                     format_release={(*formatted_pub_date).clone()}
@@ -590,6 +895,17 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     listen_duration_percentage={listen_duration_percentage}
                     is_youtube={props.episode.is_youtube}
                     is_video={props.episode.is_video}
+                    podcast_name={(!props.episode.podcastname.is_empty()).then(|| props.episode.podcastname.clone())}
+                    on_podcast_click={(props.episode.podcastid > 0).then(|| on_podcast_click.clone())}
+                    on_play={has_media.then(|| on_play_pause.clone())}
+                    is_playing={is_active_and_playing}
+                    is_loading={is_loading}
+                    remaining={remaining_str.clone()}
+                    is_completed={is_completed}
+                    accent={accent.clone()}
+                    episode={can_use_context_menu.then(|| props.episode.clone())}
+                    page_type={props.page_type.clone()}
+                    on_episode_removed={props.on_episode_removed.clone()}
                 />
             }
         </div>

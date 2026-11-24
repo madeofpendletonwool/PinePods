@@ -55,6 +55,44 @@ class PendingAction {
     return null;
   }
 
+  /// When a [recordPosition] action's position was observed.
+  DateTime get observedAt {
+    final at = payload['at'];
+    return at is int ? DateTime.fromMillisecondsSinceEpoch(at) : createdAt;
+  }
+
+  /// Seconds played that a [recordPosition] action still has to report.
+  double get listened {
+    final l = payload['listened'];
+    return l is num ? l.toDouble() : 0;
+  }
+
+  /// Seconds of episode gained by playing faster than 1x (negative when slower)
+  /// that a [recordPosition] action still has to report.
+  double get speedSaved => _seconds('speed_saved');
+
+  /// Seconds of silence skipped, still to report.
+  double get silenceSkipped => _seconds('silence_skipped');
+
+  /// Seconds of ads skipped, still to report.
+  double get adsSkipped => _seconds('ads_skipped');
+
+  /// Whether a [recordPosition] action's time was played from a file on the device.
+  bool get downloaded => payload['downloaded'] == true;
+
+  double _seconds(String key) {
+    final v = payload[key];
+    return v is num ? v.toDouble() : 0;
+  }
+
+  /// Whether a [recordPosition] action says the episode played to its end.
+  bool get finished => payload['finished'] == true;
+
+  double? get duration {
+    final d = payload['duration'];
+    return d is num ? d.toDouble() : null;
+  }
+
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
       'type': type.name,
@@ -89,6 +127,7 @@ class PendingAction {
   String get description {
     switch (type) {
       case PendingActionType.recordPosition:
+        if (finished) return L.current.action_mark_completed;
         final p = position;
         return p != null ? L.current.action_save_progress_at(p.toInt()) : L.current.action_save_progress;
       case PendingActionType.markCompleted:

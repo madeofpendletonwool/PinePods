@@ -3,73 +3,140 @@
 use std::collections::HashMap;
 
 use axum::{
-    body::Bytes,
+    body::{Body, Bytes},
     extract::{Path, Query, State},
-    http::HeaderMap,
+    http::{header, HeaderMap},
+    response::{IntoResponse, Response},
     Json,
 };
+use futures::stream::{self, StreamExt};
 use serde_json::{json, Value};
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use super::auth::authenticate;
-use super::db::StoredAction;
+use super::db::{ActionFilter, ActionPage, Collapse};
 use super::{download_cursor, parse_since, GResult, GpodderError, NameExt};
 use crate::services::sync::{apply::apply_resolved, resolve, ActionKind, EpisodeAction, ResolveKey, SyncOrigin};
+use crate::database::DatabasePool;
 use crate::AppState;
 
 fn flag(q: &HashMap<String, String>, key: &str) -> bool {
     q.get(key).is_some_and(|v| v.eq_ignore_ascii_case("true") || v == "1")
 }
 
-/// Newest action per episode by action time (ties: the later upload).
-fn aggregate(actions: Vec<StoredAction>) -> Vec<StoredAction> {
-    let mut newest: HashMap<(String, String), StoredAction> = HashMap::new();
-    for a in actions {
-        let key = (a.action.podcast_url.clone(), a.action.episode_url.clone());
-        let keep = newest.get(&key).is_none_or(|cur| (a.action.timestamp, a.id) >= (cur.action.timestamp, cur.id));
-        if keep {
-            newest.insert(key, a);
-        }
-    }
-    let mut out: Vec<StoredAction> = newest.into_values().collect();
-    out.sort_by_key(|a| a.id);
-    out
-}
+/// Log rows read per database query while streaming a download.
+const PAGE_ROWS: i64 = 2000;
 
 /// GET /api/2/episodes/{user}.json?since=&podcast=&device=&aggregated=
+///
+/// The response is written page by page as the log is read, so a large history starts arriving
+/// at once instead of after the whole log is loaded (clients give up on a silent connection). A
+/// download from `since=0` sends only the newest action of each kind per episode: a client
+/// starting from nothing has no use for positions that later ones replaced.
 pub(crate) async fn download(
     State(state): State<AppState>,
     Path(user): Path<String>,
     Query(q): Query<HashMap<String, String>>,
     headers: HeaderMap,
-) -> GResult<Json<Value>> {
+) -> GResult<Response> {
     let user = NameExt::json_only(&user)?;
     let auth = authenticate(&state, &headers, &user).await?;
     let since = parse_since(q.get("since").map(String::as_str))?;
-    let podcast = q.get("podcast").map(|p| p.trim()).filter(|p| !p.is_empty());
-    let db = &state.db_pool;
+    let podcast = q.get("podcast").map(|p| p.trim()).filter(|p| !p.is_empty()).map(str::to_string);
+    let db = state.db_pool.clone();
 
     let device_id = match q.get("device").map(|d| d.trim()).filter(|d| !d.is_empty()) {
         Some(name) => match db.gpodder_device_id(auth.user_id, name).await? {
             Some(id) => Some(id),
-            None => return Ok(Json(json!({ "actions": [], "timestamp": download_cursor(db).await? }))),
+            None => return Ok(Json(json!({ "actions": [], "timestamp": download_cursor(&db).await? })).into_response()),
         },
         None => None,
     };
-    let timestamp = download_cursor(db).await?;
-    let mut actions = db.gpodder_episode_actions(auth.user_id, since, podcast, device_id).await?;
-    if flag(&q, "aggregated") {
-        actions = aggregate(actions);
+    let collapse = if flag(&q, "aggregated") {
+        Collapse::PerEpisode
+    } else if since == 0 {
+        Collapse::PerAction
+    } else {
+        Collapse::None
+    };
+    let filter = ActionFilter { user_id: auth.user_id, since, podcast, device_id, collapse };
+    let timestamp = download_cursor(&db).await?;
+    // The first page is read before answering, so a failing query is still a clean error.
+    let first = db.gpodder_episode_actions_page(&filter, 0, PAGE_ROWS).await?;
+
+    let feed = Feed { db, filter, step: Step::Page(first), wrote_any: false, timestamp, session: auth.session };
+    let head = stream::once(async { Ok::<_, std::io::Error>(Bytes::from_static(b"{\"actions\":[")) });
+    let body = Body::from_stream(head.chain(stream::unfold(feed, Feed::next)).fuse());
+    Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
+}
+
+enum Step {
+    Page(ActionPage),
+    Fetch(i32),
+    Finish,
+    Done,
+}
+
+/// The state of a download being written.
+struct Feed {
+    db: DatabasePool,
+    filter: ActionFilter,
+    step: Step,
+    wrote_any: bool,
+    timestamp: i64,
+    session: Option<i32>,
+}
+
+impl Feed {
+    /// The next chunk of the response body, or None once it's complete.
+    async fn next(mut self) -> Option<(Result<Bytes, std::io::Error>, Self)> {
+        loop {
+            match std::mem::replace(&mut self.step, Step::Done) {
+                Step::Page(page) => {
+                    self.step = match (page.full, page.last_id) {
+                        (true, Some(last)) => Step::Fetch(last),
+                        _ => Step::Finish,
+                    };
+                    let mut buf = Vec::new();
+                    for a in &page.actions {
+                        let Some(out) = a.action.outbound(a.known_duration) else { continue };
+                        if self.wrote_any {
+                            buf.push(b',');
+                        }
+                        if let Err(e) = serde_json::to_writer(&mut buf, &out) {
+                            error!("Writing episode action {} failed: {}", a.id, e);
+                            self.step = Step::Done;
+                            return Some((Err(std::io::Error::other(e)), self));
+                        }
+                        self.wrote_any = true;
+                    }
+                    // A page whose rows were all replaced still sends a byte (whitespace is valid
+                    // JSON here), so a long run of them can't look like a stalled connection.
+                    if buf.is_empty() {
+                        buf.push(b' ');
+                    }
+                    return Some((Ok(Bytes::from(buf)), self));
+                }
+                Step::Fetch(after) => match self.db.gpodder_episode_actions_page(&self.filter, after, PAGE_ROWS).await {
+                    Ok(page) => self.step = Step::Page(page),
+                    Err(e) => {
+                        error!("Reading episode actions for user {} failed mid-download: {}", self.filter.user_id, e);
+                        return Some((Err(std::io::Error::other(e.to_string())), self));
+                    }
+                },
+                Step::Finish => {
+                    if let Some(session) = self.session {
+                        if let Err(e) = self.db.gpodder_set_episodes_cursor(session, self.timestamp).await {
+                            warn!("Saving the episode download cursor of session {} failed: {}", session, e);
+                        }
+                    }
+                    let tail = format!("],\"timestamp\":{}}}", self.timestamp);
+                    return Some((Ok(Bytes::from(tail)), self));
+                }
+                Step::Done => return None,
+            }
+        }
     }
-    let out: Vec<Value> = actions
-        .iter()
-        .filter_map(|a| a.action.outbound(a.known_duration))
-        .map(|a| serde_json::to_value(a).unwrap_or(Value::Null))
-        .collect();
-    if let Some(session) = auth.session {
-        db.gpodder_set_episodes_cursor(session, timestamp).await?;
-    }
-    Ok(Json(json!({ "actions": out, "timestamp": timestamp })))
 }
 
 /// `started`/`position`/`total` must fit the log's INT columns; a client sending more gets a 400

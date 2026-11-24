@@ -3,11 +3,11 @@ use crate::components::queue_panel::QueuePanel;
 use crate::components::navigation::use_back_button;
 use crate::pages::routes::Route;
 use crate::requests::pod_req::{call_get_pinepods_version, connect_to_episode_websocket};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use yew::prelude::*;
-use yew_router::prelude::Link;
+use yew_router::prelude::{use_route, Link};
 use yewdux::prelude::Dispatch;
 use yewdux::use_store;
 
@@ -44,10 +44,10 @@ pub fn app_drawer() -> Html {
     let i18n_pinepods = i18n.t("app_drawer.pinepods").to_string();
     let i18n_home = i18n.t("navigation.home").to_string();
     let i18n_feed = i18n.t("app_drawer.feed").to_string();
-    let i18n_search_podcasts = i18n.t("navigation.search").to_string();
+    let i18n_inbox = i18n.t("app_drawer.inbox").to_string();
+    let i18n_search = i18n.t("navigation.search").to_string();
     let i18n_collections = i18n.t("navigation.collections").to_string();
     let i18n_playlists = i18n.t("navigation.playlists").to_string();
-    let i18n_queue = i18n.t("navigation.queue").to_string();
     let i18n_history = i18n.t("navigation.history").to_string();
     let i18n_server_downloads = i18n.t("app_drawer.server_downloads").to_string();
     #[cfg(not(feature = "server_build"))]
@@ -58,6 +58,9 @@ pub fn app_drawer() -> Html {
     let i18n_settings = i18n.t("app_drawer.settings").to_string();
     let i18n_sign_out = i18n.t("app_drawer.sign_out").to_string();
     let i18n_loading = i18n.t("common.loading").to_string();
+    let i18n_listen = i18n.t("app_drawer.section_listen").to_string();
+    let i18n_library = i18n.t("app_drawer.section_library").to_string();
+    let i18n_explore = i18n.t("app_drawer.section_explore").to_string();
 
     let is_drawer_open = use_state(|| false);
     let drawer_rotation = if *is_drawer_open {
@@ -208,145 +211,107 @@ pub fn app_drawer() -> Html {
         "/local_downloads",
         "/people_subs",
         "/feed",
+        "/inbox",
         "/playlists",
     ]
     .iter()
     .any(|&path| current_path == path);
 
-    #[cfg(not(feature = "server_build"))]
-    let local_download_link = html! {
-        <div class="flex items-center space-x-3">
-            <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                <Link<Route> to={Route::LocalDownloads}>
-                    <div class="flex items-center">
-                        <i class="ph ph-folder-open text-2xl mr-3"></i>
-                        <span class="text-lg">{&i18n_local_downloads}</span>
-                    </div>
+    let current_route = use_route::<Route>();
+    let nav_item = |route: Route, icon: &str, label: &str| -> Html {
+        let active = current_route.as_ref() == Some(&route);
+        html! {
+            <div onclick={toggle_drawer.clone()}>
+                <Link<Route> to={route} classes={classes!("sb-item", active.then_some("is-active"))}>
+                    <i class={classes!("ph", icon.to_string())}></i>
+                    <span>{label.to_string()}</span>
                 </Link<Route>>
             </div>
-        </div>
+        }
     };
+
+    // The inbox count, refreshed whenever the drawer opens.
+    let inbox_count = yewdux::use_selector(|s: &crate::components::labels::LabelState| s.inbox_count);
+    {
+        let open = *is_drawer_open;
+        use_effect_with(open, move |open| {
+            if *open || Dispatch::<crate::components::labels::LabelState>::global().get().inbox_count.is_none() {
+                crate::components::labels::refresh_inbox_count();
+            }
+            || ()
+        });
+    }
+    let inbox_item = {
+        let active = current_route.as_ref() == Some(&Route::Inbox);
+        html! {
+            <div onclick={toggle_drawer.clone()}>
+                <Link<Route> to={Route::Inbox} classes={classes!("sb-item", active.then_some("is-active"))}>
+                    <i class="ph ph-tray"></i>
+                    <span>{i18n_inbox.clone()}</span>
+                    if let Some(n) = (*inbox_count).filter(|n| *n > 0) {
+                        <span class="sb-badge">{ if n > 999 { "999+".to_string() } else { n.to_string() } }</span>
+                    }
+                </Link<Route>>
+            </div>
+        }
+    };
+
+    #[cfg(not(feature = "server_build"))]
+    let local_download_link = nav_item(Route::LocalDownloads, "ph-folder-open", &i18n_local_downloads);
     #[cfg(feature = "server_build")]
     let local_download_link = html! {};
 
     html! {
         <div class="relative">
             <QueuePanel />
+            // Clicking anywhere outside the open drawer closes it
+            if *is_drawer_open {
+                <div class="sb-backdrop" onclick={toggle_drawer.clone()}></div>
+            }
             // Sidebar drawer
             <div class={classes!("fixed", "drawer-background", "top-0", "left-0", "z-20", "h-full", "transition-all", "duration-300", "transform", "shadow-lg", "md:w-64", "w-less-full", (*is_drawer_open).then(|| "translate-x-0").unwrap_or("-translate-x-full"))}>
-                // Brand header
-                <div class="sb-brand" style="margin-top: 60px;">
-                    <img src="/static/assets/favicon.png" alt="Pinepods" />
-                    <span>{&i18n_pinepods}</span>
-                </div>
-
-                // User account row
-                <div onclick={toggle_drawer.clone()} style="padding: 0 8px 4px;">
-                    <Link<Route> to={Route::UserStats} classes="sb-item">
+                // Account header: avatar, name, app name + version
+                <div onclick={toggle_drawer.clone()} class="sb-account" style="margin-top: 60px;">
+                    <Link<Route> to={Route::UserStats} classes={classes!("sb-account-link", (current_route == Some(Route::UserStats)).then_some("is-active"))}>
                         <img
                             src={prefs_state.gravatar_url.clone().filter(|_| use_gravatar).unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
                             class="sb-avatar"
                             alt="User avatar"
                         />
-                        <span>{username.clone()}</span>
+                        <span class="sb-account-text">
+                            <span class="sb-username">{username.clone()}</span>
+                            <span class="sb-app">
+                                {&i18n_pinepods}
+                                { stats_state.pinepods_version.as_ref().map(|v| format!(" v{v}")).unwrap_or_default() }
+                            </span>
+                        </span>
                     </Link<Route>>
                 </div>
 
-                <hr class="sb-hr" />
-
                 // Navigation links
-                <div style="padding: 0 8px; display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto;">
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::Home} classes="sb-item">
-                            <i class="ph ph-house"></i>
-                            <span>{&i18n_home}</span>
-                        </Link<Route>>
-                    </div>
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::Feed} classes="sb-item">
-                            <i class="ph ph-bell-ringing"></i>
-                            <span>{&i18n_feed}</span>
-                        </Link<Route>>
-                    </div>
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::Search} classes="sb-item">
-                            <i class="ph ph-magnifying-glass"></i>
-                            <span>{&i18n_search_podcasts}</span>
-                        </Link<Route>>
-                    </div>
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::Queue} classes="sb-item">
-                            <i class="ph ph-queue"></i>
-                            <span>{&i18n_queue}</span>
-                        </Link<Route>>
-                    </div>
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::Collections} classes="sb-item">
-                            <i class="ph ph-bookmark-simple"></i>
-                            <span>{&i18n_collections}</span>
-                        </Link<Route>>
-                    </div>
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::Playlists} classes="sb-item">
-                            <i class="ph ph-list-checks"></i>
-                            <span>{&i18n_playlists}</span>
-                        </Link<Route>>
-                    </div>
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::PodHistory} classes="sb-item">
-                            <i class="ph ph-clock-counter-clockwise"></i>
-                            <span>{&i18n_history}</span>
-                        </Link<Route>>
-                    </div>
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::Downloads} classes="sb-item">
-                            <i class="ph ph-download-simple"></i>
-                            <span>{&i18n_server_downloads}</span>
-                        </Link<Route>>
-                    </div>
+                <nav class="sb-nav">
+                    <div class="sb-section">{&i18n_listen}</div>
+                    { nav_item(Route::Home, "ph-house", &i18n_home) }
+                    { nav_item(Route::Feed, "ph-bell-ringing", &i18n_feed) }
+                    { inbox_item }
+                    { nav_item(Route::Collections, "ph-bookmark-simple", &i18n_collections) }
+                    { nav_item(Route::Playlists, "ph-list-checks", &i18n_playlists) }
+                    { nav_item(Route::PodHistory, "ph-clock-counter-clockwise", &i18n_history) }
+                    { nav_item(Route::Downloads, "ph-download-simple", &i18n_server_downloads) }
                     { local_download_link }
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::SubscribedPeople} classes="sb-item">
-                            <i class="ph ph-user"></i>
-                            <span>{&i18n_subscribed_people}</span>
-                        </Link<Route>>
-                    </div>
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::Discover} classes="sb-item">
-                            <i class="ph ph-compass"></i>
-                            <span>{&i18n_discover}</span>
-                        </Link<Route>>
-                    </div>
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::Podcasts} classes="sb-item">
-                            <i class="ph ph-microphone-stage"></i>
-                            <span>{&i18n_podcasts}</span>
-                        </Link<Route>>
-                    </div>
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::Settings} classes="sb-item">
-                            <i class="ph ph-gear"></i>
-                            <span>{&i18n_settings}</span>
-                        </Link<Route>>
-                    </div>
-                </div>
+                    <div class="sb-section">{&i18n_library}</div>
+                    { nav_item(Route::Podcasts, "ph-microphone-stage", &i18n_podcasts) }
+                    { nav_item(Route::SubscribedPeople, "ph-user", &i18n_subscribed_people) }
+                    { nav_item(Route::Search, "ph-magnifying-glass", &i18n_search) }
+                    <div class="sb-section">{&i18n_explore}</div>
+                    { nav_item(Route::Discover, "ph-compass", &i18n_discover) }
+                </nav>
 
-                // Sign out + version at bottom
-                <div class="sb-bottom" style="padding: 8px 8px 4px; margin-top: auto;">
+                // Settings + sign out at bottom
+                <div class="sb-bottom">
                     <hr class="sb-hr" />
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::LogOut} classes="sb-item">
-                            <i class="ph ph-sign-out"></i>
-                            <span>{&i18n_sign_out}</span>
-                        </Link<Route>>
-                    </div>
-                    {
-                        if let Some(version) = &stats_state.pinepods_version {
-                            html! {
-                                <div class="sb-version">{ format!("v{}", version) }</div>
-                            }
-                        } else { html! {} }
-                    }
+                    { nav_item(Route::Settings, "ph-gear", &i18n_settings) }
+                    { nav_item(Route::LogOut, "ph-sign-out", &i18n_sign_out) }
                 </div>
             </div>
 

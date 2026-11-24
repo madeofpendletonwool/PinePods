@@ -121,3 +121,31 @@ pub async fn clear_notifications(
     }
     Ok(())
 }
+
+async fn post_task_action(server_name: &str, api_key: &str, path: &str) -> Result<(), Error> {
+    let url = format!("{}/api/tasks/{}", clean_base(server_name), path);
+    let resp = Request::post(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("task {path}: {e}")))?;
+    if !resp.ok() {
+        return Err(Error::msg(format!("task {path} failed: {}", resp.status())));
+    }
+    Ok(())
+}
+
+/// Remove a finished task from the user's activity list on the server.
+pub async fn dismiss_task(server_name: &str, api_key: &str, task_id: &str) -> Result<(), Error> {
+    post_task_action(server_name, api_key, &format!("{task_id}/dismiss")).await
+}
+
+/// Cancel a task that is still queued.
+pub async fn cancel_task(server_name: &str, api_key: &str, task_id: &str) -> Result<(), Error> {
+    post_task_action(server_name, api_key, &format!("{task_id}/cancel")).await
+}
+
+/// Remove every finished task from the user's activity list on the server.
+pub async fn clear_finished_tasks(server_name: &str, api_key: &str) -> Result<(), Error> {
+    post_task_action(server_name, api_key, "clear_finished").await
+}

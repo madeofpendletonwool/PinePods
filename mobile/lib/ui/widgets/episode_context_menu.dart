@@ -7,6 +7,7 @@ import 'package:pinepods_mobile/ui/podcast/remote_devices_button.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/ui/pinepods/collection_sheets.dart';
+import 'package:pinepods_mobile/ui/pinepods/labels.dart';
 
 class EpisodeContextMenu extends StatefulWidget {
   final PinepodsEpisode episode;
@@ -23,6 +24,8 @@ class EpisodeContextMenu extends StatefulWidget {
   final VoidCallback? onPodcastTap;
   /// Shown on a collection's page: removes the episode from that collection.
   final VoidCallback? onRemoveFromCollection;
+  /// Shown on the inbox: takes the episode out of it.
+  final VoidCallback? onRemoveFromInbox;
   final bool isDownloadedLocally;
 
   const EpisodeContextMenu({
@@ -39,6 +42,7 @@ class EpisodeContextMenu extends StatefulWidget {
     this.onDismiss,
     this.onPodcastTap,
     this.onRemoveFromCollection,
+    this.onRemoveFromInbox,
     this.isDownloadedLocally = false,
   }) : super(key: key);
 
@@ -136,6 +140,14 @@ class _EpisodeContextMenuState extends State<EpisodeContextMenu> {
                     const SizedBox(height: 8),
                     
                     // Menu options
+                    if (widget.onRemoveFromInbox != null)
+                      _buildMenuOption(
+                        context,
+                        icon: PhosphorIconsRegular.x,
+                        text: L.of(context)!.inbox_remove,
+                        onTap: widget.onRemoveFromInbox,
+                      ),
+
                     _buildMenuOption(
                       context,
                       icon: episode.saved ? PhosphorIconsFill.bookmarkSimple : PhosphorIconsRegular.bookmarkSimple,
@@ -155,6 +167,18 @@ class _EpisodeContextMenuState extends State<EpisodeContextMenu> {
                           widget.onDismiss?.call();
                           showAddToCollectionSheet(rootContext,
                               episodes: [(episode.episodeId, episode.isYoutube)]);
+                        },
+                      ),
+
+                    if (episode.episodeId > 0)
+                      _buildMenuOption(
+                        context,
+                        icon: PhosphorIconsRegular.tag,
+                        text: L.of(context)!.labels_menu,
+                        onTap: () {
+                          final rootContext = Navigator.of(context, rootNavigator: true).context;
+                          widget.onDismiss?.call();
+                          showLabelsSheet(rootContext, episodes: [(episode.episodeId, episode.isYoutube)]);
                         },
                       ),
 

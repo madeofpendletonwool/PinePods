@@ -55,6 +55,8 @@ rand = "0.10.3"
 # MFA/TOTP Support
 totp-rs = { version = "6.0.0", features = ["otpauth"] }
 qrcode = "0.14.1"
+# Image proxy thumbnails
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 
 # Encryption for sync credentials
 fernet = "0.2.2"
@@ -67,7 +69,6 @@ regex = "1.13.1"
 
 # Audio metadata tagging
 id3 = "1.17.2"
-mp3-metadata = "0.4.0"
 quick-xml = "0.42.0"
 unicode-normalization = "0.1.26"
 sha2 = "0.11.1"

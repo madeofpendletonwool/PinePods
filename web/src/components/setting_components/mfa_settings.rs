@@ -9,7 +9,7 @@ use wasm_bindgen::JsCast;
 use yew::platform::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 
 #[function_component(MFAOptions)]
 pub fn mfa_options() -> Html {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:pinepods_mobile/ui/pinepods/labels.dart';
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/app_settings.dart';
@@ -296,6 +297,8 @@ class _PinepodsEpisodeCardState extends State<PinepodsEpisodeCard> {
                               Padding(padding: const EdgeInsets.only(left: 6), child: icon),
                           ],
                         ),
+                        if (widget.episode.episodeId > 0)
+                          LabelChips(episodeId: widget.episode.episodeId, isYoutube: widget.episode.isYoutube),
                       ],
                     ),
                   ),

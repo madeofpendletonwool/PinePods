@@ -5,7 +5,7 @@ use crate::requests::setting_reqs::{
     call_update_oidc_provider, AddOIDCProviderRequest, OIDCProvider,
 };
 use gloo_events::EventListener;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
 use web_sys::HtmlInputElement;

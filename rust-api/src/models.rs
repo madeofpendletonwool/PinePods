@@ -41,6 +41,9 @@ pub struct CreatePlaylistRequest {
     pub group_by_podcast: bool,
     pub max_episodes: Option<i32>,
     pub icon_name: String,
+    /// Only episodes with any of these labels (see `/api/data/labels`).
+    #[serde(default)]
+    pub label_ids: Option<Vec<i32>>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -83,6 +86,9 @@ pub struct UpdatePlaylistRequest {
     pub group_by_podcast: bool,
     pub max_episodes: Option<i32>,
     pub icon_name: String,
+    /// Only episodes with any of these labels (see `/api/data/labels`).
+    #[serde(default)]
+    pub label_ids: Option<Vec<i32>>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -132,6 +138,8 @@ pub struct PodcastResponse {
     pub oldest_episode_date: Option<String>,
     pub newest_episode_date: Option<String>,
     pub play_count: i64,
+    /// Episodes (and videos) of this podcast the user hasn't finished.
+    pub unplayed_count: i64,
 }
 
 // Lean per-subscription inputs for the recommendation taste profile (#103). Deliberately
@@ -265,6 +273,38 @@ impl QueueAddPosition {
 pub struct QueueAddPositionSetting {
     pub user_id: i32,
     pub position: QueueAddPosition,
+}
+
+/// Which episode count the Podcasts page shows for each podcast.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum PodcastCountDisplay {
+    /// Every episode of the podcast.
+    Total,
+    /// Only episodes the user hasn't finished.
+    Unplayed,
+}
+
+impl PodcastCountDisplay {
+    pub fn from_setting(value: Option<&str>) -> Self {
+        match value {
+            Some(v) if v.eq_ignore_ascii_case("unplayed") => Self::Unplayed,
+            _ => Self::Total,
+        }
+    }
+
+    pub fn as_setting(self) -> &'static str {
+        match self {
+            Self::Total => "total",
+            Self::Unplayed => "unplayed",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct PodcastCountDisplaySetting {
+    pub user_id: i32,
+    pub display: PodcastCountDisplay,
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -445,6 +485,9 @@ pub struct PlaylistInfo {
     pub play_progress_min: Option<f64>,
     pub play_progress_max: Option<f64>,
     pub time_filter_hours: Option<i32>,
+    /// Only episodes with any of these labels.
+    #[serde(default)]
+    pub label_ids: Vec<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
@@ -452,6 +495,22 @@ pub struct PlaylistEpisodesResponse {
     pub episodes: Vec<SavedEpisode>,
     pub playlist_info: PlaylistInfo,
     pub total: i64,
+    /// Totals over every episode in the playlist; only sent with the first page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stats: Option<PlaylistStats>,
+}
+
+/// Totals for a smart playlist, honouring its episode cap.
+#[derive(Debug, Default, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct PlaylistStats {
+    /// Combined length of the episodes, in seconds.
+    pub total_seconds: i64,
+    /// What is left to hear once listening progress is taken off, in seconds.
+    pub remaining_seconds: i64,
+    /// How many podcasts the episodes come from.
+    pub podcast_count: i64,
+    /// Episodes that have been started but not finished.
+    pub in_progress: i64,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]

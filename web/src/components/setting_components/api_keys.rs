@@ -7,7 +7,7 @@ use yew::prelude::*;
 use yewdux::prelude::*;
 // use crate::gen_components::_ErrorMessageProps::error_message;
 use wasm_bindgen::JsCast;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 
 #[function_component(APIKeys)]
 pub fn api_keys() -> Html {

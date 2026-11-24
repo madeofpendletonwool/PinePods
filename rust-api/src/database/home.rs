@@ -63,9 +63,11 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid AND de.userid = $2
                         WHERE p.userid = $2
                           AND e.episodeid IS NOT NULL
+                          AND (p.subscribed = TRUE OR h.episodeid IS NOT NULL OR se.episodeid IS NOT NULL
+                               OR eq.episodeid IS NOT NULL OR de.episodeid IS NOT NULL)
                           AND (LOWER(p.podcastname) LIKE LOWER($1)
                                OR LOWER(e.episodetitle) LIKE LOWER($1)
-                               OR LOWER(e.episodedescription) LIKE LOWER($1))
+                               OR LOWER(COALESCE(e.descriptiontext, e.episodedescription)) LIKE LOWER($1))
                           {}
                         ORDER BY p.podcastname, e.episodepubdate DESC
                     ) inner_q
@@ -186,9 +188,11 @@ impl DatabasePool {
                         LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
                         WHERE p.UserID = ?
                           AND e.EpisodeID IS NOT NULL
+                          AND (p.Subscribed = 1 OR h.EpisodeID IS NOT NULL OR se.EpisodeID IS NOT NULL
+                               OR eq.EpisodeID IS NOT NULL OR de.EpisodeID IS NOT NULL)
                           AND (LOWER(p.PodcastName) LIKE LOWER(?)
                                OR LOWER(e.EpisodeTitle) LIKE LOWER(?)
-                               OR LOWER(e.EpisodeDescription) LIKE LOWER(?))
+                               OR LOWER(COALESCE(e.DescriptionText, e.EpisodeDescription)) LIKE LOWER(?))
                           {}
                         ORDER BY p.PodcastName, e.EpisodePubDate DESC
                     ) inner_q
@@ -327,7 +331,7 @@ impl DatabasePool {
                     LEFT JOIN "DownloadedEpisodes" ON
                         "Episodes".episodeid = "DownloadedEpisodes".episodeid
                         AND "DownloadedEpisodes".userid = $4
-                    WHERE "Podcasts".userid = $5
+                    WHERE "Podcasts".userid = $5 AND "Podcasts".subscribed = TRUE
                         AND "Episodes".episodepubdate >= NOW() - INTERVAL '7 days'
                     ORDER BY "Episodes".episodepubdate DESC
                     LIMIT 10
@@ -484,13 +488,13 @@ impl DatabasePool {
                     LEFT JOIN (
                         SELECT "Episodes".feedid as feedid,
                                COUNT(DISTINCT "UserEpisodeHistory".episodeid) as play_count,
-                               SUM("UserEpisodeHistory".listenduration) as total_listen_time
+                               SUM("UserEpisodeHistory".listenedseconds) as total_listen_time
                         FROM "UserEpisodeHistory"
                         JOIN "Episodes" ON "UserEpisodeHistory".episodeid = "Episodes".episodeid
                         WHERE "UserEpisodeHistory".userid = $1
                         GROUP BY "Episodes".feedid
                     ) stats ON "Podcasts".feedid = stats.feedid
-                    WHERE "Podcasts".userid = $2
+                    WHERE "Podcasts".userid = $2 AND "Podcasts".subscribed = TRUE
                     ORDER BY stats.total_listen_time DESC NULLS LAST
                     LIMIT 6
                 "#;
@@ -559,7 +563,7 @@ impl DatabasePool {
                 let weekly_fut = async {
                     let row = q::query(
                         r#"SELECT
-                            COALESCE(SUM("UserEpisodeHistory".listenduration), 0)::bigint AS seconds_listened,
+                            COALESCE(SUM("UserEpisodeHistory".listenedseconds), 0)::bigint AS seconds_listened,
                             COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM "UserEpisodeState" ues
                                 WHERE ues.episodeid = "Episodes".episodeid AND ues.userid = "UserEpisodeHistory".userid AND ues.completed)) AS episodes_completed
                         FROM "UserEpisodeHistory"
@@ -668,7 +672,7 @@ impl DatabasePool {
                     LEFT JOIN DownloadedEpisodes ON
                         Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
                         AND DownloadedEpisodes.UserID = ?
-                    WHERE Podcasts.UserID = ?
+                    WHERE Podcasts.UserID = ? AND Podcasts.Subscribed = 1
                         AND Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 7 DAY)
                     ORDER BY Episodes.EpisodePubDate DESC
                     LIMIT 10
@@ -824,13 +828,13 @@ impl DatabasePool {
                     LEFT JOIN (
                         SELECT Episodes.FeedID as FeedID,
                                COUNT(DISTINCT UserEpisodeHistory.EpisodeID) as play_count,
-                               SUM(UserEpisodeHistory.ListenDuration) as total_listen_time
+                               SUM(UserEpisodeHistory.ListenedSeconds) as total_listen_time
                         FROM UserEpisodeHistory
                         JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID
                         WHERE UserEpisodeHistory.UserID = ?
                         GROUP BY Episodes.FeedID
                     ) stats ON Podcasts.FeedID = stats.FeedID
-                    WHERE Podcasts.UserID = ?
+                    WHERE Podcasts.UserID = ? AND Podcasts.Subscribed = 1
                     ORDER BY stats.total_listen_time DESC
                     LIMIT 5
                 "#;
@@ -901,7 +905,7 @@ impl DatabasePool {
                 let weekly_fut = async {
                     let row = sqlx::query(
                         "SELECT \
-                            CAST(COALESCE(SUM(UserEpisodeHistory.ListenDuration), 0) AS SIGNED) AS seconds_listened, \
+                            CAST(COALESCE(SUM(UserEpisodeHistory.ListenedSeconds), 0) AS SIGNED) AS seconds_listened, \
                             CAST(COALESCE(SUM(CASE WHEN EXISTS (SELECT 1 FROM UserEpisodeState ues \
                                 WHERE ues.EpisodeID = Episodes.EpisodeID AND ues.UserID = UserEpisodeHistory.UserID AND ues.Completed = 1) \
                                 THEN 1 ELSE 0 END), 0) AS SIGNED) AS episodes_completed \

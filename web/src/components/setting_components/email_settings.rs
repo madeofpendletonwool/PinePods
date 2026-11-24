@@ -3,7 +3,7 @@ use crate::requests::setting_reqs::{
     call_get_email_settings, call_save_email_settings, call_send_test_email, EmailSettingsResponse,
     TestEmailSettings,
 };
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::ops::Deref;
 use yew::platform::spawn_local;
 use yew::prelude::*;

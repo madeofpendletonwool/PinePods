@@ -66,8 +66,8 @@ pub async fn subscription_mysql(pool: &DatabasePool, conn: &mut MySqlConnection,
 
 fn event_name(event: EpisodeEvent) -> &'static str {
     match event {
-        EpisodeEvent::Progress(_) => "progress",
-        EpisodeEvent::Completed => "completed",
+        EpisodeEvent::Progress { .. } => "progress",
+        EpisodeEvent::Completed { .. } => "completed",
         EpisodeEvent::New => "new",
     }
 }

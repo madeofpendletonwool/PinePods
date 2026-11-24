@@ -60,6 +60,7 @@ import 'package:pinepods_mobile/ui/widgets/pinepods_bottom_nav.dart';
 import 'package:pinepods_mobile/ui/widgets/search_slide_route.dart';
 import 'package:pinepods_mobile/ui/pinepods/home.dart';
 import 'package:pinepods_mobile/ui/pinepods/feed.dart';
+import 'package:pinepods_mobile/ui/pinepods/inbox.dart';
 import 'package:pinepods_mobile/ui/pinepods/saved.dart';
 import 'package:pinepods_mobile/ui/pinepods/queue.dart';
 import 'package:pinepods_mobile/ui/pinepods/history.dart';
@@ -890,6 +891,8 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
         return const PinepodsHome();
       case 'Feed':
         return const PinepodsFeed();
+      case 'Inbox':
+        return const PinepodsInbox();
       case 'Saved':
         return const PinepodsSaved();
       case 'Podcasts':

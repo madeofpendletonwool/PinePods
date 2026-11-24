@@ -12,11 +12,12 @@ import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/services/nowplaying/nowplaying_service.dart';
 import 'package:pinepods_mobile/services/offline/offline_action_queue.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/services/pinepods/progress_tracker.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:logging/logging.dart';
 
 /// An episode to play next, and how to play it.
-typedef _NextEpisode = ({PinepodsEpisode episode, int? playlistId, bool skipQueue});
+typedef _NextEpisode = ({PinepodsEpisode episode, int? playlistId, bool skipQueue, bool fromQueue});
 
 class PinepodsAudioService {
   final log = Logger('PinepodsAudioService');
@@ -28,8 +29,21 @@ class PinepodsAudioService {
   /// routed through it so it syncs even when the device was offline.
   OfflineActionQueue? _actionQueue;
 
-  Timer? _episodeUpdateTimer;
-  Timer? _userStatsTimer;
+  /// Now-playing heartbeat (and the look-ahead for the next episode).
+  Timer? _heartbeatTimer;
+
+  /// Follows the playing episode and says when there is progress to report.
+  final _tracker = ProgressTracker();
+  StreamSubscription<PositionState>? _positionSub;
+
+  /// Audio is coming out: playing, not paused and not buffering.
+  bool _audible = false;
+
+  /// Where the episode being started is meant to begin, until the player has
+  /// got there. Positions seen before that (the last episode's, or zero while
+  /// the new one loads) aren't the user's and must not be reported.
+  double? _awaitedStart;
+  DateTime? _audibleSince;
   int? _currentEpisodeId;
   int? _currentUserId;
   bool _isYoutube = false;
@@ -77,10 +91,7 @@ class PinepodsAudioService {
   /// Duration (seconds) the server currently has stored for the playing episode.
   /// Used to detect when the decoded length differs so we can correct it.
   int? _currentEpisodeDuration;
-  double _lastRecordedPosition = 0;
-  bool _isSyncingPosition = false;
-  bool _hasPendingPositionSync = false;
-  
+
   /// Callbacks for pause/stop events
   Function()? _onPauseCallback;
   Function()? _onStopCallback;
@@ -97,7 +108,15 @@ class PinepodsAudioService {
     _playingStateSub = _audioPlayerService.playingState?.listen((state) {
       _isPlaying =
           state == AudioState.playing || state == AudioState.buffering;
+      final audible = state == AudioState.playing;
+      if (audible == _audible) return;
+      _audible = audible;
+      // A pause from anywhere (headset, lock screen, a call, the car) lands
+      // here, so the position is saved the moment playback stops.
+      _observe();
+      if (_heartbeatTimer != null) _startHeartbeat();
     });
+    _positionSub = _audioPlayerService.playPosition?.listen((_) => _observe());
   }
 
   /// Wire up the offline outbox (called once during app start-up).
@@ -115,33 +134,55 @@ class PinepodsAudioService {
     _audioPlayerService.setPlaylistContext(playlistId);
   }
 
-  /// Record a playback position, routing through the offline outbox when one is
-  /// configured so the update survives being offline. Falls back to a direct
-  /// (error-isolated) call otherwise.
-  Future<void> _recordPosition(int episodeId, int userId, double positionSeconds) async {
+  /// Hand a progress report to the offline outbox, which sends it now or when
+  /// there is a connection. Without an outbox it is sent directly, best effort.
+  Future<void> _queueProgress(ProgressUpdate update) async {
     final queue = _actionQueue;
     if (queue != null) {
-      await queue.enqueuePosition(episodeId, userId, positionSeconds, _isYoutube);
+      await queue.enqueueProgress(update);
       return;
     }
     try {
-      await _pinepodsService.recordListenDuration(episodeId, userId, positionSeconds, _isYoutube);
+      await _pinepodsService.sendProgress([
+        {
+          'episode_id': update.episodeId,
+          'is_youtube': update.isYoutube,
+          'position': update.position,
+          'at': update.at.millisecondsSinceEpoch,
+          'listened': update.listened,
+          'finished': update.finished,
+          if (update.speedSaved != 0) 'speed_saved': update.speedSaved,
+          if (update.silenceSkipped != 0) 'silence_skipped': update.silenceSkipped,
+          if (update.adsSkipped != 0) 'ads_skipped': update.adsSkipped,
+          if (update.downloaded) 'downloaded': true,
+          if (update.duration != null) 'duration': update.duration,
+        },
+      ]);
+    } on ProgressUnsupportedException {
+      try {
+        await _pinepodsService.recordListenDuration(update.episodeId, update.userId, update.position, update.isYoutube);
+        if (update.finished) {
+          await _pinepodsService.markEpisodeCompleted(update.episodeId, update.userId, update.isYoutube);
+        }
+      } catch (e) {
+        log.fine('Could not record progress (continuing): $e');
+      }
     } catch (e) {
-      log.fine('Could not record position (continuing): $e');
+      log.fine('Could not record progress (continuing): $e');
     }
   }
 
-  /// Where to resume [episode], in seconds: the furthest of the position its
-  /// (possibly stale) list data carries, any position still waiting in the
-  /// offline outbox, and [serverPosition] when one was fetched.
+  /// Where to resume [episode], in seconds: progress made on this device that
+  /// the server doesn't have yet, else [serverPosition] when one was fetched,
+  /// else what the (possibly stale) list data says. A position at the very end
+  /// starts the episode over.
   Future<double> _resolveResumePosition(PinepodsEpisode episode, {double? serverPosition}) async {
-    if (episode.completed) return 0;
-    var best = (episode.listenDuration ?? 0).toDouble();
-    final pending = await _actionQueue?.pendingPosition(episode.episodeId, episode.isYoutube);
-    for (final p in [pending, serverPosition]) {
-      if (p != null && p > best) best = p;
+    final duration = episode.episodeDuration.toDouble();
+    final pending = await _actionQueue?.pendingProgress(episode.episodeId, episode.isYoutube);
+    if (pending != null) {
+      return pending.finished ? 0 : resumeFrom(pending.position ?? 0, duration);
     }
-    return best;
+    return resumeFrom(serverPosition ?? (episode.listenDuration ?? 0).toDouble(), duration);
   }
 
   /// How long a streamed start waits for the server's resume position and
@@ -172,6 +213,8 @@ class PinepodsAudioService {
     _audioPlayerService.setPlaylistContext(playlistId);
     final prepWatch = Stopwatch()..start();
     try {
+      // Where the episode being replaced was left.
+      await _endTracking();
       // Not on the server (an unfollowed podcast's feed): nothing to track.
       if (pinepodsEpisode.episodeId == 0) {
         await _playUntracked(pinepodsEpisode);
@@ -358,15 +401,13 @@ class PinepodsAudioService {
     required Future<PlayEpisodeDetails?>? lateDetails,
     required Future<Map<String, dynamic>?>? podcast2Data,
   }) async {
-    final episodeId = pinepodsEpisode.episodeId;
+    // Progress is followed from the moment the player reaches the starting
+    // position. The start itself isn't reported: that position is what was
+    // last saved somewhere, not something heard here.
+    _awaitedStart = initialPosition;
+    _audibleSince = null;
 
-    // Add to history via the offline outbox (buffered locally when offline).
-    // Records the resolved position: the outbox keeps one position per
-    // episode, so a stale value here would replace newer unsynced progress.
-    await _recordPosition(episodeId, userId, initialPosition);
-    _lastRecordedPosition = initialPosition;
-
-    _startPeriodicUpdates();
+    _startHeartbeat();
     _isPlaying = true;
     _reportNowPlaying();
 
@@ -492,7 +533,7 @@ class PinepodsAudioService {
     if (pinepodsEpisode.episodeUrl.isEmpty) {
       throw Exception('Episode has no audio URL');
     }
-    _stopPeriodicUpdates();
+    _stopHeartbeat();
     _currentEpisodeId = null;
     _currentPodcastId = null;
     transcriptCues.value = const [];
@@ -528,7 +569,7 @@ class PinepodsAudioService {
     // below runs before that, inside a try that would rethrow and break playback.
     final positionState = _audioPlayerService.playPosition?.valueOrNull;
     final positionSec =
-        positionState?.position.inSeconds.toDouble() ?? _lastRecordedPosition;
+        positionState?.position.inSeconds.toDouble() ?? _tracker.position ?? 0;
     final durationSec = (positionState != null && positionState.length.inSeconds > 0)
         ? positionState.length.inSeconds.toDouble()
         : (_currentEpisodeDuration ?? 0).toDouble();
@@ -582,6 +623,10 @@ class PinepodsAudioService {
 
       Future<void> apply(List<Map<String, double>> ads) {
         skippedAds.value = [for (final a in ads) (start: a['start']!, end: a['end']!)];
+        _tracker.skipRanges = [
+          for (final r in silenceRanges) (start: r['start']!, end: r['end']!, ad: false),
+          for (final a in ads) (start: a['start']!, end: a['end']!, ad: true),
+        ];
         return _audioPlayerService.applyEpisodeSkipSegments(
           silenceEnabled: trimSettings.enabled,
           silenceRanges: silenceRanges,
@@ -629,131 +674,78 @@ class PinepodsAudioService {
     }
   }
 
-  /// Start periodic updates to server
-  void _startPeriodicUpdates() {
-    _stopPeriodicUpdates(); // Clean up any existing timers
-
-    // Episode position updates every 15 seconds (more frequent for reliability).
-    // Also drives the best-effort now-playing report, which doubles as the
-    // snapshot-TTL heartbeat while paused (the timer keeps running until dispose).
-    _episodeUpdateTimer = Timer.periodic(
-      const Duration(seconds: 15),
+  /// Keep this device listed for the user's other devices, and look ahead for
+  /// the next episode. Slower while paused: the listing only has to outlive
+  /// its 45s expiry on the server.
+  void _startHeartbeat() {
+    _stopHeartbeat();
+    _heartbeatTimer = Timer.periodic(
+      Duration(seconds: _isPlaying ? 15 : 30),
       (_) {
-        _safeUpdateEpisodePosition();
         _reportNowPlaying();
-        prefetchNextIfNearEnd();
+        if (_isPlaying) prefetchNextIfNearEnd();
       },
     );
+  }
 
-    // User listen time updates every 60 seconds
-    _userStatsTimer = Timer.periodic(
-      const Duration(seconds: 60),
-      (_) => _safeUpdateUserListenTime(),
+  /// What the player is doing right now, or null before it has a position.
+  PlaybackSample? _sample() {
+    final episodeId = _currentEpisodeId;
+    final userId = _currentUserId;
+    final state = _audioPlayerService.playPosition?.valueOrNull;
+    if (episodeId == null || userId == null || state == null) return null;
+    return PlaybackSample(
+      episodeId: episodeId,
+      userId: userId,
+      isYoutube: _isYoutube,
+      position: state.position.inMilliseconds / 1000.0,
+      duration: state.length.inSeconds > 0 ? state.length.inMilliseconds / 1000.0 : (_currentEpisodeDuration ?? 0).toDouble(),
+      playing: _audible,
+      rate: _audioPlayerService.playbackSpeed?.valueOrNull ?? 1.0,
+      downloaded: _audioPlayerService.nowPlaying?.downloadState == DownloadState.downloaded,
     );
   }
 
-  /// Safely update episode position without affecting playback
-  void _safeUpdateEpisodePosition() async {
-    // If already syncing, mark that we have a pending sync and return
-    // The current sync will check this flag when done and re-sync with latest position
-    if (_isSyncingPosition) {
-      _hasPendingPositionSync = true;
-      log.fine('Position sync in progress - marked for re-sync with latest position');
+  /// Look at the player and queue whatever progress there is to report:
+  /// every 30s while playing, and at once on a pause or a seek. Runs on each
+  /// position event and each change between playing and not.
+  void _observe() {
+    final sample = _sample();
+    if (sample == null) return;
+    final now = DateTime.now();
+
+    final awaited = _awaitedStart;
+    if (awaited != null) {
+      if (!_audible) return;
+      _audibleSince ??= now;
+      final arrived = (sample.position - awaited).abs() <= 5;
+      // A start that never reaches its position (the file is shorter, the
+      // stream can't seek) is followed from wherever it is actually playing.
+      if (!arrived && now.difference(_audibleSince!) < const Duration(seconds: 10)) return;
+      _awaitedStart = null;
+      _tracker.begin(sample, now);
       return;
     }
-
-    _isSyncingPosition = true;
-    try {
-      await _updateEpisodePosition();
-
-      // Check if another sync was requested while we were syncing
-      if (_hasPendingPositionSync) {
-        _hasPendingPositionSync = false;
-        log.fine('Re-syncing with latest position after pending request');
-        await _updateEpisodePosition(); // Sync again with the LATEST position
-      }
-    } catch (e) {
-      log.warning('Periodic sync completely failed but playback continues: $e');
-      // Completely isolate any network failures from affecting playback
-    } finally {
-      _isSyncingPosition = false;
+    if (!_tracker.isTracking) return;
+    for (final update in _tracker.observe(sample, now)) {
+      unawaited(_queueProgress(update));
     }
   }
 
-  /// Update episode position on server
-  Future<void> _updateEpisodePosition() async {
-    // Updating episode position
-    if (_currentEpisodeId == null || _currentUserId == null) {
-      log.warning('Skipping scheduled sync - missing episode ID ($_currentEpisodeId) or user ID ($_currentUserId)');
-      return;
-    }
-
-    try {
-      final positionState = _audioPlayerService.playPosition?.value;
-      if (positionState == null) return;
-
-      final currentPosition = positionState.position.inSeconds.toDouble();
-      
-      // Only update if position has changed by more than 2 seconds (more responsive)
-      if ((currentPosition - _lastRecordedPosition).abs() > 2) {
-        await _recordPosition(_currentEpisodeId!, _currentUserId!, currentPosition);
-        _lastRecordedPosition = currentPosition;
-      }
-    } catch (e) {
-      log.warning('Failed to update episode position: $e');
-    }
+  /// Report where the tracked episode was left and stop following it.
+  Future<void> _endTracking() async {
+    _awaitedStart = null;
+    final update = _tracker.leave(DateTime.now());
+    _tracker.reset();
+    if (update != null) await _queueProgress(update);
   }
 
-  /// Safely update user listen time without affecting playback
-  void _safeUpdateUserListenTime() async {
-    try {
-      await _updateUserListenTime();
-    } catch (e) {
-      log.warning('User stats sync completely failed but playback continues: $e');
-      // Completely isolate any network failures from affecting playback
-    }
-  }
-
-  /// Update user listen time statistics
-  Future<void> _updateUserListenTime() async {
-    if (_currentUserId == null) return;
-
-    try {
-      await _pinepodsService.incrementListenTime(_currentUserId!);
-      // User listen time updated
-    } catch (e) {
-      log.warning('Failed to update user listen time: $e');
-    }
-  }
-
-  /// Sync current position to server immediately (for pause/stop events)
+  /// Save the current position right away (pause, stop, going to the
+  /// background), instead of waiting for the next periodic report.
   Future<void> syncCurrentPositionToServer() async {
-    // Syncing current position to server
-    
-    if (_currentEpisodeId == null || _currentUserId == null) {
-      log.warning('Cannot sync - missing episode ID ($_currentEpisodeId) or user ID ($_currentUserId)');
-      return;
-    }
-
-    try {
-      final positionState = _audioPlayerService.playPosition?.value;
-      if (positionState == null) {
-        log.warning('Cannot sync - positionState is null');
-        return;
-      }
-
-      final currentPosition = positionState.position.inSeconds.toDouble();
-
-      log.info('Syncing position to server: ${currentPosition}s for episode $_currentEpisodeId');
-
-      await _recordPosition(_currentEpisodeId!, _currentUserId!, currentPosition);
-
-      _lastRecordedPosition = currentPosition;
-      log.info('Successfully synced position (queued if offline): ${currentPosition}s');
-    } catch (e) {
-      log.warning('Failed to sync position to server: $e');
-      log.warning('Stack trace: ${StackTrace.current}');
-    }
+    _observe();
+    final update = _tracker.leave(DateTime.now());
+    if (update != null) await _queueProgress(update);
   }
 
   /// Get server position for current episode
@@ -790,10 +782,9 @@ class PinepodsAudioService {
     }
   }
 
-  /// Mark the episode that just finished as completed on the server (which
-  /// also drops it from the queue). On natural completion nothing else records
-  /// the final state (periodic sync can be up to 15s stale). Fire-and-forget;
-  /// returns false when there is no tracked episode or no server credentials.
+  /// Record that the episode just played to its end (the server marks it
+  /// completed and drops it from the queue). Returns false when there is no
+  /// tracked episode or no server credentials.
   bool markCurrentEpisodeCompleted() {
     final episodeId = _currentEpisodeId;
     final userId = _currentUserId;
@@ -815,12 +806,20 @@ class PinepodsAudioService {
     );
 
     _completedEpisodes.add((episodeId: episodeId, isYoutube: _isYoutube));
-    unawaited(
-      _pinepodsService.markEpisodeCompleted(episodeId, userId, _isYoutube).catchError((e) {
-        log.fine('Could not mark episode completed (continuing): $e');
-        return false;
-      }),
-    );
+    // Through the outbox with the positions, so it arrives in order and
+    // survives being offline.
+    final now = DateTime.now();
+    _awaitedStart = null;
+    final update = _tracker.finish(now) ??
+        ProgressUpdate(
+          episodeId: episodeId,
+          userId: userId,
+          isYoutube: _isYoutube,
+          position: (_currentEpisodeDuration ?? 0).toDouble(),
+          at: now,
+          finished: true,
+        );
+    unawaited(_queueProgress(update));
     return true;
   }
 
@@ -854,6 +853,11 @@ class PinepodsAudioService {
 
     if (next == null) {
       log.info('Nothing left to play - stopping playback');
+      return false;
+    }
+    // Picked before the user turned off playing the queue automatically.
+    if (next.fromQueue && !_settingsBloc.currentSettings.autoPlayQueue) {
+      log.info('Not starting the next queued episode: queue auto-play is off');
       return false;
     }
 
@@ -907,7 +911,7 @@ class PinepodsAudioService {
     if (playlistId != null) {
       try {
         final next = await _pinepodsService.getNextPlaylistEpisode(episodeId, playlistId, userId);
-        if (next != null) return (episode: next, playlistId: playlistId, skipQueue: false);
+        if (next != null) return (episode: next, playlistId: playlistId, skipQueue: false, fromQueue: false);
         log.info('Playlist exhausted, continuing outside it');
       } catch (e) {
         log.fine('Could not get next playlist episode (continuing): $e');
@@ -923,7 +927,7 @@ class PinepodsAudioService {
       final autoPlayNext = await _pinepodsService.getAutoPlayNextStatus(podcastId, userId);
       if (autoPlayNext) {
         final next = await _pinepodsService.getNextPodcastEpisode(episodeId, userId);
-        if (next != null) return (episode: next, playlistId: null, skipQueue: true);
+        if (next != null) return (episode: next, playlistId: null, skipQueue: true, fromQueue: false);
         log.info('No next episode found in podcast, falling through to queue');
       }
     } catch (e) {
@@ -932,12 +936,14 @@ class PinepodsAudioService {
 
     // PRIORITY 3: Server-side queue. The backend returns it ORDER BY
     // queueposition ASC, so the first entry that isn't the finishing episode
-    // (and isn't already completed) is next.
+    // (and isn't already completed) is next. Skipped when the user turned off
+    // playing the queue automatically.
+    if (!_settingsBloc.currentSettings.autoPlayQueue) return null;
     try {
       final queued = await _pinepodsService.getQueuedEpisodes(userId);
       for (final ep in queued) {
         if (ep.episodeId != episodeId && !ep.completed) {
-          return (episode: ep, playlistId: null, skipQueue: false);
+          return (episode: ep, playlistId: null, skipQueue: false, fromQueue: true);
         }
       }
     } catch (e) {
@@ -989,6 +995,7 @@ class PinepodsAudioService {
   /// Handle pause event - sync position to server
   Future<void> onPause() async {
     _isPlaying = false;
+    _audible = false;
     // Best-effort: let other devices see the pause promptly.
     _reportNowPlaying(playingOverride: false);
     try {
@@ -1011,12 +1018,9 @@ class PinepodsAudioService {
     _onStopCallback?.call();
   }
 
-  /// Stop periodic updates
-  void _stopPeriodicUpdates() {
-    _episodeUpdateTimer?.cancel();
-    _userStatsTimer?.cancel();
-    _episodeUpdateTimer = null;
-    _userStatsTimer = null;
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
   }
 
   /// Convert PinepodsEpisode to Episode for the audio player
@@ -1185,9 +1189,13 @@ class PinepodsAudioService {
 
   /// Clean up resources
   void dispose() {
-    _stopPeriodicUpdates();
+    _stopHeartbeat();
     _playingStateSub?.cancel();
     _playingStateSub = null;
+    _positionSub?.cancel();
+    _positionSub = null;
+    _tracker.reset();
+    _awaitedStart = null;
     _currentEpisodeId = null;
     _currentUserId = null;
     _currentPlaylistId = null;

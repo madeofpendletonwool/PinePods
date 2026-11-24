@@ -6,7 +6,7 @@ use crate::components::loading::Loading;
 use crate::components::people::{person_path, proxied_image, use_auth, FollowButton, PersonAvatar};
 use crate::requests::episode::Episode;
 use crate::requests::people_req::{call_get_followed_people, call_get_person_profile, PersonInfo};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::HashSet;
 use std::rc::Rc;
 use wasm_bindgen_futures::spawn_local;

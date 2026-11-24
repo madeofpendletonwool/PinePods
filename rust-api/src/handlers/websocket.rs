@@ -347,3 +347,81 @@ pub async fn get_active_tasks(
         Ok(axum::Json(vec![]))
     }
 }
+async fn task_caller(state: &AppState, headers: &HeaderMap) -> Result<i32, crate::error::AppError> {
+    let api_key = extract_api_key(headers)?;
+    if !validate_api_key(state, &api_key).await? {
+        return Err(crate::error::AppError::unauthorized("Invalid API key"));
+    }
+    state.db_pool.get_user_id_from_api_key(&api_key).await
+}
+
+#[utoipa::path(
+    post,
+    path = "/{task_id}/dismiss",
+    tag = "tasks",
+    summary = "Dismiss a finished task",
+    description = "Removes a completed or failed task from the caller's activity list.",
+    params(("task_id" = String, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Task removed"),
+        (status = 400, description = "Task is still queued or running"),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 404, description = "No such task for this user"),
+    ),
+)]
+pub async fn dismiss_task(
+    headers: HeaderMap,
+    Path(task_id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
+    let user_id = task_caller(&state, &headers).await?;
+    state.task_manager.dismiss_task(user_id, &task_id).await?;
+    Ok(axum::Json(serde_json::json!({ "detail": "Task dismissed" })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/{task_id}/cancel",
+    tag = "tasks",
+    summary = "Cancel a queued task",
+    description = "Cancels a task that is still waiting its turn, such as a queued transcription. Tasks already running can't be cancelled.",
+    params(("task_id" = String, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Task cancelled"),
+        (status = 400, description = "Task is not queued or can't be cancelled"),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 404, description = "No such task for this user"),
+    ),
+)]
+pub async fn cancel_task(
+    headers: HeaderMap,
+    Path(task_id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
+    let user_id = task_caller(&state, &headers).await?;
+    state.task_manager.cancel_task(user_id, &task_id).await?;
+    Ok(axum::Json(serde_json::json!({ "detail": "Task cancelled" })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/clear_finished",
+    tag = "tasks",
+    summary = "Clear finished tasks",
+    description = "Removes every completed or failed task from the caller's activity list.",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Number of tasks removed", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn clear_finished_tasks(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
+    let user_id = task_caller(&state, &headers).await?;
+    let removed = state.task_manager.clear_finished_tasks(user_id).await?;
+    Ok(axum::Json(serde_json::json!({ "removed": removed })))
+}

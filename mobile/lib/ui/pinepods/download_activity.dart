@@ -181,6 +181,36 @@ class _DownloadActivityState extends State<DownloadActivity> {
     if (success) _loadActivity();
   }
 
+  /// A finished task the server keeps in the activity list (local entries come from the
+  /// episode records and go when the download does).
+  bool _isServerFinished(DownloadTask t) => t.taskType != 'local' && (t.isCompleted || t.isFailed);
+
+  Future<void> _clearFinished() async {
+    final ok = await _pinepodsService.clearFinishedTasks();
+    if (!mounted) return;
+    if (ok) {
+      setState(() => _tasks = _tasks.where((t) => !_isServerFinished(t)).toList());
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(L.of(context)!.failed_to_load_server_download_activity)),
+      );
+    }
+  }
+
+  Future<void> _dismiss(DownloadTask task) async {
+    setState(() => _tasks = _tasks.where((t) => t.id != task.id).toList());
+    await _pinepodsService.dismissTask(task.id);
+  }
+
+  Future<void> _cancel(DownloadTask task) async {
+    final ok = await _pinepodsService.cancelTask(task.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(ok ? L.of(context)!.transcription_cancelled : L.of(context)!.could_not_cancel_task)),
+    );
+    _loadActivity();
+  }
+
   String _relativeTime(DateTime dt) {
     final diff = DateTime.now().difference(dt);
     if (diff.inMinutes < 1) return 'just now';
@@ -197,6 +227,12 @@ class _DownloadActivityState extends State<DownloadActivity> {
       appBar: AppBar(
         title: Text(L.of(context)!.download_activity_title),
         actions: [
+          if (_tasks.any(_isServerFinished))
+            IconButton(
+              icon: const Icon(PhosphorIconsRegular.broom),
+              onPressed: _clearFinished,
+              tooltip: L.of(context)!.clear_finished_tasks,
+            ),
           IconButton(
             icon: const Icon(PhosphorIconsRegular.arrowClockwise),
             onPressed: _loadActivity,
@@ -253,7 +289,23 @@ class _DownloadActivityState extends State<DownloadActivity> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: _tasks.length,
         separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (context, index) => _buildTaskTile(_tasks[index], theme),
+        itemBuilder: (context, index) {
+          final task = _tasks[index];
+          final tile = _buildTaskTile(task, theme);
+          if (!_isServerFinished(task)) return tile;
+          return Dismissible(
+            key: ValueKey('task-${task.id}'),
+            direction: DismissDirection.endToStart,
+            background: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 20),
+              color: theme.colorScheme.error.withValues(alpha: 0.15),
+              child: Icon(PhosphorIconsRegular.x, color: theme.colorScheme.error),
+            ),
+            onDismissed: (_) => _dismiss(task),
+            child: tile,
+          );
+        },
       ),
     );
   }
@@ -276,8 +328,12 @@ class _DownloadActivityState extends State<DownloadActivity> {
                 ),
               );
 
-    final title = task.episodeTitle ?? _titleFromMessage(task.message) ?? L.of(context)!.unknown_episode;
-    final subtitle = task.podcastName;
+    final title = task.episodeTitle ??
+        (task.isTranscription ? L.of(context)!.transcript_label : null) ??
+        _titleFromMessage(task.message) ??
+        L.of(context)!.unknown_episode;
+    // Transcriptions often carry no names; their status message says where they are.
+    final subtitle = task.podcastName ?? (task.isTranscription && !isFailed ? task.message : null);
     final timeLabel = _relativeTime(task.updatedAt);
 
     return Padding(
@@ -330,6 +386,18 @@ class _DownloadActivityState extends State<DownloadActivity> {
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ],
+                if (task.isCancellable) ...[
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    height: 30,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _cancel(task),
+                      icon: const Icon(PhosphorIconsRegular.x, size: 14),
+                      label: Text(L.of(context)!.cancel_queued_task, style: const TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10)),
+                    ),
+                  ),
+                ],
                 if (isFailed && task.message != null) ...[
                   const SizedBox(height: 4),
                   Text(
@@ -342,7 +410,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
                   SizedBox(
                     height: 30,
                     child: OutlinedButton.icon(
-                      onPressed: task.episodeId != null ? () => _retryDownload(task) : null,
+                      onPressed: task.episodeId != null && !task.isTranscription ? () => _retryDownload(task) : null,
                       icon: const Icon(PhosphorIconsRegular.arrowCounterClockwise, size: 14),
                       label: Text(L.of(context)!.retry, style: const TextStyle(fontSize: 12)),
                       style: OutlinedButton.styleFrom(

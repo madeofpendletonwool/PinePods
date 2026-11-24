@@ -143,6 +143,27 @@ void main() {
       expect(page.episodes.map((e) => e.episodeId), contains(id));
     });
 
+    test('progress reports are stored, and the newest observation wins', () async {
+      final id = episodes[1];
+      final now = DateTime.now().millisecondsSinceEpoch;
+      Map<String, dynamic> update(double position, int at, {double listened = 0}) =>
+          {'episode_id': id, 'is_youtube': false, 'position': position, 'at': at, 'listened': listened, 'finished': false};
+
+      final ahead = await service.sendProgress([update(300, now, listened: 30)]);
+      expect(ahead.single['applied'], isTrue);
+      expect((await service.getEpisodeMetadata(id, _userId))!.listenDuration, 300);
+
+      // Something heard an hour ago, sent late: it doesn't replace the newer position.
+      final late = await service.sendProgress([update(500, now - 3600000)]);
+      expect(late.single['applied'], isFalse);
+      expect(late.single['position'], 300);
+
+      // Going back is progress too.
+      final back = await service.sendProgress([update(20, DateTime.now().millisecondsSinceEpoch)]);
+      expect(back.single['applied'], isTrue);
+      expect((await service.getEpisodeMetadata(id, _userId))!.listenDuration, 20);
+    });
+
     test('an episode can be marked finished and back', () async {
       final id = episodes[2];
       expect(await service.markEpisodeCompleted(id, _userId, false), isTrue);

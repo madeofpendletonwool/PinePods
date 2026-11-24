@@ -46,6 +46,8 @@ class SettingsBloc extends Bloc {
   final BehaviorSubject<int> _deleteDownloadsAfterDays = BehaviorSubject<int>();
   final BehaviorSubject<String> _playButtonStyle = BehaviorSubject<String>();
   final BehaviorSubject<bool> _artworkAccentColors = BehaviorSubject<bool>();
+  final BehaviorSubject<bool> _autoPlayQueue = BehaviorSubject<bool>();
+  final BehaviorSubject<bool> _pauseForInterruptions = BehaviorSubject<bool>();
   final BehaviorSubject<String> _language = BehaviorSubject<String>();
   var _currentSettings = AppSettings.sensibleDefaults();
 
@@ -121,6 +123,8 @@ class SettingsBloc extends Bloc {
       deleteDownloadsAfterDays: _settingsService.deleteDownloadsAfterDays,
       playButtonStyle: _settingsService.playButtonStyle,
       artworkAccentColors: _settingsService.artworkAccentColors,
+      autoPlayQueue: _settingsService.autoPlayQueue,
+      pauseForInterruptions: _settingsService.pauseForInterruptions,
       language: _settingsService.language,
     );
 
@@ -317,6 +321,18 @@ class SettingsBloc extends Bloc {
       _settingsService.artworkAccentColors = value;
     });
 
+    _autoPlayQueue.listen((value) {
+      _currentSettings = _currentSettings.copyWith(autoPlayQueue: value);
+      _settings.add(_currentSettings);
+      _settingsService.autoPlayQueue = value;
+    });
+
+    _pauseForInterruptions.listen((value) {
+      _currentSettings = _currentSettings.copyWith(pauseForInterruptions: value);
+      _settings.add(_currentSettings);
+      _settingsService.pauseForInterruptions = value;
+    });
+
     _language.listen((value) {
       _currentSettings = _currentSettings.copyWith(language: value);
       _settings.add(_currentSettings);
@@ -383,6 +399,10 @@ class SettingsBloc extends Bloc {
   void Function(String) get setPlayButtonStyle => _playButtonStyle.add;
 
   void Function(bool) get setArtworkAccentColors => _artworkAccentColors.add;
+
+  void Function(bool) get setAutoPlayQueue => _autoPlayQueue.add;
+
+  void Function(bool) get setPauseForInterruptions => _pauseForInterruptions.add;
 
   void Function(String) get setLanguage => _language.add;
 
@@ -473,6 +493,8 @@ class SettingsBloc extends Bloc {
     _deleteDownloadsAfterDays.close();
     _playButtonStyle.close();
     _artworkAccentColors.close();
+    _autoPlayQueue.close();
+    _pauseForInterruptions.close();
     _language.close();
     _settings.close();
   }

@@ -9,7 +9,7 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::YouTubeChannel;
 use gloo::events::EventListener;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::HashMap;
 use web_sys::MouseEvent;
 use yew::prelude::*;
@@ -340,7 +340,7 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
     html! {
         <div class="search-item-container border-solid border rounded-lg overflow-hidden shadow-md flex flex-col h-full">
             <div class="relative w-full search-podcast-image-container" style="aspect-ratio: 1/1; padding-bottom: 100%;">
-                <FallbackImage
+                <FallbackImage size={Some(384)}
                     src={thumbnail}
                     alt={format!("{} {}", channel.name, channel_thumbnail_text)}
                     class="absolute inset-0 w-full h-full object-cover transition-transform duration-200 hover:scale-105 cursor-pointer"

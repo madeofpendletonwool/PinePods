@@ -3,7 +3,7 @@ use crate::requests::episode::Episode;
 use crate::requests::pod_req::{
     self, Collection, CollectionEpisodeRequest, CreateCollectionRequest,
 };
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::HashSet;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;

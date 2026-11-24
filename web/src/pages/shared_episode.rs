@@ -9,7 +9,7 @@ use crate::components::gen_funcs::{
 use crate::components::notification_center::ToastNotification;
 use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req::call_get_episode_by_url_key;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;

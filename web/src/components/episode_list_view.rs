@@ -57,6 +57,7 @@
 
 use crate::components::context_menu_button::PageType;
 use crate::components::episode_list_item::EpisodeListItem;
+use crate::components::i18n::use_translation;
 use crate::components::virtual_list::{ScrollSource, VirtualList};
 use crate::requests::episode::Episode;
 use js_sys::Array;
@@ -112,6 +113,9 @@ pub struct EpisodeListViewProps {
     /// Whether the active collection tab is the pinned default Saved bucket.
     #[prop_or(false)]
     pub active_collection_is_default: bool,
+    /// Show each card's podcast name (off when every card is from the same podcast).
+    #[prop_or(true)]
+    pub show_podcast: bool,
 }
 
 // Mirror of the latest props that the IntersectionObserver callback needs to read on every
@@ -123,6 +127,17 @@ struct LatestProps {
     loading_more: bool,
     backend_can_load_more: bool,
     on_load_more: Callback<()>,
+}
+
+/// Where the title matches and the description-only matches start in a ranked search result,
+/// or `(None, None)` when the list isn't one.
+fn search_group_starts(episodes: &[Episode]) -> (Option<usize>, Option<usize>) {
+    let title = match episodes.first().and_then(|e| e.match_rank) {
+        Some(r) if r < 2 => Some(0),
+        _ => None,
+    };
+    let description = episodes.iter().position(|e| e.match_rank == Some(2));
+    (title, description)
 }
 
 #[function_component(EpisodeListView)]
@@ -209,6 +224,13 @@ pub fn episode_list_view(props: &EpisodeListViewProps) -> Html {
         );
     }
 
+    // Search results arrive title matches first: label where each group starts. Indices, not
+    // the list, are callback deps, so appending a page keeps the callback (and cards) stable.
+    let (i18n, _) = use_translation();
+    let group_starts = search_group_starts(&props.episodes);
+    let title_label = i18n.t("episodes_layout.search_title_matches").to_string();
+    let description_label = i18n.t("episodes_layout.search_description_matches").to_string();
+
     // Per-card render callback. Stable across renders via `use_callback` keyed on the props
     // that change card output. EpisodeListItem's PartialEq compares its props (including the
     // forwarded callbacks); using a fresh `Callback::from` per render would force every
@@ -223,6 +245,7 @@ pub fn episode_list_view(props: &EpisodeListViewProps) -> Html {
         let on_episode_removed = props.on_episode_removed.clone();
         let active_collection_id = props.active_collection_id;
         let active_collection_is_default = props.active_collection_is_default;
+        let show_podcast = props.show_podcast;
         use_callback(
             (
                 props.page_type.clone(),
@@ -234,16 +257,25 @@ pub fn episode_list_view(props: &EpisodeListViewProps) -> Html {
                 props.on_episode_removed.clone(),
                 props.active_collection_id,
                 props.active_collection_is_default,
+                props.show_podcast,
+                (group_starts, title_label, description_label),
             ),
-            move |(ep, _i): (Episode, usize), _| {
+            move |(ep, i): (Episode, usize), (.., (group_starts, title_label, description_label))| {
                 let ep_id = ep.episodeid;
                 // Combine id + url so external-API episodes (which all have episodeid=0)
                 // still produce unique keys.
                 let key = format!("{}-{}", ep_id, &ep.episodeurl);
                 let is_selected = selected_episodes.contains(&ep_id);
-                html! {
+                let heading = if group_starts.0 == Some(i) {
+                    Some(title_label.clone())
+                } else if group_starts.1 == Some(i) {
+                    Some(description_label.clone())
+                } else {
+                    None
+                };
+                let item = html! {
                     <EpisodeListItem
-                        key={key}
+                        key={key.clone()}
                         episode={ep}
                         page_type={page_type.clone()}
                         is_delete_mode={is_delete_mode}
@@ -254,7 +286,18 @@ pub fn episode_list_view(props: &EpisodeListViewProps) -> Html {
                         on_episode_removed={on_episode_removed.clone()}
                         active_collection_id={active_collection_id}
                         active_collection_is_default={active_collection_is_default}
+                        show_podcast={show_podcast}
                     />
+                };
+                match heading {
+                    // One element per item, so the virtual list's row measurement still holds.
+                    Some(label) => html! {
+                        <div key={format!("group-{}", key)}>
+                            <div class="episode-group-heading">{ label }</div>
+                            { item }
+                        </div>
+                    },
+                    None => item,
                 }
             },
         )

@@ -676,7 +676,7 @@ pub async fn library_podcasts(db: &DatabasePool, person_id: i32, user_id: i32) -
         db,
         format!(
             r#"SELECT {cols}, pp.role AS role FROM "PodcastPeople" pp JOIN "Podcasts" p ON p.podcastid = pp.podcastid
-               WHERE pp.personid = $1 AND p.userid = $2"#
+               WHERE pp.personid = $1 AND p.userid = $2 AND p.subscribed = TRUE"#
         ),
         [person_id, user_id],
         |r| Row {
@@ -697,7 +697,7 @@ pub async fn library_podcasts(db: &DatabasePool, person_id: i32, user_id: i32) -
             r#"SELECT {cols}, ep.role AS role, ep.episodeid AS episodeid FROM "EpisodePeople" ep
                JOIN "Episodes" e ON e.episodeid = ep.episodeid
                JOIN "Podcasts" p ON p.feedid = e.feedid
-               WHERE ep.personid = $1 AND p.userid = $2"#
+               WHERE ep.personid = $1 AND p.userid = $2 AND p.subscribed = TRUE"#
         ),
         [person_id, user_id],
         |r| Row {
@@ -759,7 +759,7 @@ pub async fn library_episodes(
            LEFT JOIN "SavedEpisodes" s ON s.episodeid = e.episodeid AND s.userid = $2
            LEFT JOIN "EpisodeQueue" q ON q.episodeid = e.episodeid AND q.userid = $3 AND q.is_youtube = FALSE
            LEFT JOIN "DownloadedEpisodes" d ON d.episodeid = e.episodeid AND d.userid = $4
-           WHERE p.userid = $5 AND (
+           WHERE p.userid = $5 AND p.subscribed = TRUE AND (
                e.episodeid IN (SELECT ep.episodeid FROM "EpisodePeople" ep WHERE ep.personid = $6)
                OR p.podcastid IN (SELECT pp.podcastid FROM "PodcastPeople" pp WHERE pp.personid = $7 AND pp.role IN ('host', 'co-host'))
            )

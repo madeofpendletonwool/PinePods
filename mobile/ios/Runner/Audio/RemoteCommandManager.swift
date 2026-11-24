@@ -43,12 +43,7 @@ class RemoteCommandManager {
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             NSLog("[RemoteCommandManager] Remote command: toggle play/pause")
             guard let player = self?.player else { return .commandFailed }
-
-            if player.isPlaying() {
-                player.pause()
-            } else {
-                player.play()
-            }
+            player.togglePlayPause()
             return .success
         }
 

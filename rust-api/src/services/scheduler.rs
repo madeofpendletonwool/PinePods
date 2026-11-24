@@ -408,6 +408,24 @@ impl BackgroundScheduler {
             warn!("⚠️ Cleaning blank podcast categories failed: {}", e);
         }
 
+        // Searchable description text for episodes stored before it was kept; in the background,
+        // since a large library takes a while.
+        let db = state.db_pool.clone();
+        tokio::spawn(async move {
+            match db.backfill_description_text().await {
+                Ok(0) => {}
+                Ok(n) => info!("Filled search text for {} episodes", n),
+                Err(e) => warn!("⚠️ Filling episode search text failed: {}", e),
+            }
+        });
+
+        // Transcriptions the previous process was running died with it.
+        match crate::services::transcription::fail_interrupted(&state.db_pool).await {
+            Ok(0) => {}
+            Ok(n) => info!("Marked {} interrupted transcription(s) as failed", n),
+            Err(e) => warn!("⚠️ Clearing interrupted transcriptions failed: {}", e),
+        }
+
         info!("✅ Startup tasks completed");
         Ok(())
     }

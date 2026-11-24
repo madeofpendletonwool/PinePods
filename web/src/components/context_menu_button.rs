@@ -30,7 +30,7 @@ use gloo_events::{EventListener, EventListenerOptions};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlElement;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use web_sys::{window, MouseEvent, TouchEvent};
 use yew::prelude::*;
 use yew::Callback;
@@ -43,6 +43,8 @@ pub enum PageType {
     Queue,
     Downloads,
     LocalDownloads,
+    /// The inbox: adds "Remove from inbox".
+    Inbox,
     Default,
 }
 
@@ -1383,6 +1385,33 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         }
     };
 
+    // ---- Labels and the inbox ----
+    let labels_item = {
+        let episode = props.episode.clone();
+        let label = i18n.t("labels.labels_menu").to_string();
+        html! {
+            <li class="dropdown-option" onclick={wrap_action(Callback::from(move |_: MouseEvent| {
+                crate::components::labels::open_picker(vec![crate::requests::inbox_req::EpisodeRef::from(&episode)]);
+            }))}>{ label }</li>
+        }
+    };
+    let dismiss_item = {
+        let episode = props.episode.clone();
+        let on_episode_removed = props.on_episode_removed.clone();
+        let label = i18n.t("inbox.remove_from_inbox").to_string();
+        html! {
+            <li class="dropdown-option" onclick={wrap_action(Callback::from(move |_: MouseEvent| {
+                let on_episode_removed = on_episode_removed.clone();
+                let id = episode.episodeid;
+                crate::components::inbox_actions::run(
+                    crate::components::inbox_actions::InboxAction::Dismiss,
+                    episode.clone(),
+                    move || on_episode_removed.emit(id),
+                );
+            }))}>{ label }</li>
+        }
+    };
+
     let action_buttons = match props.page_type {
         PageType::Saved => html! {
             <>
@@ -1392,6 +1421,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     { &i18n_remove_from_saved_episodes }
                 </li>
                 { add_to_collection_section.clone() }
+                { labels_item.clone() }
                 {
                     download_button.clone()
                 }
@@ -1409,6 +1439,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <li class="dropdown-option" onclick={wrap_action(on_remove_queued_episode.clone())}>
                     { &i18n_remove_from_queue }
                 </li>
+                { labels_item.clone() }
                 {
                     download_button.clone()
                 }
@@ -1423,6 +1454,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
                 </li>
                 { add_to_collection_section.clone() }
+                { labels_item.clone() }
                 {
                     download_button.clone()
                 }
@@ -1433,6 +1465,23 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             <>
                 { local_download_options }
                 { add_to_collection_section.clone() }
+                { labels_item.clone() }
+            </>
+        },
+        PageType::Inbox => html! {
+            <>
+                { play_on_section.clone() }
+                { dismiss_item.clone() }
+                { queue_item.clone() }
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
+                    { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
+                </li>
+                { add_to_collection_section.clone() }
+                { labels_item.clone() }
+                {
+                    download_button.clone()
+                }
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { &i18n_mark_episode_incomplete } else { &i18n_mark_episode_complete } }</li>
             </>
         },
         PageType::Default => html! {
@@ -1443,6 +1492,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
                 </li>
                 { add_to_collection_section.clone() }
+                { labels_item.clone() }
                 {
                     download_button.clone()
                 }

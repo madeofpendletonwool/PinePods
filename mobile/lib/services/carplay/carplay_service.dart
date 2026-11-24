@@ -30,6 +30,7 @@ class CarPlayService {
   final FlutterCarplay _flutterCarplay = FlutterCarplay();
   bool _isConnected = false;
   bool _isSettingUp = false;  // Guard against concurrent setup
+  bool _refreshPending = false;  // A refresh asked for while one was running
   Timer? _refreshRetryTimer;  // Retries the initial load until credentials hydrate
 
   /// True once we have everything needed to fetch content from the server.
@@ -97,6 +98,7 @@ class CarPlayService {
       } else if (status == ConnectionStatusTypes.disconnected) {
         _isConnected = false;
         _isSettingUp = false;
+        _refreshPending = false;
         _refreshRetryTimer?.cancel();
         // Don't clear _rootTemplate — native side keeps it and re-applies on reconnect
       }
@@ -138,7 +140,12 @@ class CarPlayService {
   }
 
   Future<void> _refreshDynamicTabs() async {
-    if (_isSettingUp) return;
+    // Run again once the current refresh finishes, so an episode change during
+    // a refresh still updates Up Next.
+    if (_isSettingUp) {
+      _refreshPending = true;
+      return;
+    }
 
     // If credentials/services aren't ready yet, leave the tabs showing their
     // "Loading…" empty view (rather than overwriting them with a genuinely-empty
@@ -181,6 +188,10 @@ class CarPlayService {
       log.warning('Failed to refresh dynamic CarPlay tabs: $e');
     } finally {
       _isSettingUp = false;
+    }
+    if (_refreshPending && _isConnected) {
+      _refreshPending = false;
+      await _refreshDynamicTabs();
     }
   }
 

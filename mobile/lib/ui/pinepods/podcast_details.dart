@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:pinepods_mobile/ui/pinepods/labels.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/core/download_cleanup.dart';
@@ -10,6 +11,7 @@ import 'package:pinepods_mobile/core/html_text.dart';
 import 'package:pinepods_mobile/services/auto_download/download_cleanup_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
+import 'package:pinepods_mobile/services/podcast/episode_search.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/people.dart';
@@ -91,6 +93,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   List<PinepodsEpisode> _filteredEpisodes = [];
   // Index into [_episodes] for each filtered entry, for the context menu.
   List<int> _filteredIndexes = [];
+  // With a search: where the title matches and the description-only matches start.
+  int? _titleGroupStart;
+  int? _descriptionGroupStart;
   final Expando<_EpisodeKeys> _episodeKeys = Expando<_EpisodeKeys>();
   int? _contextMenuEpisodeIndex;
   // Use global audio service instead of creating local instance
@@ -110,6 +115,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   StreamSubscription<({int episodeId, bool isYoutube})>? _completedSub;
   // The scheduled refresh and Refresh all check this podcast.
   bool _isAutoRefreshEnabled = true;
+  bool _isInboxEnabled = true;
   bool _isRefreshingNow = false;
 
   // AI features (#726/#790) per-podcast settings. Only surfaced when the server
@@ -143,6 +149,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _loadAutoDownloadPreference();
     _loadAutoPlayNextPreference();
     _loadAutoRefreshPreference();
+    _loadInboxPreference();
     _loadAiPreferences();
     _checkFollowStatus();
     _checkFavoriteStatus();
@@ -284,6 +291,36 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       ));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(L.of(context)!.couldnt_change_auto_refresh(e.toString()))));
+    }
+  }
+
+  Future<void> _loadInboxPreference() async {
+    final podcastId = _podcast.id;
+    if (podcastId <= 0 || !_useServer()) return;
+    try {
+      final enabled = await _pinepodsService.getPodcastInbox(podcastId);
+      if (mounted) setState(() => _isInboxEnabled = enabled);
+    } catch (e) {
+      debugPrint('Error loading inbox preference: $e');
+    }
+  }
+
+  Future<void> _toggleInbox() async {
+    final podcastId = _podcast.id;
+    if (podcastId <= 0 || !_useServer()) return;
+    final newValue = !_isInboxEnabled;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _pinepodsService.setPodcastInbox(podcastId, newValue);
+      if (!mounted) return;
+      setState(() => _isInboxEnabled = newValue);
+      LabelStore.instance.refreshInboxCount(_pinepodsService);
+      messenger.showSnackBar(SnackBar(
+        content: Text(newValue ? L.of(context)!.inbox_podcast_on : L.of(context)!.inbox_podcast_off),
+        duration: const Duration(seconds: 2),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e'), backgroundColor: Colors.red));
     }
   }
 
@@ -1007,13 +1044,15 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   _EpisodeKeys _keysFor(PinepodsEpisode e) => _episodeKeys[e] ??= _EpisodeKeys(e);
 
   void _filterEpisodes() {
-    final query = _searchQuery.trim().toLowerCase();
+    final search = EpisodeSearch.parse(_searchQuery);
+    final ranks = <int, int>{};
     final indexes = <int>[];
     for (var i = 0; i < _episodes.length; i++) {
       final e = _episodes[i];
-      if (query.isNotEmpty) {
+      if (!search.isEmpty) {
         final keys = _keysFor(e);
-        if (!keys.title.contains(query) && !keys.description.contains(query)) continue;
+        if (!search.matches(keys.title, keys.description)) continue;
+        ranks[i] = search.titleRank(keys.title);
       }
       if (_showInProgress) {
         if (e.completed || (e.listenDuration ?? 0) <= 0) continue;
@@ -1026,6 +1065,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     }
 
     indexes.sort((ia, ib) {
+      // Title matches first, then the chosen order.
+      final byRank = (ranks[ia] ?? 0).compareTo(ranks[ib] ?? 0);
+      if (byRank != 0) return byRank;
       final a = _episodes[ia];
       final b = _episodes[ib];
       switch (_sortDirection) {
@@ -1046,6 +1088,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
     _filteredIndexes = indexes;
     _filteredEpisodes = [for (final i in indexes) _episodes[i]];
+    _titleGroupStart = indexes.isNotEmpty && ranks.isNotEmpty && ranks[indexes.first]! < 2 ? 0 : null;
+    final firstDescription = indexes.indexWhere((i) => ranks[i] == 2);
+    _descriptionGroupStart = firstDescription >= 0 ? firstDescription : null;
   }
 
   void _initializeCredentials() {
@@ -1212,7 +1257,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
       List<PinepodsEpisode> episodes = [];
       
-      if (_isFollowing && userId != null) {
+      // A podcast with a server id but no subscription is one the user played, queued or
+      // downloaded from: its server episodes carry their progress.
+      if ((_isFollowing || _podcast.id > 0) && userId != null) {
         try {
           print('Loading episodes for followed podcast: ${_podcast.title}');
           
@@ -1568,6 +1615,51 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
   PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
 
+  /// [episode] from the feed of a podcast the user doesn't follow, with its server id, so it
+  /// can be played with progress kept, queued, saved and downloaded; it replaces the feed copy
+  /// in the list. Null (with a message unless [quiet]) if the server couldn't resolve it.
+  Future<PinepodsEpisode?> _resolveFeedEpisode(PinepodsEpisode episode, {bool quiet = false}) async {
+    if (episode.episodeId > 0) return episode;
+    final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    final userId = settings.pinepodsUserId;
+    if (userId == null || settings.pinepodsServer == null || settings.pinepodsApiKey == null) return null;
+    _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+    final ids = await _pinepodsService.resolveFeedEpisode(
+      userId: userId,
+      feedUrl: _podcast.url,
+      episodeUrl: episode.episodeUrl,
+      episodeTitle: episode.episodeTitle,
+    );
+    if (!mounted) return null;
+    if (ids == null) {
+      if (!quiet) _showSnackBar(L.current.episode_resolve_failed, Colors.red);
+      return null;
+    }
+    final resolved = PinepodsEpisode(
+      podcastName: episode.podcastName,
+      episodeTitle: episode.episodeTitle,
+      episodePubDate: episode.episodePubDate,
+      episodeDescription: episode.episodeDescription,
+      episodeArtwork: episode.episodeArtwork,
+      episodeUrl: episode.episodeUrl,
+      episodeDuration: episode.episodeDuration,
+      listenDuration: episode.listenDuration,
+      episodeId: ids.episodeId,
+      completed: episode.completed,
+      saved: episode.saved,
+      queued: episode.queued,
+      downloaded: episode.downloaded,
+      isYoutube: episode.isYoutube,
+      podcastId: ids.podcastId,
+    );
+    setState(() {
+      final i = _episodes.indexOf(episode);
+      if (i >= 0) _episodes[i] = resolved;
+      _filterEpisodes();
+    });
+    return resolved;
+  }
+
   Future<void> _playEpisode(PinepodsEpisode episode) async {
     if (_audioService == null) {
       _showSnackBar(L.of(context)!.audio_service_not_available, Colors.red);
@@ -1577,6 +1669,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     setState(() => _pendingEpisode = episode);
 
     try {
+      if (episode.episodeId <= 0 && !episode.isYoutube) {
+        // Plays untracked if the server can't resolve it.
+        episode = await _resolveFeedEpisode(episode, quiet: true) ?? episode;
+        if (!mounted) return;
+      }
       await playPinepodsEpisodeWithOptionalFullScreen(
         context,
         _audioService!,
@@ -2315,6 +2412,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           case 'auto_refresh':
             _toggleAutoRefresh();
             break;
+          case 'inbox':
+            _toggleInbox();
+            break;
           case 'refresh_details':
             _refreshDetails();
             break;
@@ -2368,6 +2468,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             value: 'auto_refresh',
             checked: _isAutoRefreshEnabled,
             child: Text(L.of(context)!.refresh_automatically),
+          ),
+          CheckedPopupMenuItem<String>(
+            value: 'inbox',
+            checked: _isInboxEnabled,
+            child: Text(L.of(context)!.show_in_inbox),
           ),
           if (!_isYoutube && !_isLocal)
             PopupMenuItem<String>(
@@ -2542,45 +2647,89 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
-          final episode = _filteredEpisodes[index];
-          final originalIndex = _filteredIndexes[index];
-          // RSS fallback episodes have no server id, so no details or actions.
-          final hasServerId = episode.episodeId > 0;
-
-          if (_selecting) {
-            final ticked = _selected.contains(episode.episodeId);
-            return PinepodsEpisodeCard(
-              episode: episode,
-              leading: Padding(
-                padding: const EdgeInsets.only(right: 10),
-                child: Icon(
-                  ticked ? PhosphorIconsFill.checkSquare : PhosphorIconsRegular.square,
-                  color: ticked ? Theme.of(context).primaryColor : Theme.of(context).hintColor,
-                ),
-              ),
-              onTap: hasServerId ? () => _toggleSelected(episode) : null,
-              onLongPress: hasServerId ? () => _toggleSelected(episode) : null,
-            );
-          }
-
-          return PinepodsEpisodeCard(
-            episode: episode,
-            onTap: _isFollowing && hasServerId
-                ? () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => PinepodsEpisodeDetails(initialEpisode: episode),
-                      ),
-                    );
-                  }
-                : null,
-            onLongPress: _isFollowing && hasServerId ? () => _showEpisodeContextMenu(originalIndex) : null,
-            // Unfollowed (feed) episodes play untracked.
-            onPlayPressed: () => _playEpisode(episode),
+          final heading = index == _titleGroupStart
+              ? L.of(context)!.search_title_matches
+              : index == _descriptionGroupStart
+                  ? L.of(context)!.search_description_matches
+                  : null;
+          final card = _buildEpisodeRow(context, index);
+          if (heading == null) return card;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [_SearchGroupHeading(heading), card],
           );
         },
         childCount: _filteredEpisodes.length,
+      ),
+    );
+  }
+
+  Widget _buildEpisodeRow(BuildContext context, int index) {
+    final episode = _filteredEpisodes[index];
+    final originalIndex = _filteredIndexes[index];
+    // RSS fallback episodes have no server id, so no details or actions.
+    final hasServerId = episode.episodeId > 0;
+
+    if (_selecting) {
+      final ticked = _selected.contains(episode.episodeId);
+      return PinepodsEpisodeCard(
+        episode: episode,
+        leading: Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: Icon(
+            ticked ? PhosphorIconsFill.checkSquare : PhosphorIconsRegular.square,
+            color: ticked ? Theme.of(context).primaryColor : Theme.of(context).hintColor,
+          ),
+        ),
+        onTap: hasServerId ? () => _toggleSelected(episode) : null,
+        onLongPress: hasServerId ? () => _toggleSelected(episode) : null,
+      );
+    }
+
+    // Feed episodes of a podcast the user doesn't follow get their server id first.
+    final canResolve = hasServerId || !episode.isYoutube;
+    return PinepodsEpisodeCard(
+      episode: episode,
+      onTap: canResolve
+          ? () async {
+              final resolved = hasServerId ? episode : await _resolveFeedEpisode(episode);
+              if (resolved == null || !context.mounted) return;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PinepodsEpisodeDetails(initialEpisode: resolved),
+                ),
+              );
+            }
+          : null,
+      onLongPress: canResolve
+          ? () async {
+              if (!hasServerId && await _resolveFeedEpisode(episode) == null) return;
+              if (mounted) _showEpisodeContextMenu(originalIndex);
+            }
+          : null,
+      onPlayPressed: () => _playEpisode(episode),
+    );
+  }
+}
+
+/// Labels where title matches and description-only matches start in search results.
+class _SearchGroupHeading extends StatelessWidget {
+  final String label;
+  const _SearchGroupHeading(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Text(
+        label.toUpperCase(),
+        style: theme.textTheme.labelMedium!.copyWith(
+          color: theme.hintColor,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.6,
+        ),
       ),
     );
   }
@@ -2609,7 +2758,7 @@ class _EpisodeKeys {
 
   _EpisodeKeys(PinepodsEpisode e)
       : title = e.episodeTitle.toLowerCase(),
-        description = e.episodeDescription.toLowerCase(),
+        description = episodeSearchText(e.episodeDescription).toLowerCase(),
         date = DateTime.tryParse(e.episodePubDate)?.millisecondsSinceEpoch ?? 0;
 }
 

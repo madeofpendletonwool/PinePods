@@ -51,6 +51,14 @@ fn feed_builder(user_agent: &str) -> reqwest::ClientBuilder {
         .redirect(crate::services::url_guard::guarded_redirect_policy())
 }
 
+/// A podcast's stored feed login, or None when there isn't one. Blank fields count as absent:
+/// sending `Authorization: Basic Og==` for a public feed gets a 401 from some hosts (#1128).
+pub fn feed_credentials<'a>(username: Option<&'a str>, password: Option<&'a str>) -> Option<(&'a str, &'a str)> {
+    let username = username.unwrap_or_default();
+    let password = password.unwrap_or_default();
+    (!username.trim().is_empty() || !password.is_empty()).then_some((username, password))
+}
+
 /// RSS feed fetches: PinePods UA, 30s timeout, redirects re-checked by the SSRF guard.
 pub fn feed_client() -> &'static reqwest::Client {
     &FEED_CLIENT
@@ -104,6 +112,16 @@ pub fn content_hash(body: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn blank_feed_credentials_are_none() {
+        assert_eq!(feed_credentials(None, None), None);
+        assert_eq!(feed_credentials(Some(""), Some("")), None);
+        assert_eq!(feed_credentials(Some("  "), None), None);
+        assert_eq!(feed_credentials(Some("user"), Some("")), Some(("user", "")));
+        assert_eq!(feed_credentials(Some(""), Some("token")), Some(("", "token")));
+        assert_eq!(feed_credentials(Some("user"), Some("pass")), Some(("user", "pass")));
+    }
     use super::*;
 
     #[test]

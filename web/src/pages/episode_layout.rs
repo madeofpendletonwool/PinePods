@@ -51,7 +51,7 @@ use crate::requests::setting_reqs::{
 
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -328,7 +328,7 @@ pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
                                             if is_selected { "bg-gray-700" } else { "" }
                                         )}
                                     >
-                                        <FallbackImage
+                                        <FallbackImage size={Some(128)}
                                             src={podcast.artworkurl.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
                                             alt={format!("Cover for {}", podcast.podcastname)}
                                             class="w-12 h-12 rounded object-cover"
@@ -350,6 +350,39 @@ pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
     }
 }
 
+/// The router's id for the current history entry, so Back can be told apart from
+/// opening the page fresh.
+fn current_history_entry() -> Option<u32> {
+    let state = window()?.history().ok()?.state().ok()?;
+    js_sys::Reflect::get(&state, &JsValue::from_str("id")).ok()?.as_f64().map(|id| id as u32)
+}
+
+/// How the episode list looked when the user left the podcast page.
+#[derive(Clone)]
+struct EpisodeListSnapshot {
+    entry: u32,
+    podcast_id: i32,
+    search: String,
+    loaded: usize,
+    scroll_y: f64,
+}
+
+thread_local! {
+    static LIST_SNAPSHOT: std::cell::RefCell<Option<EpisodeListSnapshot>> = Default::default();
+}
+
+/// Scroll back to where the user was once the list has rendered tall enough to get there.
+async fn restore_scroll(y: f64) {
+    for _ in 0..30 {
+        TimeoutFuture::new(50).await;
+        let Some(w) = window() else { return };
+        w.scroll_to_with_x_and_y(0.0, y);
+        if w.scroll_y().map_or(true, |now| (now - y).abs() < 2.0) {
+            return;
+        }
+    }
+}
+
 #[function_component(EpisodeLayout)]
 pub fn episode_layout() -> Html {
     let (i18n, _) = use_translation();
@@ -360,6 +393,10 @@ pub fn episode_layout() -> Html {
     let (podcast_state, _podcast_dispatch) = use_store::<PodcastFeedState>();
     let podcast_feed_results = search_data.podcast_feed_results.clone();
     let clicked_podcast_info = podcast_state.clicked_podcast_info.clone();
+    // Artwork colour for the whole page (buttons, tabs, progress follow it).
+    let page_accent = crate::components::art_accent::use_art_accent(
+        &clicked_podcast_info.as_ref().map(|i| i.artworkurl.clone()).unwrap_or_default(),
+    );
 
     // Capture i18n strings before they get moved - this is a large component with many strings
     let i18n_youtube_channel_successfully_removed = i18n
@@ -520,11 +557,22 @@ pub fn episode_layout() -> Html {
     let loading = use_state(|| true);
     let is_subscribing = use_state(|| false);
     let page_state = use_state(|| PageState::Hidden);
-    let episode_search_term = use_state(|| String::new());
+    // Coming back with the browser's Back button returns to the same search, loaded
+    // episodes and scroll position instead of the top of a fresh list.
+    let list_restore = use_mut_ref(|| {
+        let entry = current_history_entry();
+        let pid = clicked_podcast_info.as_ref().map(|i| i.podcastid);
+        LIST_SNAPSHOT
+            .with(|s| s.borrow().clone())
+            .filter(|snap| Some(snap.entry) == entry && Some(snap.podcast_id) == pid)
+    });
+    let history_entry_at_mount = use_mut_ref(current_history_entry);
+    let restored_search = list_restore.borrow().as_ref().map(|s| s.search.clone()).unwrap_or_default();
+    let episode_search_term = use_state(|| restored_search.clone());
     // Debounced view of episode_search_term. Search keystrokes update `episode_search_term`
     // for input responsiveness; a 300 ms timer copies it into `debounced_search_term`, which
     // the backend-reload effect actually watches. Avoids one HTTP request per keystroke.
-    let debounced_search_term = use_state(|| String::new());
+    let debounced_search_term = use_state(|| restored_search.clone());
 
     // Initialize sort direction - will be updated when podcast_id changes
     let episode_sort_direction = use_state(|| Some(EpisodeSortDirection::NewestFirst));
@@ -845,7 +893,7 @@ pub fn episode_layout() -> Html {
 
                         history
                             .replace_state_with_url(
-                                &wasm_bindgen::JsValue::NULL,
+                                &history.state().unwrap_or(wasm_bindgen::JsValue::NULL),
                                 "",
                                 Some(&new_url),
                             )
@@ -898,7 +946,8 @@ pub fn episode_layout() -> Html {
                 load_link.set(false);
 
                 history
-                    .replace_state_with_url(&JsValue::NULL, "", Some(&new_url))
+                    // Keep the router's entry state; Back navigation restore keys off it.
+                    .replace_state_with_url(&history.state().unwrap_or(JsValue::NULL), "", Some(&new_url))
                     .expect("should push state");
             }
             || {}
@@ -909,6 +958,7 @@ pub fn episode_layout() -> Html {
     let auto_play_next_status = use_state(|| false);
     let auto_queue_status = use_state(|| false);
     let auto_refresh_status = use_state(|| true);
+    let inbox_status = use_state(|| true);
     let refreshing_podcast = use_state(|| false);
     let podcast_id = use_state(|| 0);
     // Bumped after the podcast's details are read from its feed again, to reload its episodes.
@@ -1918,6 +1968,49 @@ pub fn episode_layout() -> Html {
                     Ok(()) => auto_refresh_status.set(enabled),
                     Err(e) => Dispatch::<NotificationState>::global()
                         .reduce_mut(|state| state.error_message = Some(format!("{i18n_failed}: {e}"))),
+                }
+            });
+        })
+    };
+
+    // Whether this podcast's new episodes show in the inbox.
+    {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let inbox_status = inbox_status.clone();
+        use_effect_with((*podcast_id, *is_added), move |(pid, added)| {
+            if let (true, true, Some(Some(api_key)), Some(server_name)) = (*pid > 0, *added, api_key.clone(), server_name.clone()) {
+                let pid = *pid;
+                spawn_local(async move {
+                    if let Ok(enabled) = crate::requests::inbox_req::call_get_podcast_inbox(&server_name, &api_key, pid).await {
+                        inbox_status.set(enabled);
+                    }
+                });
+            }
+            || ()
+        });
+    }
+
+    let toggle_inbox = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let inbox_status = inbox_status.clone();
+        let podcast_id = podcast_id.clone();
+        Callback::from(move |_| {
+            let (Some(Some(api_key)), Some(server_name)) = (api_key.clone(), server_name.clone()) else {
+                return;
+            };
+            let inbox_status = inbox_status.clone();
+            let enabled = !*inbox_status;
+            let pid = *podcast_id;
+            spawn_local(async move {
+                match crate::requests::inbox_req::call_set_podcast_inbox(&server_name, &api_key, pid, enabled).await {
+                    Ok(()) => {
+                        inbox_status.set(enabled);
+                        crate::components::labels::refresh_inbox_count();
+                    }
+                    Err(e) => Dispatch::<NotificationState>::global()
+                        .reduce_mut(|state| state.error_message = Some(e.to_string())),
                 }
             });
         })
@@ -3074,6 +3167,14 @@ pub fn episode_layout() -> Html {
                                 <p class="mb-2 text-xs item_container-text opacity-75">{ &i18n.t("episodes_layout.auto_refresh_description") }</p>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input id="auto_refresh" type="checkbox" checked={*auto_refresh_status} class="sr-only peer" onclick={toggle_auto_refresh} />
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div>
+                                <label for="show_in_inbox" class="block mb-1 text-sm font-medium">{ &i18n.t("episodes_layout.show_in_inbox") }</label>
+                                <p class="mb-2 text-xs item_container-text opacity-75">{ &i18n.t("episodes_layout.show_in_inbox_description") }</p>
+                                <label class="inline-flex relative items-center cursor-pointer">
+                                    <input id="show_in_inbox" type="checkbox" checked={*inbox_status} class="sr-only peer" onclick={toggle_inbox} />
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                 </label>
                             </div>
@@ -4479,6 +4580,7 @@ pub fn episode_layout() -> Html {
         let prefs_loaded_dep = *prefs_loaded_for_podcast;
         let reload_dep = *details_reload;
         let synced_episode_count_eff = synced_episode_count.clone();
+        let list_restore_eff = list_restore.clone();
 
         use_effect_with(
             (
@@ -4510,13 +4612,18 @@ pub fn episode_layout() -> Html {
                 let search_str = search.clone();
                 let pid_inner = *pid;
                 let synced_episode_count_eff = synced_episode_count_eff.clone();
+                let restore = list_restore_eff
+                    .borrow_mut()
+                    .take()
+                    .filter(|snap| snap.podcast_id == pid_inner && snap.search == search_str);
+                let limit = restore.as_ref().map_or(50, |snap| snap.loaded.max(50) as i64);
                 spawn_local(async move {
                     match call_get_podcast_episodes(
                         &server_inner,
                         &Some(api_key_str),
                         &uid,
                         &pid_inner,
-                        Some(50),
+                        Some(limit),
                         Some(0),
                         Some(sort_by),
                         Some(sort_order),
@@ -4533,6 +4640,9 @@ pub fn episode_layout() -> Html {
                             // effect rebuilds against the new result set rather than treating
                             // it as an append.
                             synced_episode_count_eff.set(0);
+                            if let Some(snap) = restore {
+                                restore_scroll(snap.scroll_y).await;
+                            }
                         }
                         Err(e) => {
                             web_sys::console::log_1(
@@ -4544,6 +4654,50 @@ pub fn episode_layout() -> Html {
                 Box::new(|| ()) as Box<dyn FnOnce()>
             },
         );
+    }
+
+    // Remember the list's state while it's on screen and save it when the page goes away.
+    let list_view_now = use_mut_ref(|| (0i32, String::new(), 0usize));
+    *list_view_now.borrow_mut() = (
+        *podcast_id,
+        (*episode_search_term).clone(),
+        podcast_feed_results.as_ref().map_or(0, |r| r.episodes.len()),
+    );
+    {
+        let list_view_now = list_view_now.clone();
+        let history_entry_at_mount = history_entry_at_mount.clone();
+        use_effect_with((), move |_| {
+            let entry = *history_entry_at_mount.borrow();
+            let scroll_y = std::rc::Rc::new(std::cell::Cell::new(0.0f64));
+            let on_scroll = {
+                let scroll_y = scroll_y.clone();
+                Closure::<dyn Fn()>::new(move || {
+                    // Scrolling done for the next page after a navigation isn't ours.
+                    if current_history_entry() == entry {
+                        if let Some(y) = window().and_then(|w| w.scroll_y().ok()) {
+                            scroll_y.set(y);
+                        }
+                    }
+                })
+            };
+            if let Some(w) = window() {
+                let _ = w.add_event_listener_with_callback("scroll", on_scroll.as_ref().unchecked_ref());
+            }
+            move || {
+                if let Some(w) = window() {
+                    let _ = w.remove_event_listener_with_callback("scroll", on_scroll.as_ref().unchecked_ref());
+                }
+                let (podcast_id, search, loaded) = list_view_now.borrow().clone();
+                let snapshot = entry.filter(|_| podcast_id > 0).map(|entry| EpisodeListSnapshot {
+                    entry,
+                    podcast_id,
+                    search,
+                    loaded,
+                    scroll_y: scroll_y.get(),
+                });
+                LIST_SNAPSHOT.with(|s| *s.borrow_mut() = snapshot);
+            }
+        });
     }
 
     // Sync completed/saved/queued status into EpisodeStatusState whenever episodes load.
@@ -4770,7 +4924,10 @@ pub fn episode_layout() -> Html {
     };
 
     html! {
-            <div class="main-container">
+            <div
+                class={classes!("main-container", page_accent.is_some().then_some("art-scope"))}
+                style={crate::components::art_accent::accent_style(&page_accent)}
+            >
                 <Search_nav />
                 <UseScrollToTop />
                 {
@@ -4823,7 +4980,7 @@ pub fn episode_layout() -> Html {
 
                                                     // ── Compact header: artwork + title + actions ──
                                                     <div class="ep-mobile-header">
-                                                        <FallbackImage
+                                                        <FallbackImage size={Some(256)}
                                                             src={podcast_info.artworkurl.clone()}
                                                             alt={format!("Cover for {}", &podcast_info.podcastname)}
                                                             class="ep-mobile-art rounded-corners"
@@ -4989,7 +5146,7 @@ pub fn episode_layout() -> Html {
                                                     <div class="pd-banner-scrim"></div>
                                                     <div class="pd-banner-inner">
                                                         <div class="pd-banner-top">
-                                                            <FallbackImage
+                                                            <FallbackImage size={Some(384)}
                                                                 src={podcast_info.artworkurl.clone()}
                                                                 alt={format!("Cover for {}", &podcast_info.podcastname)}
                                                                 class={"pd-banner-cover"}
@@ -5761,6 +5918,7 @@ pub fn episode_layout() -> Html {
                                                     on_select_above={on_select_newer.clone()}
                                                     on_select_below={on_select_older.clone()}
                                                     selected_episodes={selected_eps_rc}
+                                                    show_podcast={false}
                                                 />
                                             </div>
                                         }

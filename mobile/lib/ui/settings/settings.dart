@@ -23,6 +23,7 @@ import 'package:pinepods_mobile/ui/themes.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:pinepods_mobile/ui/pinepods/labels.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dialogs/flutter_dialogs.dart';
 import 'package:provider/provider.dart';
@@ -273,7 +274,40 @@ class _SettingsState extends State<Settings> {
                   ),
                 ),
               ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(PhosphorIconsRegular.skipForward),
+                  title: Text(L.of(context)!.auto_play_queue),
+                  subtitle: Text(L.of(context)!.auto_play_queue_description),
+                  trailing: Switch.adaptive(
+                    value: snapshot.data!.autoPlayQueue,
+                    onChanged: (value) => settingsBloc.setAutoPlayQueue(value),
+                  ),
+                ),
+              ),
+              if (defaultTargetPlatform == TargetPlatform.android)
+                MergeSemantics(
+                  child: ListTile(
+                    leading: const Icon(PhosphorIconsRegular.bellSimple),
+                    title: Text(L.of(context)!.pause_for_interruptions),
+                    subtitle: Text(L.of(context)!.pause_for_interruptions_description),
+                    trailing: Switch.adaptive(
+                      value: snapshot.data!.pauseForInterruptions,
+                      onChanged: (value) => settingsBloc.setPauseForInterruptions(value),
+                    ),
+                  ),
+                ),
               const QueuePositionSetting(),
+              ListTile(
+                leading: const Icon(PhosphorIconsRegular.tray),
+                title: Text(L.of(context)!.inbox_and_labels),
+                subtitle: Text(L.of(context)!.labels_description),
+                trailing: const Icon(PhosphorIconsRegular.caretRight, size: 16),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(builder: (context) => const InboxSettingsPage()),
+                ),
+              ),
               const SearchProviderWidget(),
               SettingsDividerLabel(label: L.of(context)!.download_management),
               const Divider(),

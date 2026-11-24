@@ -681,6 +681,54 @@ impl DatabasePool {
         Ok(())
     }
 
+    /// Which episode count the Podcasts page shows. Total unless set.
+    pub async fn get_podcast_count_display(&self, user_id: i32) -> AppResult<crate::models::PodcastCountDisplay> {
+        let value: Option<String> = dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"SELECT podcastcountdisplay FROM "UserSettings" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+                    .map(|row| row.try_get::<Option<String>, _>("podcastcountdisplay"))
+                    .transpose()?
+                    .flatten()
+            },
+            mysql(pool) => {
+                sqlx::query("SELECT PodcastCountDisplay FROM UserSettings WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+                    .map(|row| row.try_get::<Option<String>, _>("PodcastCountDisplay"))
+                    .transpose()?
+                    .flatten()
+            },
+        });
+        Ok(crate::models::PodcastCountDisplay::from_setting(value.as_deref()))
+    }
+
+    pub async fn set_podcast_count_display(&self, user_id: i32, display: crate::models::PodcastCountDisplay) -> AppResult<()> {
+        let value = display.as_setting();
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"INSERT INTO "UserSettings" (userid, podcastcountdisplay, theme) VALUES ($1, $2, 'Nordic')
+                            ON CONFLICT (userid) DO UPDATE SET podcastcountdisplay = EXCLUDED.podcastcountdisplay"#)
+                    .bind(user_id)
+                    .bind(value)
+                    .execute(pool)
+                    .await?;
+            },
+            mysql(pool) => {
+                sqlx::query("INSERT INTO UserSettings (UserID, PodcastCountDisplay, Theme) VALUES (?, ?, 'Nordic')
+                             ON DUPLICATE KEY UPDATE PodcastCountDisplay = VALUES(PodcastCountDisplay)")
+                    .bind(user_id)
+                    .bind(value)
+                    .execute(pool)
+                    .await?;
+            },
+        });
+        Ok(())
+    }
+
     // Get playback speed - matches Python get_playback_speed function exactly
     pub async fn get_playback_speed(&self, user_id: i32, _is_youtube: bool, podcast_id: Option<i32>) -> AppResult<f64> {
         dialect_match!(self, {

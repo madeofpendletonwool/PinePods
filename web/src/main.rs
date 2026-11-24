@@ -12,6 +12,8 @@ use crate::pages::episode_layout::EpisodeLayout;
 use crate::pages::feed::Feed;
 use crate::pages::history::PodHistory;
 use crate::pages::home::Home;
+use crate::pages::inbox::Inbox;
+use crate::components::labels::LabelPickerModal;
 use crate::pages::internal_error::InternalError;
 use crate::pages::not_found::NotFound;
 use crate::pages::person::Person;
@@ -45,8 +47,8 @@ use {
 
 // Yew Imports
 use crate::components::context::AppState;
-use i18nrs::yew::use_translation;
-use i18nrs::yew::{I18nProvider, I18nProviderConfig};
+use crate::components::i18n::use_translation;
+use crate::components::i18n::TranslationProvider;
 use requests::setting_reqs::call_get_server_default_language;
 use std::collections::HashMap;
 use wasm_bindgen_futures::spawn_local;
@@ -62,6 +64,7 @@ fn switch(route: Route) -> Html {
         Route::Episode => html! { <Episode /> },
         Route::EpisodeLayout => html! { <EpisodeLayout /> },
         Route::Feed => html! { <Feed /> },
+        Route::Inbox => html! { <Inbox /> },
         Route::Home => html! { <Home /> },
         Route::Login => html! { <Login /> },
         Route::LogOut => html! { <LogOut /> },
@@ -97,7 +100,6 @@ fn switch(route: Route) -> Html {
 #[function_component(LanguageHandler)]
 fn language_handler() -> Html {
     // Set up translations with all available language files
-    // IMPORTANT: English must be first for i18nrs fallback to work correctly
     let translations = HashMap::from([
         ("en", include_str!("translations/en.json")), // Keep English first for fallback
         ("ar", include_str!("translations/ar.json")),
@@ -141,19 +143,10 @@ fn language_handler() -> Html {
         ("test", include_str!("translations/test.json")),
     ]);
 
-    let config = I18nProviderConfig {
-        translations: translations,
-        default_language: "en".to_string(), // Always default to English
-        onerror: Callback::from(|error: String| {
-            web_sys::console::log_1(&format!("i18nrs error: {}", error).into());
-        }),
-        ..Default::default()
-    };
-
     html! {
-        <I18nProvider ..config>
+        <TranslationProvider translations={translations} default_language="en">
             <LanguageManager />
-        </I18nProvider>
+        </TranslationProvider>
     }
 }
 
@@ -253,6 +246,7 @@ fn language_manager() -> Html {
             </NavigationHandler>
             <RestoreOverlay />
             <CollectionPickerModal />
+            <LabelPickerModal />
         </BrowserRouter>
     }
 }
@@ -268,5 +262,7 @@ fn main() {
     wasm_bindgen_futures::spawn_local(async {
         crate::components::context::AppState::load_tauri_credentials().await;
         yew::Renderer::<Main>::new().render();
+        // Follows the player for the whole visit and sends progress saved by an earlier one.
+        crate::components::progress::start();
     });
 }

@@ -121,6 +121,12 @@ async fn record(app: &TestApp, user: &TestUser, ep: i32, secs: f64) {
         .assert_ok();
 }
 
+/// `POST /progress`: `body` is the whole request, or just its updates.
+async fn progress(app: &TestApp, user: &TestUser, body: Value) -> Vec<Value> {
+    let body = if body.is_array() { json!({ "updates": body }) } else { body };
+    app.post("/api/data/progress").key(user).json(&body).send().await.ok_json()["results"].as_array().cloned().unwrap()
+}
+
 async fn mark(app: &TestApp, user: &TestUser, ep: i32, path: &str) {
     app.post(path)
         .key(user)
@@ -280,12 +286,12 @@ async fn local_changes_are_logged_and_progress_coalesces_until_pushed() {
     assert_eq!(first.len(), 1);
     exec(&app, &format!(r#"UPDATE "GpodderSyncEpisodeActions" SET ServerTs = 1, Timestamp = 1 WHERE ActionID = {}"#, first[0].id)).await;
     record(&app, &user, ep, 250.0).await;
-    record(&app, &user, ep, 200.0).await; // not stored (progress only moves forward locally), so not logged
+    record(&app, &user, ep, 200.0).await; // going back is progress too
     let log = action_log(&app, &user).await;
     assert_eq!(log.len(), 1, "{log:#?}");
     let row = &log[0];
     assert_eq!((row.action.as_str(), row.origin.as_str()), ("play", "pinepods"));
-    assert_eq!((row.position, row.total), (Some(250), Some(1801)));
+    assert_eq!((row.position, row.total), (Some(200), Some(1801)));
     assert_eq!((row.episode_id, row.guid.as_deref(), row.device.as_deref()), (Some(ep as i64), Some("guid-1"), Some("pinepods")));
     assert!(row.server_ts > 1 && row.timestamp > 1, "coalescing bumps ServerTs/Timestamp: {row:?}");
 
@@ -301,7 +307,7 @@ async fn local_changes_are_logged_and_progress_coalesces_until_pushed() {
     .await;
     record(&app, &user, ep, 400.0).await;
     let log = action_log(&app, &user).await;
-    assert_eq!(log.iter().map(|r| r.position).collect::<Vec<_>>(), vec![Some(250), Some(400)]);
+    assert_eq!(log.iter().map(|r| r.position).collect::<Vec<_>>(), vec![Some(200), Some(400)]);
 
     // Completing updates the unpushed row to position = total = duration.
     mark(&app, &user, ep, "/api/data/mark_episode_completed").await;
@@ -429,6 +435,107 @@ async fn last_write_wins_and_positions_can_go_backwards() {
 
     // A client's change was already logged by the server: nothing new in the log.
     assert_eq!(action_log(&app, &user).await.len(), logged);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_remote_action_dated_in_the_future_does_not_block_local_progress() {
+    let app = TestApp::new().await;
+    let user = app.user("fastclock").await;
+    enable_sync(&app, &user).await;
+    let url = app.feed("future.xml", &Feed::with_episodes("Future", 1));
+    let pod = app.subscribe(&user, &url, 1).await;
+    let ep = app.episode_id(&user, pod, "Episode 1").await;
+
+    // A client whose clock is a day ahead.
+    let ahead = play(&url, &ep_url(1), 700, Some(1801), ts(-86_400));
+    let s = sync::apply_episode_actions(app.db(), user.id, &[ahead], SyncOrigin::Client).await.unwrap();
+    assert_eq!(s.applied, 1);
+    let stored = listen_date(&app, &user, ep).await.unwrap();
+    assert!(stored <= Utc::now().timestamp() + 2, "stored as happening now, not tomorrow: {stored}");
+
+    // The user goes back in Pinepods a moment later: that is the newer change.
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let results = progress(&app, &user, json!([{ "episode_id": ep, "position": 50.0 }])).await;
+    assert_eq!(results[0]["applied"], true, "{results:#?}");
+    assert_eq!(position(&app, &user, ep).await, Some(50));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rewinds_and_late_reports_reach_the_log_as_of_when_they_happened() {
+    let app = TestApp::new().await;
+    let user = app.user("rewinder").await;
+    enable_sync(&app, &user).await;
+    let url = app.feed("rewind.xml", &Feed::with_episodes("Rewind", 1));
+    let pod = app.subscribe(&user, &url, 1).await;
+    let ep = app.episode_id(&user, pod, "Episode 1").await;
+
+    // Listened offline an hour ago, reported now.
+    let clock = 1_000_000_000_000i64;
+    let results = progress(&app, &user, json!({ "sent_at": clock, "updates": [{ "episode_id": ep, "position": 900.0, "at": clock - 3_600_000 }] })).await;
+    assert_eq!(results[0]["applied"], true);
+    let log = action_log(&app, &user).await;
+    assert_eq!(log.len(), 1, "{log:#?}");
+    assert_eq!((log[0].action.as_str(), log[0].position), ("play", Some(900)));
+    let age = log[0].server_ts - log[0].timestamp;
+    assert!((3598..=3602).contains(&age), "dated an hour back, delivered now: {:?}", log[0]);
+
+    // Going back is sent like any other position.
+    progress(&app, &user, json!([{ "episode_id": ep, "position": 120.0 }])).await;
+    let log = action_log(&app, &user).await;
+    assert_eq!(log.len(), 1, "still one unpushed row: {log:#?}");
+    assert_eq!(log[0].position, Some(120));
+    assert!(log[0].server_ts - log[0].timestamp <= 1);
+
+    // To the very start: nothing is sent (a play at 0 resets other apps), the next second is.
+    progress(&app, &user, json!([{ "episode_id": ep, "position": 0.0 }])).await;
+    assert_eq!(action_log(&app, &user).await[0].position, Some(120));
+    progress(&app, &user, json!([{ "episode_id": ep, "position": 1.0 }])).await;
+    assert_eq!(action_log(&app, &user).await[0].position, Some(1));
+
+    // A finished episode reported late is dated back too.
+    progress(&app, &user, json!({ "sent_at": clock, "updates": [{ "episode_id": ep, "position": 1801.0, "at": clock, "finished": true }] })).await;
+    let log = action_log(&app, &user).await;
+    assert_eq!((log.len(), log[0].position, log[0].total), (1, Some(1801), Some(1801)), "{log:#?}");
+    assert!(completed(&app, ep).await);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn synced_plays_count_as_listening_time() {
+    let app = TestApp::new().await;
+    let user = app.user("synced").await;
+    let url = app.feed("synced.xml", &Feed::with_episodes("Synced", 2));
+    let pod = app.subscribe(&user, &url, 2).await;
+    let (e1, e2) = (app.episode_id(&user, pod, "Episode 1").await, app.episode_id(&user, pod, "Episode 2").await);
+    let session = |ep: u32, started: i32, position: i32, at| {
+        action(json!({
+            "podcast": url, "episode": ep_url(ep), "action": "play",
+            "timestamp": ts(at).timestamp(), "started": started, "position": position, "total": 1801 + ep as i32,
+        }))
+    };
+    // Two sessions on one episode, and one that plays another to the end.
+    let batch = [session(1, 0, 300, 900), session(1, 300, 500, 600), session(2, 1500, 1802, 300)];
+    sync::apply_episode_actions(app.db(), user.id, &batch, SyncOrigin::Client).await.unwrap();
+
+    let listened = |ep: i32| {
+        let (app, user) = (&app, &user);
+        async move { int(app, &format!(r#"SELECT ListenedSeconds FROM "UserEpisodeHistory" WHERE UserID = {} AND EpisodeID = {ep}"#, user.id)).await }
+    };
+    assert_eq!((listened(e1).await, listened(e2).await), (Some(500), Some(302)));
+    assert_eq!(position(&app, &user, e1).await, Some(500));
+    assert!(completed(&app, e2).await);
+    let log = int(&app, &format!(r#"SELECT CAST(SUM(Seconds) AS INTEGER) FROM "ListeningLog" WHERE UserID = {} AND Client = 'sync'"#, user.id)).await;
+    assert_eq!(log, Some(802));
+    let stats = app.get("/api/data/get_stats").key(&user).query("user_id", user.id).send().await.ok_json();
+    assert_eq!((stats["TimeListened"].as_i64(), stats["PodcastsPlayed"].as_i64()), (Some(13), Some(1)), "{stats}");
+
+    // A session that arrives after a newer local change: the position loses, the time counts.
+    progress(&app, &user, json!([{ "episode_id": e1, "position": 650.0 }])).await;
+    let late = sync::apply_episode_actions(app.db(), user.id, &[session(1, 500, 560, 120)], SyncOrigin::Client).await.unwrap();
+    assert_eq!(late.older, 1);
+    assert_eq!(position(&app, &user, e1).await, Some(650));
+    assert_eq!(listened(e1).await, Some(560));
+    let log = int(&app, &format!(r#"SELECT CAST(SUM(Seconds) AS INTEGER) FROM "ListeningLog" WHERE UserID = {} AND Client = 'sync'"#, user.id)).await;
+    assert_eq!(log, Some(862));
 }
 
 #[tokio::test(flavor = "multi_thread")]

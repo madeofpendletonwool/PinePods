@@ -1,6 +1,7 @@
 // SQL for the gpodder server, per backend.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use sha2::{Digest, Sha256};
@@ -51,6 +52,35 @@ pub(crate) struct StoredAction {
     pub id: i32,
     pub action: EpisodeAction,
     pub known_duration: Option<i32>,
+}
+
+/// Which logged actions an episode-action download returns.
+#[derive(Debug, Clone)]
+pub(crate) struct ActionFilter {
+    pub user_id: i32,
+    pub since: i64,
+    pub podcast: Option<String>,
+    pub device_id: Option<i32>,
+    pub collapse: Collapse,
+}
+
+/// Which older actions a download leaves out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Collapse {
+    /// Every action.
+    None = 0,
+    /// Only the newest action of each kind per episode.
+    PerAction = 1,
+    /// Only the newest action per episode (`aggregated=true`).
+    PerEpisode = 2,
+}
+
+/// One page of a download: the actions, the last row id read, and whether the page was full
+/// (so more may follow).
+pub(crate) struct ActionPage {
+    pub actions: Vec<StoredAction>,
+    pub last_id: Option<i32>,
+    pub full: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -521,7 +551,7 @@ impl DatabasePool {
             pg(pool) => (
                 q::query_as(
                     r#"SELECT feedurl, username, password, COALESCE(isyoutubechannel, FALSE)
-                       FROM "Podcasts" WHERE userid = $1 ORDER BY podcastid"#,
+                       FROM "Podcasts" WHERE userid = $1 AND subscribed = TRUE ORDER BY podcastid"#,
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -538,7 +568,7 @@ impl DatabasePool {
             ),
             mysql(pool) => (
                 sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>, Option<bool>)>(
-                    "SELECT FeedURL, Username, Password, IsYouTubeChannel FROM Podcasts WHERE UserID = ? ORDER BY PodcastID",
+                    "SELECT FeedURL, Username, Password, IsYouTubeChannel FROM Podcasts WHERE UserID = ? AND Subscribed = 1 ORDER BY PodcastID",
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -742,52 +772,122 @@ impl DatabasePool {
 
     // ---- episode actions --------------------------------------------------------------------
 
-    /// Logged actions received since `since`, oldest first, optionally for one feed or device.
-    pub(crate) async fn gpodder_episode_actions(&self, user_id: i32, since: i64, podcast: Option<&str>, device_id: Option<i32>) -> AppResult<Vec<StoredAction>> {
+    /// One page of the logged actions matching `filter`, oldest first. Reads up to `limit` log
+    /// rows after `after_id` (the previous page's `last_id`, 0 to start) and returns those the
+    /// collapse keeps, so each page costs the same however many rows newer ones replaced.
+    pub(crate) async fn gpodder_episode_actions_page(&self, filter: &ActionFilter, after_id: i32, limit: i64) -> AppResult<ActionPage> {
+        let collapse = filter.collapse as i32;
+        let podcast = filter.podcast.as_deref();
         let rows = dialect_match!(self, {
-            pg(pool) => q::query(
-                r#"SELECT a.actionid AS id, a.podcasturl AS purl, a.episodeurl AS eurl, a.guid, a.action, a.timestamp AS ts,
-                          a.started, a.position, a.total, d.devicename AS device, e.episodeduration AS duration
-                   FROM "GpodderSyncEpisodeActions" a
-                   LEFT JOIN "GpodderDevices" d ON d.deviceid = a.deviceid
-                   LEFT JOIN "Episodes" e ON e.episodeid = a.episodeid
-                   WHERE a.userid = $1 AND a.serverts >= $2
-                     AND ($3::text IS NULL OR a.podcasturl = $3) AND ($4::int IS NULL OR a.deviceid = $4)
-                   ORDER BY a.actionid"#,
-            )
-            .bind(user_id)
-            .bind(since)
-            .bind(podcast)
-            .bind(device_id)
-            .fetch_all(pool)
-            .await?
-            .iter()
-            .map(|r| stored_action(q::raw(r)))
-            .collect::<AppResult<Vec<_>>>()?,
-            mysql(pool) => sqlx::query(
-                "SELECT a.ActionID AS id, a.PodcastURL AS purl, a.EpisodeURL AS eurl, a.Guid AS guid, a.Action AS action,
-                        a.Timestamp AS ts, a.Started AS started, a.Position AS position, a.Total AS total,
-                        d.DeviceName AS device, e.EpisodeDuration AS duration
-                 FROM GpodderSyncEpisodeActions a
-                 LEFT JOIN GpodderDevices d ON d.DeviceID = a.DeviceID
-                 LEFT JOIN Episodes e ON e.EpisodeID = a.EpisodeID
-                 WHERE a.UserID = ? AND a.ServerTs >= ?
-                   AND (? IS NULL OR a.PodcastURL = ?) AND (? IS NULL OR a.DeviceID = ?)
-                 ORDER BY a.ActionID",
-            )
-            .bind(user_id)
-            .bind(since)
-            .bind(podcast)
-            .bind(podcast)
-            .bind(device_id)
-            .bind(device_id)
-            .fetch_all(pool)
-            .await?
-            .iter()
-            .map(|r| stored_action(r))
-            .collect::<AppResult<Vec<_>>>()?,
+            pg(pool) => {
+                // `+b.serverts`: SQLite would otherwise check each row through the (userid,
+                // serverts) index, i.e. against the user's whole log.
+                let rows = q::query(
+                    r#"SELECT a.actionid AS id, a.podcasturl AS purl, a.episodeurl AS eurl, a.guid, a.action, a.timestamp AS ts,
+                              a.started, a.position, a.total, d.devicename AS device, e.episodeduration AS duration,
+                              ($6::int = 0 OR NOT EXISTS (
+                                  SELECT 1 FROM "GpodderSyncEpisodeActions" b
+                                  WHERE b.userid = a.userid AND b.podcasturl = a.podcasturl AND b.episodeurl = a.episodeurl
+                                    AND +b.serverts >= $2 AND ($4::int IS NULL OR b.deviceid = $4)
+                                    AND ($6::int = 2 OR LOWER(b.action) = LOWER(a.action))
+                                    AND (b.timestamp > a.timestamp OR (b.timestamp = a.timestamp AND b.actionid > a.actionid)))) AS keep
+                       FROM (
+                           SELECT * FROM "GpodderSyncEpisodeActions"
+                           WHERE userid = $1 AND serverts >= $2 AND actionid > $5
+                             AND ($3::text IS NULL OR podcasturl = $3) AND ($4::int IS NULL OR deviceid = $4)
+                           ORDER BY actionid
+                           LIMIT $7
+                       ) a
+                       LEFT JOIN "GpodderDevices" d ON d.deviceid = a.deviceid
+                       LEFT JOIN "Episodes" e ON e.episodeid = a.episodeid
+                       ORDER BY a.actionid"#,
+                )
+                .bind(filter.user_id)
+                .bind(filter.since)
+                .bind(podcast)
+                .bind(filter.device_id)
+                .bind(after_id)
+                .bind(collapse)
+                .bind(limit)
+                .fetch_all(pool)
+                .await?;
+                let last_id = rows.last().map(|r| r.try_get::<i32, _>("id")).transpose()?;
+                let mut kept = Vec::new();
+                for r in &rows {
+                    if r.try_get::<bool, _>("keep")? {
+                        kept.push(stored_action(q::raw(r))?);
+                    }
+                }
+                (rows.len(), last_id, kept)
+            },
+            mysql(pool) => {
+                // With stale statistics MariaDB checks each row against the user's whole log
+                // through the UserID index; the hint keeps it on the per-episode one. Installs
+                // without that index fall back to no hint.
+                static PER_EPISODE_INDEX: AtomicBool = AtomicBool::new(true);
+                let run = |hint: &'static str| {
+                    let sql = format!(
+                        "SELECT a.ActionID AS id, a.PodcastURL AS purl, a.EpisodeURL AS eurl, a.Guid AS guid, a.Action AS action,
+                                a.Timestamp AS ts, a.Started AS started, a.Position AS position, a.Total AS total,
+                                d.DeviceName AS device, e.EpisodeDuration AS duration,
+                                (? = 0 OR NOT EXISTS (
+                                    SELECT 1 FROM GpodderSyncEpisodeActions b {hint}
+                                    WHERE b.UserID = a.UserID AND b.PodcastURL = a.PodcastURL AND b.EpisodeURL = a.EpisodeURL
+                                      AND b.ServerTs >= ? AND (? IS NULL OR b.DeviceID = ?)
+                                      AND (? = 2 OR LOWER(b.Action) = LOWER(a.Action))
+                                      AND (b.Timestamp > a.Timestamp OR (b.Timestamp = a.Timestamp AND b.ActionID > a.ActionID)))) AS keep
+                         FROM (
+                             SELECT * FROM GpodderSyncEpisodeActions
+                             WHERE UserID = ? AND ServerTs >= ? AND ActionID > ?
+                               AND (? IS NULL OR PodcastURL = ?) AND (? IS NULL OR DeviceID = ?)
+                             ORDER BY ActionID
+                             LIMIT ?
+                         ) a
+                         LEFT JOIN GpodderDevices d ON d.DeviceID = a.DeviceID
+                         LEFT JOIN Episodes e ON e.EpisodeID = a.EpisodeID
+                         ORDER BY a.ActionID"
+                    );
+                    sqlx::query(sqlx::AssertSqlSafe(sql))
+                        .bind(collapse)
+                        .bind(filter.since)
+                        .bind(filter.device_id)
+                        .bind(filter.device_id)
+                        .bind(collapse)
+                        .bind(filter.user_id)
+                        .bind(filter.since)
+                        .bind(after_id)
+                        .bind(podcast)
+                        .bind(podcast)
+                        .bind(filter.device_id)
+                        .bind(filter.device_id)
+                        .bind(limit)
+                        .fetch_all(pool)
+                };
+                let rows = if PER_EPISODE_INDEX.load(Ordering::Relaxed) {
+                    match run("FORCE INDEX (idx_episode_actions_podcast_episode)").await {
+                        Err(e) if e.as_database_error().is_some_and(|d| d.message().contains("idx_episode_actions_podcast_episode")) => {
+                            tracing::warn!("Episode action index missing, downloading without it: {}", e);
+                            PER_EPISODE_INDEX.store(false, Ordering::Relaxed);
+                            run("").await?
+                        }
+                        other => other?,
+                    }
+                } else {
+                    run("").await?
+                };
+                let last_id = rows.last().map(|r| r.try_get::<i32, _>("id")).transpose()?;
+                let mut kept = Vec::new();
+                for r in &rows {
+                    // MySQL returns the flag as an integer.
+                    if r.try_get::<i64, _>("keep")? != 0 {
+                        kept.push(stored_action(r)?);
+                    }
+                }
+                (rows.len(), last_id, kept)
+            },
         });
-        Ok(rows.into_iter().flatten().collect())
+        let (count, last_id, actions) = rows;
+        Ok(ActionPage { actions: actions.into_iter().flatten().collect(), last_id, full: count as i64 >= limit })
     }
 
     /// Log uploaded actions in one transaction: one receive time for all, the client's action
@@ -887,7 +987,7 @@ impl DatabasePool {
                           e.episodepubdate AS released, p.podcastname AS ptitle, p.feedurl AS purl, p.websiteurl AS website,
                           p.username, p.password, COALESCE(p.isyoutubechannel, FALSE) AS yt
                    FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid
-                   WHERE p.userid = $1 AND e.episodepubdate >= $2
+                   WHERE p.userid = $1 AND p.subscribed = TRUE AND e.episodepubdate >= $2
                    ORDER BY e.episodepubdate DESC LIMIT $3"#,
             )
             .bind(user_id)
@@ -903,7 +1003,7 @@ impl DatabasePool {
                         e.EpisodePubDate AS released, p.PodcastName AS ptitle, p.FeedURL AS purl, p.WebsiteURL AS website,
                         p.Username AS username, p.Password AS password, p.IsYouTubeChannel AS yt
                  FROM Episodes e JOIN Podcasts p ON p.FeedID = e.FeedID
-                 WHERE p.UserID = ? AND e.EpisodePubDate >= ?
+                 WHERE p.UserID = ? AND p.Subscribed = 1 AND e.EpisodePubDate >= ?
                  ORDER BY e.EpisodePubDate DESC LIMIT ?",
             )
             .bind(user_id)

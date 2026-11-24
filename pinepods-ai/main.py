@@ -24,6 +24,7 @@ Endpoints:
   POST /models/pull  -> download a model, NDJSON progress
 """
 
+import gc
 import glob
 import json
 import logging
@@ -32,6 +33,7 @@ import re
 import shutil
 import threading
 import time
+from contextlib import contextmanager
 from typing import Optional
 
 import requests
@@ -59,6 +61,10 @@ LLM_MAX_RETRIES = int(os.getenv("AI_LLM_MAX_RETRIES", "4"))
 ALLOWED_BASE = os.path.realpath(os.getenv("PINEPODS_AI_MEDIA_BASE", "/opt/pinepods/downloads"))
 # Optional shared secret; when set, callers must send it as the X-AI-Token header.
 AUTH_TOKEN = os.getenv("PINEPODS_AI_TOKEN")
+# Free a model's memory (RAM or GPU) once it has sat unused this many seconds; 0 keeps models loaded.
+IDLE_UNLOAD_SECS = int(os.getenv("PINEPODS_AI_IDLE_UNLOAD", "300"))
+# Transcriptions run at the same time; more wait their turn.
+MAX_TRANSCRIBE_JOBS = max(1, int(os.getenv("PINEPODS_AI_MAX_TRANSCRIBE_JOBS", "1")))
 
 # Whisper model sizes faster-whisper can pull on demand (surfaced in /models).
 KNOWN_WHISPER_MODELS = [
@@ -68,29 +74,66 @@ KNOWN_WHISPER_MODELS = [
 
 app = FastAPI(title="PinePods AI", version="0.2.0")
 
-# Models are loaded lazily on first use and cached process-wide, keyed by name so the
-# service can hold multiple whisper sizes / GGUFs at once. Loading pulls weights and can
-# take several seconds, so we never do it at import time.
-_whisper_models: dict = {}
-_whisper_lock = threading.Lock()
-_llama_models: dict = {}
-_llama_lock = threading.Lock()
+
+class _ModelCache:
+    """Models loaded on first use and kept, keyed by name, so several whisper sizes / GGUFs can be
+    held at once. Tracks who is using each one so idle models can be freed without pulling one out
+    from under a running job."""
+
+    def __init__(self, kind: str, load, close=None):
+        self._kind = kind
+        self._load = load
+        self._close = close
+        self._lock = threading.Lock()
+        self._models: dict = {}
+        self._users: dict = {}
+        self._last_used: dict = {}
+
+    @contextmanager
+    def use(self, key):
+        with self._lock:
+            model = self._models.get(key)
+            if model is None:
+                model = self._load(key)
+                self._models[key] = model
+            self._users[key] = self._users.get(key, 0) + 1
+        try:
+            yield model
+        finally:
+            with self._lock:
+                self._users[key] -= 1
+                self._last_used[key] = time.time()
+
+    def unload_idle(self, idle_secs: float):
+        now = time.time()
+        with self._lock:
+            idle = [k for k in self._models
+                    if self._users.get(k, 0) == 0 and now - self._last_used.get(k, now) >= idle_secs]
+            for key in idle:
+                model = self._models.pop(key)
+                if self._close:
+                    try:
+                        self._close(model)
+                    except Exception:
+                        log.exception("Closing %s model %s failed", self._kind, key)
+                del model
+                log.info("Unloaded idle %s model %s", self._kind, key)
+        if idle:
+            gc.collect()
+
+    def loaded(self) -> list:
+        # No lock: a load can hold it for minutes, and /health must answer meanwhile.
+        return list(self._models)
 
 
-def _get_whisper(name: str, device: str, compute_type: str):
-    key = (name, device, compute_type)
-    m = _whisper_models.get(key)
-    if m is None:
-        with _whisper_lock:
-            m = _whisper_models.get(key)
-            if m is None:
-                from faster_whisper import WhisperModel  # imported lazily
+def _load_whisper(key):
+    name, device, compute_type = key
+    from faster_whisper import WhisperModel  # imported lazily
 
-                log.info("Loading Whisper model '%s' (device=%s, compute_type=%s)", name, device, compute_type)
-                m = WhisperModel(name, device=device, compute_type=compute_type, download_root=MODELS_DIR)
-                _whisper_models[key] = m
-                log.info("Whisper model '%s' loaded", name)
-    return m
+    log.info("Loading Whisper model '%s' (device=%s, compute_type=%s)", name, device, compute_type)
+    model = WhisperModel(name, device=device, compute_type=compute_type, download_root=MODELS_DIR)
+    log.info("Whisper model '%s' loaded", name)
+    return model
 
 
 def _resolve_gguf_path(model: str) -> str:
@@ -104,20 +147,38 @@ def _resolve_gguf_path(model: str) -> str:
     return real
 
 
-def _get_llama(model: str):
-    m = _llama_models.get(model)
-    if m is None:
-        with _llama_lock:
-            m = _llama_models.get(model)
-            if m is None:
-                from llama_cpp import Llama  # imported lazily
+def _load_llama(model: str):
+    from llama_cpp import Llama  # imported lazily
 
-                path = _resolve_gguf_path(model)
-                log.info("Loading GGUF LLM '%s' (n_ctx=%d)", model, LLM_N_CTX)
-                m = Llama(model_path=path, n_ctx=LLM_N_CTX, verbose=False)
-                _llama_models[model] = m
-                log.info("GGUF LLM '%s' loaded", model)
-    return m
+    path = _resolve_gguf_path(model)
+    log.info("Loading GGUF LLM '%s' (n_ctx=%d)", model, LLM_N_CTX)
+    llm = Llama(model_path=path, n_ctx=LLM_N_CTX, verbose=False)
+    log.info("GGUF LLM '%s' loaded", model)
+    return llm
+
+
+_whisper_models = _ModelCache("whisper", _load_whisper)
+_llama_models = _ModelCache("llm", _load_llama, close=lambda m: m.close())
+
+# Heavy jobs share the machine one (or MAX_TRANSCRIBE_JOBS) at a time. llama.cpp in particular
+# isn't safe to run from two threads at once: overlapping ad detections crash the process.
+_transcribe_slots = threading.Semaphore(MAX_TRANSCRIBE_JOBS)
+_llm_lock = threading.Lock()
+
+
+def _queued_line() -> str:
+    return json.dumps({"type": "progress", "progress": 0.0, "status": "queued"}) + "\n"
+
+
+def _idle_unloader():
+    while True:
+        time.sleep(30)
+        _whisper_models.unload_idle(IDLE_UNLOAD_SECS)
+        _llama_models.unload_idle(IDLE_UNLOAD_SECS)
+
+
+if IDLE_UNLOAD_SECS > 0:
+    threading.Thread(target=_idle_unloader, name="idle-unloader", daemon=True).start()
 
 
 # --- Request/response models ---
@@ -155,6 +216,16 @@ class PullRequest(BaseModel):
     url: Optional[str] = None        # remote Ollama base URL (for 'ollama')
 
 
+_INVISIBLE = "\u200b\u200c\u200d\u2060\ufeff"
+
+
+def _clean_name(value: Optional[str]) -> Optional[str]:
+    """Drop surrounding whitespace and zero-width characters copied along with a name."""
+    if value is None:
+        return None
+    return value.strip().strip(_INVISIBLE).strip() or None
+
+
 def _check_auth(token: Optional[str]):
     if AUTH_TOKEN and token != AUTH_TOKEN:
         raise HTTPException(status_code=401, detail="Invalid AI token")
@@ -170,16 +241,18 @@ def _resolve_media_path(file_path: str) -> str:
     return real
 
 
+# Async so it runs on the event loop: queued jobs can tie up the worker threads.
 @app.get("/health")
-def health():
+async def health():
     return {
         "status": "ok",
         "model": MODEL_NAME,
         "device": DEVICE,
         "compute_type": COMPUTE_TYPE,
         "models_dir": MODELS_DIR,
-        "whisper_loaded": [f"{n}" for (n, _, _) in _whisper_models.keys()],
-        "llm_loaded": list(_llama_models.keys()),
+        "whisper_loaded": [n for (n, _, _) in _whisper_models.loaded()],
+        "llm_loaded": _llama_models.loaded(),
+        "idle_unload_secs": IDLE_UNLOAD_SECS,
     }
 
 
@@ -196,36 +269,49 @@ def transcribe(req: TranscribeRequest, x_ai_token: Optional[str] = Header(defaul
     model_name = req.model or MODEL_NAME
 
     def stream():
-        model = _get_whisper(model_name, DEVICE, COMPUTE_TYPE)
-        started = time.time()
-        log.info("Transcribing %s (model=%s)", path, model_name)
+        if not _transcribe_slots.acquire(blocking=False):
+            yield _queued_line()
+            _transcribe_slots.acquire()
         try:
-            segments_iter, info = model.transcribe(path, language=req.language, beam_size=BEAM_SIZE)
-            total = float(info.duration or 0.0)
-            segments: list[dict] = []
-            text_parts: list[str] = []
-            for seg in segments_iter:
-                piece = seg.text.strip()
-                segments.append({"start": round(seg.start, 3), "end": round(seg.end, 3), "text": piece})
-                text_parts.append(piece)
-                progress = min(seg.end / total, 1.0) if total > 0 else 0.0
-                yield json.dumps({"type": "progress", "progress": round(progress, 4)}) + "\n"
-
-            log.info("Transcribed %s in %.1fs (%d segments, lang=%s)",
-                     path, time.time() - started, len(segments), info.language)
-            yield json.dumps({
-                "type": "result",
-                "language": info.language or (req.language or "unknown"),
-                "text": " ".join(text_parts).strip(),
-                "segments": segments,
-                "model": model_name,
-                "duration": round(total, 3),
-            }) + "\n"
-        except Exception as e:  # surface mid-stream failures to the caller (full traceback in logs)
-            log.exception("Transcription failed for %s", path)
+            with _whisper_models.use((model_name, DEVICE, COMPUTE_TYPE)) as model:
+                yield from _transcribe(model, model_name, path, req.language)
+        except Exception as e:  # model failed to load
+            log.exception("Loading whisper model %s failed", model_name)
             yield json.dumps({"type": "error", "error": f"transcription failed: {type(e).__name__}: {e}"}) + "\n"
+        finally:
+            _transcribe_slots.release()
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+
+def _transcribe(model, model_name: str, path: str, language: Optional[str]):
+    started = time.time()
+    log.info("Transcribing %s (model=%s)", path, model_name)
+    try:
+        segments_iter, info = model.transcribe(path, language=language, beam_size=BEAM_SIZE)
+        total = float(info.duration or 0.0)
+        segments: list[dict] = []
+        text_parts: list[str] = []
+        for seg in segments_iter:
+            piece = seg.text.strip()
+            segments.append({"start": round(seg.start, 3), "end": round(seg.end, 3), "text": piece})
+            text_parts.append(piece)
+            progress = min(seg.end / total, 1.0) if total > 0 else 0.0
+            yield json.dumps({"type": "progress", "progress": round(progress, 4)}) + "\n"
+
+        log.info("Transcribed %s in %.1fs (%d segments, lang=%s)",
+                 path, time.time() - started, len(segments), info.language)
+        yield json.dumps({
+            "type": "result",
+            "language": info.language or (language or "unknown"),
+            "text": " ".join(text_parts).strip(),
+            "segments": segments,
+            "model": model_name,
+            "duration": round(total, 3),
+        }) + "\n"
+    except Exception as e:  # surface mid-stream failures to the caller (full traceback in logs)
+        log.exception("Transcription failed for %s", path)
+        yield json.dumps({"type": "error", "error": f"transcription failed: {type(e).__name__}: {e}"}) + "\n"
 
 
 # --- Ad detection (#790) ---------------------------------------------------------
@@ -233,13 +319,15 @@ def transcribe(req: TranscribeRequest, x_ai_token: Optional[str] = Header(defaul
 AD_SYSTEM_PROMPT = (
     "You are an expert at detecting advertisements and sponsor reads in podcast "
     "transcripts. Ads include host-read sponsor spots, promo codes, 'this episode is "
-    "brought to you by', dynamically inserted ads, and calls to visit a sponsor's site. "
-    "Normal show content, listener mail, and self-promotion of the show's own membership "
-    "are NOT ads unless they are a paid sponsor read. Be precise about boundaries."
+    "brought to you by', dynamically inserted ads, promos for other podcasts or shows, "
+    "and calls to visit a sponsor's site. Episodes often open with one or more ads before "
+    "the show itself starts, so the first segments can be ads with no lead-in. Normal show "
+    "content, listener mail, and self-promotion of the show's own membership are NOT ads "
+    "unless they are a paid sponsor read. Be precise about boundaries."
 )
 
 
-def _chunk_segments(segments: list[dict], max_chars: int = 6000, overlap: int = 6):
+def _chunk_segments(segments: list[dict], max_chars: int = 6000, overlap: int = 10):
     """Split numbered segments into windows bounded by character budget, with a small
     segment overlap so an ad straddling a window boundary is still seen whole."""
     windows = []
@@ -348,12 +436,12 @@ def _llm_chat(spec: LlmSpec, system: str, user: str) -> str:
     model = spec.model or LLM_MODEL_DEFAULT
     if not model:
         raise HTTPException(status_code=400, detail="no local LLM model configured")
-    llama = _get_llama(model)
-    out = llama.create_chat_completion(
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        temperature=0.1,
-        max_tokens=LLM_MAX_TOKENS,
-    )
+    with _llama_models.use(model) as llama:
+        out = llama.create_chat_completion(
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.1,
+            max_tokens=LLM_MAX_TOKENS,
+        )
     return out["choices"][0]["message"]["content"]
 
 
@@ -407,33 +495,47 @@ def detect_ads(req: DetectAdsRequest, x_ai_token: Optional[str] = Header(default
     _check_auth(x_ai_token)
     segments = [{"start": s.start, "end": s.end, "text": s.text} for s in req.segments]
 
+    # Local models run one detection at a time (see _llm_lock); remote endpoints don't need to.
+    local = req.llm.backend not in ("remote", "anthropic")
+
     def stream():
-        started = time.time()
+        if local and not _llm_lock.acquire(blocking=False):
+            yield _queued_line()
+            _llm_lock.acquire()
         try:
-            if not segments:
-                yield json.dumps({"type": "result", "segments": []}) + "\n"
-                return
-            # Remote endpoints have large context windows, so use bigger chunks — far fewer
-            # requests, which is gentler on provider rate limits. Local GGUFs keep small chunks
-            # to fit their context.
-            max_chars = 16000 if req.llm.backend in ("remote", "anthropic") else 6000
-            windows = _chunk_segments(segments, max_chars=max_chars)
-            all_spans = []
-            for wi, (lo, hi) in enumerate(windows):
-                all_spans.extend(_detect_window(req.llm, segments, lo, hi))
-                progress = (wi + 1) / len(windows)
-                yield json.dumps({"type": "progress", "progress": round(progress, 4)}) + "\n"
-            merged = _merge_spans(all_spans)
-            log.info("Ad detection: %d ad span(s) over %d segments in %.1fs",
-                     len(merged), len(segments), time.time() - started)
-            yield json.dumps({"type": "result", "segments": merged}) + "\n"
-        except HTTPException as he:
-            yield json.dumps({"type": "error", "error": he.detail}) + "\n"
-        except Exception as e:  # full traceback in logs; summary to the client
-            log.exception("Ad detection failed")
-            yield json.dumps({"type": "error", "error": f"ad detection failed: {type(e).__name__}: {e}"}) + "\n"
+            yield from _detect(req, segments)
+        finally:
+            if local:
+                _llm_lock.release()
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+
+def _detect(req: DetectAdsRequest, segments: list[dict]):
+    started = time.time()
+    try:
+        if not segments:
+            yield json.dumps({"type": "result", "segments": []}) + "\n"
+            return
+        # Remote endpoints have large context windows, so use bigger chunks — far fewer
+        # requests, which is gentler on provider rate limits. Local GGUFs keep small chunks
+        # to fit their context.
+        max_chars = 16000 if req.llm.backend in ("remote", "anthropic") else 6000
+        windows = _chunk_segments(segments, max_chars=max_chars)
+        all_spans = []
+        for wi, (lo, hi) in enumerate(windows):
+            all_spans.extend(_detect_window(req.llm, segments, lo, hi))
+            progress = (wi + 1) / len(windows)
+            yield json.dumps({"type": "progress", "progress": round(progress, 4)}) + "\n"
+        merged = _merge_spans(all_spans)
+        log.info("Ad detection: %d ad span(s) over %d segments in %.1fs",
+                 len(merged), len(segments), time.time() - started)
+        yield json.dumps({"type": "result", "segments": merged}) + "\n"
+    except HTTPException as he:
+        yield json.dumps({"type": "error", "error": he.detail}) + "\n"
+    except Exception as e:  # full traceback in logs; summary to the client
+        log.exception("Ad detection failed")
+        yield json.dumps({"type": "error", "error": f"ad detection failed: {type(e).__name__}: {e}"}) + "\n"
 
 
 # --- Model management ------------------------------------------------------------
@@ -479,6 +581,10 @@ def pull_model(req: PullRequest, x_ai_token: Optional[str] = Header(default=None
     """Download a model, streaming NDJSON progress. GGUF and Ollama pulls report real
     byte-level progress; whisper pulls emit start + completion (faster-whisper gives no hook)."""
     _check_auth(x_ai_token)
+    req.model = _clean_name(req.model) or ""
+    req.repo = _clean_name(req.repo)
+    req.filename = _clean_name(req.filename)
+    req.url = _clean_name(req.url)
 
     def stream():
         try:
@@ -506,7 +612,7 @@ def pull_model(req: PullRequest, x_ai_token: Optional[str] = Header(default=None
                 from huggingface_hub import hf_hub_url
 
                 # Stream the file ourselves so we can report real byte-level progress and write it
-                # directly to MODELS_DIR/<basename> (where _get_llama / _list_local_ggufs look).
+                # directly to MODELS_DIR/<basename> (where _load_llama / _list_local_ggufs look).
                 url = hf_hub_url(repo_id=req.repo, filename=req.filename)
                 dest = os.path.join(MODELS_DIR, os.path.basename(req.filename))
                 tmp = dest + ".part"

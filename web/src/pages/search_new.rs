@@ -1,5 +1,5 @@
 use crate::components::app_drawer::App_drawer;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use yew::{function_component, html, Html};
 
 #[function_component(SearchNew)]

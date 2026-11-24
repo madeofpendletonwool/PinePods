@@ -113,6 +113,8 @@ class NativeAudioPlayerService extends AudioPlayerService {
     settingsService.settingsListener.listen((key) {
       if (key == 'fastForwardInterval' || key == 'rewindInterval') {
         _applySkipIntervals();
+      } else if (key == 'pauseForInterruptions') {
+        unawaited(_applyPauseForInterruptions());
       }
     });
 
@@ -499,6 +501,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
         'volumeBoost': _volumeBoost,
         'forwardMs': settingsService.fastForwardInterval * 1000,
         'backwardMs': settingsService.rewindInterval * 1000,
+        'pauseForInterruptions': settingsService.pauseForInterruptions,
         'metadata': {
           'title': episode.title ?? 'Unknown',
           'artist': episode.podcast ?? 'Unknown',
@@ -627,6 +630,17 @@ class NativeAudioPlayerService extends AudioPlayerService {
       });
     } catch (e) {
       log.warning('Error setting skip intervals: $e');
+    }
+  }
+
+  Future<void> _applyPauseForInterruptions() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await platform.invokeMethod('setPauseForInterruptions', {
+        'enabled': settingsService.pauseForInterruptions,
+      });
+    } catch (e) {
+      log.warning('Error setting pause for interruptions: $e');
     }
   }
 
@@ -794,6 +808,13 @@ class NativeAudioPlayerService extends AudioPlayerService {
     log.info('suspend');
     await _saveLocalPosition();
     _stopLocalPositionSaver();
+    // The app may not run again before it is killed: queue the position for
+    // the server now rather than at the next report.
+    try {
+      await _pinepodsAudioService?.syncCurrentPositionToServer();
+    } catch (e) {
+      log.fine('Could not queue the position on suspend: $e');
+    }
   }
 
   /// How long a timed sleep fades the volume out before pausing.

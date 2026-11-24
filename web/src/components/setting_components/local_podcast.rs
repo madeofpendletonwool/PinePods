@@ -8,7 +8,7 @@ use crate::requests::setting_reqs::{
 use web_sys::{FormData, HtmlInputElement, HtmlTextAreaElement};
 use yew::prelude::*;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 
 #[function_component(LocalPodcast)]
 pub fn local_podcast() -> Html {

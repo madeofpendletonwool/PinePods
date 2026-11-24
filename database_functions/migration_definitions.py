@@ -651,6 +651,9 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     NextRefreshAt TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '5 minutes'),
                     RefreshIntervalMinutes INT,
                     EditedMetadata VARCHAR(255),
+                    Subscribed BOOLEAN NOT NULL DEFAULT TRUE,
+                    UnsubscribedSince TIMESTAMP NULL,
+                    InboxEnabled BOOLEAN NOT NULL DEFAULT TRUE,
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                 )
             """)
@@ -733,6 +736,9 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     NextRefreshAt DATETIME NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL 5 MINUTE),
                     RefreshIntervalMinutes INT,
                     EditedMetadata VARCHAR(255),
+                    Subscribed TINYINT(1) NOT NULL DEFAULT 1,
+                    UnsubscribedSince DATETIME NULL DEFAULT NULL,
+                    InboxEnabled TINYINT(1) NOT NULL DEFAULT 1,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )
             """)
@@ -7698,6 +7704,8 @@ def _repoint_merged_episodes(cursor, db_type: str) -> dict:
                 e.TranscriptsJSON = COALESCE(e.TranscriptsJSON, agg.transcripts)
         """)
 
+    moved["listening_log"] = _repoint_listening_log(cursor, db_type)
+
     cursor.execute(f"UPDATE {episodes} SET FeedID = NULL WHERE EpisodeID IN (SELECT OldEpisodeID FROM {aliases})")
     return moved
 
@@ -7992,6 +8000,623 @@ def migration_090_user_queue_add_position(conn, db_type: str) -> None:
                 "sqlite": ('"UserSettings"', "queueaddposition"),
             }.get(db_type, ("UserSettings", "QueueAddPosition"))
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} VARCHAR(10) NOT NULL DEFAULT 'bottom'")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("091", "user_podcast_count_display", "UserSettings.PodcastCountDisplay: the Podcasts page shows each podcast's total or unplayed episode count", requires=["001"], sqlite=True)
+def migration_091_user_podcast_count_display(conn, db_type: str) -> None:
+    """'total' counts every episode of the podcast; 'unplayed' only the ones the user hasn't
+    finished. Total by default."""
+    cursor = conn.cursor()
+    try:
+        if db_type == "sqlite":
+            cursor.execute('PRAGMA table_info("UserSettings")')
+            exists = any(row[1].lower() == "podcastcountdisplay" for row in cursor.fetchall())
+        else:
+            exists = _column_exists(cursor, db_type, "UserSettings", "PodcastCountDisplay")
+        if not exists:
+            table, column = {
+                "postgresql": ('"UserSettings"', "PodcastCountDisplay"),
+                "sqlite": ('"UserSettings"', "podcastcountdisplay"),
+            }.get(db_type, ("UserSettings", "PodcastCountDisplay"))
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} VARCHAR(10) NOT NULL DEFAULT 'total'")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("092", "listened_seconds", "ListenedSeconds on the history tables and UserStats.ListenSecondsCarry: time actually played, kept apart from the position", requires=["001"], sqlite=True)
+def migration_092_listened_seconds(conn, db_type: str) -> None:
+    """ListenDuration is where the user is in an episode and can move back. ListenedSeconds is how
+    long they have played it and only grows; it starts as the position, capped at the length.
+    ListenSecondsCarry holds the seconds that don't yet make a minute of TimeListened."""
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    lite = db_type == "sqlite"
+
+    def has(table: str, column: str) -> bool:
+        if lite:
+            cursor.execute(f'PRAGMA table_info("{table}")')
+            return any(row[1].lower() == column.lower() for row in cursor.fetchall())
+        return _column_exists(cursor, db_type, table, column)
+
+    def name(table: str) -> str:
+        return f'"{table}"' if pg or lite else table
+
+    try:
+        added = []
+        for table, column in (
+            ("UserEpisodeHistory", "ListenedSeconds"),
+            ("UserVideoHistory", "ListenedSeconds"),
+            ("UserStats", "ListenSecondsCarry"),
+        ):
+            if not has(table, column):
+                col = column.lower() if lite else column
+                cursor.execute(f"ALTER TABLE {name(table)} ADD COLUMN {col} INT NOT NULL DEFAULT 0")
+                added.append(table)
+        least = "MIN" if lite else "LEAST"
+        if "UserEpisodeHistory" in added:
+            cursor.execute(f"""
+                UPDATE {name('UserEpisodeHistory')} SET ListenedSeconds = COALESCE((
+                    SELECT CASE WHEN COALESCE(e.EpisodeDuration, 0) > 0
+                                THEN {least}(COALESCE({name('UserEpisodeHistory')}.ListenDuration, 0), e.EpisodeDuration)
+                                ELSE COALESCE({name('UserEpisodeHistory')}.ListenDuration, 0) END
+                    FROM {name('Episodes')} e WHERE e.EpisodeID = {name('UserEpisodeHistory')}.EpisodeID), 0)
+                WHERE COALESCE(ListenDuration, 0) > 0
+            """)
+        if "UserVideoHistory" in added:
+            cursor.execute(f"""
+                UPDATE {name('UserVideoHistory')} SET ListenedSeconds = COALESCE((
+                    SELECT CASE WHEN COALESCE(v.Duration, 0) > 0
+                                THEN {least}(COALESCE({name('UserVideoHistory')}.ListenDuration, 0), v.Duration)
+                                ELSE COALESCE({name('UserVideoHistory')}.ListenDuration, 0) END
+                    FROM {name('YouTubeVideos')} v WHERE v.VideoID = {name('UserVideoHistory')}.VideoID), 0)
+                WHERE COALESCE(ListenDuration, 0) > 0
+            """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("093", "listening_log", "ListeningLog: seconds played per user, local day and hour, episode and client, for stats and the yearly recap", requires=["001"], sqlite=True)
+def migration_093_listening_log(conn, db_type: str) -> None:
+    """ListeningLog: time actually played, added up per user, day and hour (in the user's timezone
+    when it was played), item and client app. ItemKind 0 is an episode, 1 a YouTube video. The
+    history tables only keep one row per episode, the last time it was played; this keeps every
+    day. It starts empty: earlier listening is only in the history tables."""
+    cursor = conn.cursor()
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "ListeningLog" (
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    ListenDay DATE NOT NULL,
+                    ListenHour SMALLINT NOT NULL,
+                    ItemKind SMALLINT NOT NULL,
+                    ItemID INT NOT NULL,
+                    Client VARCHAR(16) NOT NULL DEFAULT '',
+                    Seconds INT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (UserID, ListenDay, ListenHour, ItemKind, ItemID, Client)
+                )
+            """)
+        elif db_type == "sqlite":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "ListeningLog" (
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    listenday DATE NOT NULL,
+                    listenhour INTEGER NOT NULL,
+                    itemkind INTEGER NOT NULL,
+                    itemid INTEGER NOT NULL,
+                    client TEXT NOT NULL DEFAULT '',
+                    seconds INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (userid, listenday, listenhour, itemkind, itemid, client)
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ListeningLog (
+                    UserID INT NOT NULL,
+                    ListenDay DATE NOT NULL,
+                    ListenHour SMALLINT NOT NULL,
+                    ItemKind SMALLINT NOT NULL,
+                    ItemID INT NOT NULL,
+                    Client VARCHAR(16) NOT NULL DEFAULT '',
+                    Seconds INT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (UserID, ListenDay, ListenHour, ItemKind, ItemID, Client),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+_LISTENING_LOG_SUMS = ("Seconds", "SpeedSaved", "SilenceSkipped", "AdsSkipped", "DownloadedSeconds")
+# ListeningLogItems columns copied when an item follows a merged episode (those that exist).
+_LISTENING_ITEM_COLUMNS = ("PodcastID", "PodcastName", "FeedURL", "ItemTitle", "Artwork", "Categories", "FirstListened", "PubDate")
+
+
+def _repoint_listening_log(cursor, db_type: str) -> int:
+    """Fold ListeningLog rows (and their ListeningLogItems entry) of merged episode copies into
+    the episode each became, adding their seconds to any row already there. Does nothing before
+    the tables exist. Returns the log rows moved."""
+    pg, lite = db_type == "postgresql", db_type == "sqlite"
+
+    def q(table: str) -> str:
+        return f'"{table}"' if pg or lite else table
+
+    def exists(table: str) -> bool:
+        if lite:
+            cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", (table,))
+            return cursor.fetchone()[0] > 0
+        return _table_exists(cursor, db_type, table)
+
+    def has(table: str, column: str) -> bool:
+        if lite:
+            cursor.execute(f'PRAGMA table_info("{table}")')
+            return any(row[1].lower() == column.lower() for row in cursor.fetchall())
+        return _column_exists(cursor, db_type, table, column)
+
+    if not exists("ListeningLog") or not exists("EpisodeIDAliases"):
+        return 0
+    log, aliases = q("ListeningLog"), q("EpisodeIDAliases")
+    cursor.execute(f"SELECT COUNT(*) FROM {log} l JOIN {aliases} a ON a.OldEpisodeID = l.ItemID WHERE l.ItemKind = 0")
+    moved = cursor.fetchone()[0]
+    if moved:
+        sums = [c for c in _LISTENING_LOG_SUMS if has("ListeningLog", c)]
+        keys = "UserID, ListenDay, ListenHour, ItemKind, ItemID, Client"
+        cols = ", ".join(sums)
+        # Summed columns renamed (s_<name>) so MySQL's update clause can't confuse them with the target's.
+        summed = ", ".join(f"SUM(l.{c}) AS s_{c}" for c in sums)
+        select = f"""
+            SELECT * FROM (
+                SELECT l.UserID AS s_u, l.ListenDay AS s_d, l.ListenHour AS s_h, 0 AS s_k, a.EpisodeID AS s_i, l.Client AS s_c, {summed}
+                FROM {log} l JOIN {aliases} a ON a.OldEpisodeID = l.ItemID
+                WHERE l.ItemKind = 0
+                GROUP BY l.UserID, l.ListenDay, l.ListenHour, a.EpisodeID, l.Client
+            ) src WHERE 1 = 1
+        """
+        if pg or lite:
+            add = ", ".join(f"{c} = {log}.{c} + EXCLUDED.{c}" for c in sums)
+            cursor.execute(f"INSERT INTO {log} ({keys}, {cols}) {select} ON CONFLICT ({keys}) DO UPDATE SET {add}")
+        else:
+            add = ", ".join(f"{c} = {c} + src.s_{c}" for c in sums)
+            cursor.execute(f"INSERT INTO {log} ({keys}, {cols}) {select} ON DUPLICATE KEY UPDATE {add}")
+        cursor.execute(f"DELETE FROM {log} WHERE ItemKind = 0 AND ItemID IN (SELECT OldEpisodeID FROM {aliases})")
+    if exists("ListeningLogItems"):
+        items = q("ListeningLogItems")
+        copied = [c for c in _LISTENING_ITEM_COLUMNS if has("ListeningLogItems", c)]
+        cols = "UserID, ItemKind, ItemID, " + ", ".join(copied)
+        select = f"""
+            SELECT i.UserID, 0, a.EpisodeID, {", ".join("i." + c for c in copied)}
+            FROM {items} i JOIN {aliases} a ON a.OldEpisodeID = i.ItemID WHERE i.ItemKind = 0
+        """
+        if pg or lite:
+            cursor.execute(f"INSERT INTO {items} ({cols}) {select} ON CONFLICT (UserID, ItemKind, ItemID) DO NOTHING")
+        else:
+            cursor.execute(f"INSERT IGNORE INTO {items} ({cols}) {select}")
+        cursor.execute(f"DELETE FROM {items} WHERE ItemKind = 0 AND ItemID IN (SELECT OldEpisodeID FROM {aliases})")
+    return moved
+
+
+@register_migration("094", "listening_log_items", "ListeningLog keeps the show and title it was played under, and the time saved by speed and skipped silence or ads", requires=["093"], sqlite=True)
+def migration_094_listening_log_items(conn, db_type: str) -> None:
+    """- ListeningLogItems: per user and item in ListeningLog, the podcast (id, name, feed URL),
+      title and artwork it had when played, so the log still says what was played after the
+      podcast is removed. Filled from the library for rows logged so far.
+    - ListeningLog.SpeedSaved / SilenceSkipped / AdsSkipped: seconds saved by playing faster
+      than 1x (negative when slower) and by skipping silence and ads.
+    - Rows of episodes merged into another are folded into it."""
+    cursor = conn.cursor()
+    pg, lite = db_type == "postgresql", db_type == "sqlite"
+
+    def has(table: str, column: str) -> bool:
+        if lite:
+            cursor.execute(f'PRAGMA table_info("{table}")')
+            return any(row[1].lower() == column.lower() for row in cursor.fetchall())
+        return _column_exists(cursor, db_type, table, column)
+
+    try:
+        log = '"ListeningLog"' if pg or lite else "ListeningLog"
+        for column in _LISTENING_LOG_SUMS[1:]:
+            if not has("ListeningLog", column):
+                col = column.lower() if lite else column
+                cursor.execute(f"ALTER TABLE {log} ADD COLUMN {col} INT NOT NULL DEFAULT 0")
+
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "ListeningLogItems" (
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    ItemKind SMALLINT NOT NULL,
+                    ItemID INT NOT NULL,
+                    PodcastID INT,
+                    PodcastName TEXT,
+                    FeedURL TEXT,
+                    ItemTitle TEXT,
+                    Artwork TEXT,
+                    PRIMARY KEY (UserID, ItemKind, ItemID)
+                )
+            """)
+        elif lite:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "ListeningLogItems" (
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    itemkind INTEGER NOT NULL,
+                    itemid INTEGER NOT NULL,
+                    podcastid INTEGER,
+                    podcastname TEXT,
+                    feedurl TEXT,
+                    itemtitle TEXT,
+                    artwork TEXT,
+                    PRIMARY KEY (userid, itemkind, itemid)
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ListeningLogItems (
+                    UserID INT NOT NULL,
+                    ItemKind SMALLINT NOT NULL,
+                    ItemID INT NOT NULL,
+                    PodcastID INT,
+                    PodcastName TEXT,
+                    FeedURL TEXT,
+                    ItemTitle TEXT,
+                    Artwork TEXT,
+                    PRIMARY KEY (UserID, ItemKind, ItemID),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+
+        _repoint_listening_log(cursor, db_type)
+
+        q = (lambda t: f'"{t}"') if pg or lite else (lambda t: t)
+        items, episodes, podcasts, videos = q("ListeningLogItems"), q("Episodes"), q("Podcasts"), q("YouTubeVideos")
+        insert = "INSERT INTO" if pg or lite else "INSERT IGNORE INTO"
+        conflict = "ON CONFLICT (UserID, ItemKind, ItemID) DO NOTHING" if pg or lite else ""
+        cols = "UserID, ItemKind, ItemID, PodcastID, PodcastName, FeedURL, ItemTitle, Artwork"
+        cursor.execute(f"""
+            {insert} {items} ({cols})
+            SELECT l.UserID, 0, l.ItemID, MIN(p.PodcastID), MIN(p.PodcastName), MIN(p.FeedURL), MIN(e.EpisodeTitle),
+                   MIN(COALESCE(NULLIF(e.EpisodeArtwork, ''), p.ArtworkURL))
+            FROM (SELECT DISTINCT UserID, ItemID FROM {log} WHERE ItemKind = 0) l
+            JOIN {episodes} e ON e.EpisodeID = l.ItemID
+            JOIN {podcasts} p ON p.FeedID = e.FeedID AND p.UserID = l.UserID
+            WHERE 1 = 1
+            GROUP BY l.UserID, l.ItemID
+            {conflict}
+        """)
+        cursor.execute(f"""
+            {insert} {items} ({cols})
+            SELECT l.UserID, 1, l.ItemID, MIN(p.PodcastID), MIN(p.PodcastName), MIN(p.FeedURL), MIN(v.VideoTitle),
+                   MIN(COALESCE(NULLIF(v.ThumbnailURL, ''), p.ArtworkURL))
+            FROM (SELECT DISTINCT UserID, ItemID FROM {log} WHERE ItemKind = 1) l
+            JOIN {videos} v ON v.VideoID = l.ItemID
+            JOIN {podcasts} p ON p.PodcastID = v.PodcastID AND p.UserID = l.UserID
+            WHERE 1 = 1
+            GROUP BY l.UserID, l.ItemID
+            {conflict}
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("095", "listening_sessions", "Listening sessions, time played from downloads, and when each item was first played and released", requires=["094"], sqlite=True)
+def migration_095_listening_sessions(conn, db_type: str) -> None:
+    """- ListeningLog.DownloadedSeconds: of Seconds, the time played from a file on the device.
+    - ListeningLogItems.Categories / PubDate / FirstListened: the podcast's categories and the
+      item's release date when played, and when it was first played. Filled from the library
+      and the log for items logged so far.
+    - ListeningSessions: stretches of listening with no gap over 10 minutes, across items and
+      apps. Starts empty."""
+    cursor = conn.cursor()
+    pg, lite = db_type == "postgresql", db_type == "sqlite"
+
+    def has(table: str, column: str) -> bool:
+        if lite:
+            cursor.execute(f'PRAGMA table_info("{table}")')
+            return any(row[1].lower() == column.lower() for row in cursor.fetchall())
+        return _column_exists(cursor, db_type, table, column)
+
+    q = (lambda t: f'"{t}"') if pg or lite else (lambda t: t)
+    try:
+        log, items = q("ListeningLog"), q("ListeningLogItems")
+        if not has("ListeningLog", "DownloadedSeconds"):
+            cursor.execute(f"ALTER TABLE {log} ADD COLUMN {'downloadedseconds' if lite else 'DownloadedSeconds'} INT NOT NULL DEFAULT 0")
+        stamp = "TIMESTAMP" if pg or lite else "DATETIME"  # MySQL TIMESTAMP can't hold dates before 1970
+        for column, kind in (("Categories", "TEXT"), ("PubDate", stamp), ("FirstListened", stamp)):
+            if not has("ListeningLogItems", column):
+                cursor.execute(f"ALTER TABLE {items} ADD COLUMN {column.lower() if lite else column} {kind}")
+
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "ListeningSessions" (
+                    SessionID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    StartedAt TIMESTAMP NOT NULL,
+                    EndedAt TIMESTAMP NOT NULL,
+                    Seconds INT NOT NULL DEFAULT 0
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_listeningsessions_user_end ON "ListeningSessions"(UserID, EndedAt)')
+        elif lite:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "ListeningSessions" (
+                    sessionid INTEGER PRIMARY KEY AUTOINCREMENT,
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    startedat TIMESTAMP NOT NULL,
+                    endedat TIMESTAMP NOT NULL,
+                    seconds INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_listeningsessions_user_end ON "ListeningSessions"(userid, endedat)')
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ListeningSessions (
+                    SessionID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    StartedAt DATETIME NOT NULL,
+                    EndedAt DATETIME NOT NULL,
+                    Seconds INT NOT NULL DEFAULT 0,
+                    INDEX idx_listeningsessions_user_end (UserID, EndedAt),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+
+        episodes, podcasts, videos = q("Episodes"), q("Podcasts"), q("YouTubeVideos")
+        first = "CAST(MIN(l.ListenDay) AS TIMESTAMP)" if pg else ("MIN(l.ListenDay) || ' 00:00:00'" if lite else "CAST(MIN(l.ListenDay) AS DATETIME)")
+        cursor.execute(f"""
+            UPDATE {items} SET FirstListened = (
+                SELECT {first} FROM {log} l
+                WHERE l.UserID = {items}.UserID AND l.ItemKind = {items}.ItemKind AND l.ItemID = {items}.ItemID
+            ) WHERE FirstListened IS NULL
+        """)
+        cursor.execute(f"""
+            UPDATE {items} SET PubDate = (SELECT e.EpisodePubDate FROM {episodes} e WHERE e.EpisodeID = {items}.ItemID)
+            WHERE ItemKind = 0 AND PubDate IS NULL
+        """)
+        cursor.execute(f"""
+            UPDATE {items} SET PubDate = (SELECT v.PublishedAt FROM {videos} v WHERE v.VideoID = {items}.ItemID)
+            WHERE ItemKind = 1 AND PubDate IS NULL
+        """)
+        cursor.execute(f"""
+            UPDATE {items} SET Categories = (SELECT p.Categories FROM {podcasts} p WHERE p.PodcastID = {items}.PodcastID)
+            WHERE Categories IS NULL AND PodcastID IS NOT NULL
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("096", "podcast_subscribed_flag", "Podcasts.Subscribed/UnsubscribedSince: a podcast row can exist for episodes the user played, queued or downloaded without subscribing", requires=["005"], sqlite=True)
+def migration_096_podcast_subscribed_flag(conn, db_type: str) -> None:
+    """Rows with Subscribed = FALSE hold a show the user hasn't subscribed to, so its episodes can be
+    played, queued, downloaded or transcribed. They stay out of the library, sync and refreshes;
+    subscribing flips the flag. UnsubscribedSince is when the row was last used, for cleanup."""
+    cursor = conn.cursor()
+    try:
+        if db_type == "sqlite":
+            cursor.execute('PRAGMA table_info("Podcasts")')
+            existing = {row[1].lower() for row in cursor.fetchall()}
+        else:
+            existing = {c.lower() for c in ("Subscribed", "UnsubscribedSince") if _column_exists(cursor, db_type, "Podcasts", c)}
+        table = "Podcasts" if db_type == "mysql" else '"Podcasts"'
+        # SQLite reports a column by its declared name, and its schema is all lowercase.
+        names = {"sqlite": ("subscribed", "unsubscribedsince")}.get(db_type, ("Subscribed", "UnsubscribedSince"))
+        timestamp = "DATETIME" if db_type == "mysql" else "TIMESTAMP"
+        if "subscribed" not in existing:
+            boolean = "TINYINT(1) NOT NULL DEFAULT 1" if db_type == "mysql" else "BOOLEAN NOT NULL DEFAULT TRUE"
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {names[0]} {boolean}")
+        if "unsubscribedsince" not in existing:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {names[1]} {timestamp} NULL")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("097", "episode_description_text", "Episodes.DescriptionText and YouTubeVideos.DescriptionText: the visible words of a description, without markup or links, for episode search", requires=["005"], sqlite=True)
+def migration_097_episode_description_text(conn, db_type: str) -> None:
+    """NULL until the server fills it: new and refreshed episodes get it when written, existing
+    ones from a background pass at startup. Search reads the raw description while it is NULL."""
+    cursor = conn.cursor()
+    try:
+        for table in ("Episodes", "YouTubeVideos"):
+            if db_type == "sqlite":
+                cursor.execute(f'PRAGMA table_info("{table}")')
+                exists = any(row[1].lower() == "descriptiontext" for row in cursor.fetchall())
+            else:
+                exists = _column_exists(cursor, db_type, table, "DescriptionText")
+            if exists:
+                continue
+            # SQLite reports a column by its declared name, and its schema is all lowercase.
+            if db_type == "postgresql":
+                cursor.execute(f'ALTER TABLE "{table}" ADD COLUMN DescriptionText TEXT')
+            elif db_type == "sqlite":
+                cursor.execute(f'ALTER TABLE "{table}" ADD COLUMN descriptiontext TEXT')
+            else:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN DescriptionText MEDIUMTEXT NULL")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("098", "ai_features_enabled", "AISettings.Enabled: admin switch that turns every AI feature off, even with the AI container connected", requires=["056"], sqlite=True)
+def migration_098_ai_features_enabled(conn, db_type: str) -> None:
+    cursor = conn.cursor()
+    try:
+        if db_type == "sqlite":
+            cursor.execute('PRAGMA table_info("AISettings")')
+            exists = any(row[1].lower() == "enabled" for row in cursor.fetchall())
+        else:
+            exists = _column_exists(cursor, db_type, "AISettings", "Enabled")
+        if not exists:
+            # SQLite reports a column by its declared name, and its schema is all lowercase.
+            if db_type == "postgresql":
+                cursor.execute('ALTER TABLE "AISettings" ADD COLUMN Enabled BOOLEAN NOT NULL DEFAULT TRUE')
+            elif db_type == "sqlite":
+                cursor.execute('ALTER TABLE "AISettings" ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT TRUE')
+            else:
+                cursor.execute("ALTER TABLE AISettings ADD COLUMN Enabled TINYINT(1) NOT NULL DEFAULT 1")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("099", "inbox_and_episode_labels", "Inbox: dismissed episodes, how far back it reaches and which podcasts feed it; episode labels, also usable as a smart playlist filter", requires=["001", "005", "010"], sqlite=True)
+def migration_099_inbox_and_episode_labels(conn, db_type: str) -> None:
+    """The inbox is worked out from what the user has done: an episode of a subscribed podcast,
+    released in the last UserSettings.InboxDays days, that they haven't played, finished, queued,
+    saved, downloaded or dismissed. InboxDismissed holds the dismissals (EpisodeID is a
+    YouTubeVideos.VideoID when IsYoutube). Podcasts.InboxEnabled = FALSE keeps a podcast out.
+
+    EpisodeLabels are a user's own labels; EpisodeLabelAssignments puts them on episodes.
+    Playlists.LabelIDs (a JSON list) limits a smart playlist to episodes with any of them."""
+    cursor = conn.cursor()
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "InboxDismissed" (
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    EpisodeID INT NOT NULL,
+                    IsYoutube BOOLEAN NOT NULL DEFAULT FALSE,
+                    DismissedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (UserID, EpisodeID, IsYoutube)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeLabels" (
+                    LabelID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    Name VARCHAR(64) NOT NULL,
+                    Color VARCHAR(16) NOT NULL DEFAULT 'blue',
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (UserID, Name)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeLabelAssignments" (
+                    LabelID INT NOT NULL REFERENCES "EpisodeLabels"(LabelID) ON DELETE CASCADE,
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    EpisodeID INT NOT NULL,
+                    IsYoutube BOOLEAN NOT NULL DEFAULT FALSE,
+                    AssignedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (LabelID, EpisodeID, IsYoutube)
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_episodelabelassignments_user ON "EpisodeLabelAssignments"(UserID, EpisodeID)')
+        elif db_type == "sqlite":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "InboxDismissed" (
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    episodeid INTEGER NOT NULL,
+                    isyoutube BOOLEAN NOT NULL DEFAULT 0,
+                    dismissedat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (userid, episodeid, isyoutube)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeLabels" (
+                    labelid INTEGER PRIMARY KEY AUTOINCREMENT,
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    color TEXT NOT NULL DEFAULT 'blue',
+                    createdat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (userid, name)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeLabelAssignments" (
+                    labelid INTEGER NOT NULL REFERENCES "EpisodeLabels"(labelid) ON DELETE CASCADE,
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    episodeid INTEGER NOT NULL,
+                    isyoutube BOOLEAN NOT NULL DEFAULT 0,
+                    assignedat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (labelid, episodeid, isyoutube)
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_episodelabelassignments_user ON "EpisodeLabelAssignments"(userid, episodeid)')
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS InboxDismissed (
+                    UserID INT NOT NULL,
+                    EpisodeID INT NOT NULL,
+                    IsYoutube TINYINT(1) NOT NULL DEFAULT 0,
+                    DismissedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (UserID, EpisodeID, IsYoutube),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS EpisodeLabels (
+                    LabelID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(64) NOT NULL,
+                    Color VARCHAR(16) NOT NULL DEFAULT 'blue',
+                    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_episodelabels_user_name (UserID, Name),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS EpisodeLabelAssignments (
+                    LabelID INT NOT NULL,
+                    UserID INT NOT NULL,
+                    EpisodeID INT NOT NULL,
+                    IsYoutube TINYINT(1) NOT NULL DEFAULT 0,
+                    AssignedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (LabelID, EpisodeID, IsYoutube),
+                    KEY idx_episodelabelassignments_user (UserID, EpisodeID),
+                    FOREIGN KEY (LabelID) REFERENCES EpisodeLabels(LabelID) ON DELETE CASCADE,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+
+        # SQLite reports a column by its declared name, and its schema is all lowercase.
+        columns = [
+            ("Podcasts", "InboxEnabled", {"postgresql": "BOOLEAN NOT NULL DEFAULT TRUE", "sqlite": "BOOLEAN NOT NULL DEFAULT 1", "mysql": "TINYINT(1) NOT NULL DEFAULT 1"}),
+            ("UserSettings", "InboxDays", {"postgresql": "INT NOT NULL DEFAULT 30", "sqlite": "INTEGER NOT NULL DEFAULT 30", "mysql": "INT NOT NULL DEFAULT 30"}),
+            ("Playlists", "LabelIDs", {"postgresql": "TEXT", "sqlite": "TEXT", "mysql": "TEXT NULL"}),
+        ]
+        for table, column, types in columns:
+            if db_type == "sqlite":
+                cursor.execute(f'PRAGMA table_info("{table}")')
+                exists = any(row[1].lower() == column.lower() for row in cursor.fetchall())
+            else:
+                exists = _column_exists(cursor, db_type, table, column)
+            if exists:
+                continue
+            name = column.lower() if db_type == "sqlite" else column
+            quoted = table if db_type == "mysql" else f'"{table}"'
+            cursor.execute(f"ALTER TABLE {quoted} ADD COLUMN {name} {types.get(db_type, types['mysql'])}")
         conn.commit()
     except Exception:
         conn.rollback()

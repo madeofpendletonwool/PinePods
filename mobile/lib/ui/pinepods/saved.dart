@@ -43,7 +43,10 @@ enum EpisodeFilter {
 }
 
 class PinepodsSaved extends StatefulWidget {
-  const PinepodsSaved({Key? key}) : super(key: key);
+  /// Open on this collection instead of Saved.
+  final int? initialCollectionId;
+
+  const PinepodsSaved({Key? key, this.initialCollectionId}) : super(key: key);
 
   @override
   State<PinepodsSaved> createState() => _PinepodsSavedState();
@@ -79,12 +82,14 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
   // Collections other than Saved; [_active] is the one shown (null = Saved).
   List<PinepodsCollection> _collections = [];
   PinepodsCollection? _active;
+  late bool _pendingInitialCollection = widget.initialCollectionId != null;
 
   @override
   void initState() {
     super.initState();
     _loadSortPreference();
-    _loadSavedEpisodes();
+    // Opening on a collection: its episodes load once the collection list arrives.
+    if (widget.initialCollectionId == null) _loadSavedEpisodes();
     _loadCollections();
     _searchController.addListener(_onSearchChanged);
   }
@@ -279,10 +284,27 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
 
   Future<void> _loadCollections() async {
     final client = collectionsClient(context);
-    if (client == null) return;
+    if (client == null) {
+      if (_pendingInitialCollection) {
+        _pendingInitialCollection = false;
+        _loadSavedEpisodes();
+      }
+      return;
+    }
     try {
       final cols = await client.$1.getCollections(client.$2);
       if (!mounted) return;
+      if (_pendingInitialCollection) {
+        _pendingInitialCollection = false;
+        final initial = cols.where((c) => !c.isDefault && c.id == widget.initialCollectionId).firstOrNull;
+        setState(() => _collections = cols.where((c) => !c.isDefault).toList());
+        if (initial != null) {
+          _selectCollection(initial);
+        } else {
+          _loadSavedEpisodes();
+        }
+        return;
+      }
       setState(() {
         _collections = cols.where((c) => !c.isDefault).toList();
         // Keep the shown collection current (name/icon edits), or fall back to Saved.
@@ -293,6 +315,10 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       });
     } catch (_) {
       // Non-fatal: the page still shows Saved.
+      if (_pendingInitialCollection && mounted) {
+        _pendingInitialCollection = false;
+        _loadSavedEpisodes();
+      }
     }
   }
 

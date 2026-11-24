@@ -4,10 +4,12 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/entities/episode.dart';
+import 'package:pinepods_mobile/entities/episode_label.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_collection.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/user_stats.dart';
+import 'package:pinepods_mobile/entities/listening_report.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
 import 'package:pinepods_mobile/entities/people.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
@@ -651,6 +653,142 @@ class PinepodsService {
     }
   }
 
+  // ---- Inbox and episode labels (the server acts for the API key's user) ----
+
+  Exception _httpError(http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map && (body['message'] ?? body['detail']) != null) {
+        return Exception((body['message'] ?? body['detail']).toString());
+      }
+    } catch (_) {}
+    return Exception('HTTP ${response.statusCode}');
+  }
+
+  List<Map<String, dynamic>> _refs(List<(int, bool)> episodes) =>
+      [for (final (id, yt) in episodes) {'episode_id': id, 'is_youtube': yt}];
+
+  Future<EpisodePage> getInbox(InboxQuery query, {int limit = 50, int offset = 0}) async {
+    _requireAuth();
+    final params = <String, String>{'limit': '$limit', 'offset': '$offset'};
+    if (query.labelId != null) {
+      params['label_id'] = '${query.labelId}';
+    } else if (query.unlabeled) {
+      params['unlabeled'] = 'true';
+    }
+    if (query.podcastId != null) params['podcast_id'] = '${query.podcastId}';
+    if (query.oldestFirst) params['sort'] = 'oldest';
+    final url = Uri.parse('$_server/api/data/inbox').replace(queryParameters: params);
+    final response = await _get(url, headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final episodes = (data['episodes'] as List? ?? const [])
+        .map((e) => PinepodsEpisode.fromJson(e as Map<String, dynamic>))
+        .toList();
+    return EpisodePage(episodes: episodes, total: (data['total'] as num?)?.toInt() ?? episodes.length);
+  }
+
+  Future<int> getInboxCount() async {
+    _requireAuth();
+    final response = await _get(Uri.parse('$_server/api/data/inbox/count'), headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+    return ((jsonDecode(response.body) as Map<String, dynamic>)['count'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<int> _inboxChange(String path, Object body) async {
+    _requireAuth();
+    final response = await _post(Uri.parse('$_server/api/data/$path'), headers: _jsonHeaders, body: jsonEncode(body));
+    if (response.statusCode != 200) throw _httpError(response);
+    return ((jsonDecode(response.body) as Map<String, dynamic>)['changed'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Take episodes out of the inbox.
+  Future<int> dismissInbox(List<(int, bool)> episodes) => _inboxChange('inbox/dismiss', {'episodes': _refs(episodes)});
+
+  /// Undo a dismissal.
+  Future<int> restoreInbox(List<(int, bool)> episodes) => _inboxChange('inbox/restore', {'episodes': _refs(episodes)});
+
+  /// Dismiss everything the query shows.
+  Future<int> clearInbox(InboxQuery query) => _inboxChange('inbox/clear', {
+        'podcast_id': query.podcastId,
+        'label_id': query.labelId,
+        'unlabeled': query.labelId == null && query.unlabeled,
+      });
+
+  Future<int> getInboxDays() async {
+    _requireAuth();
+    final response = await _get(Uri.parse('$_server/api/data/inbox/settings'), headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+    return ((jsonDecode(response.body) as Map<String, dynamic>)['days'] as num?)?.toInt() ?? 30;
+  }
+
+  Future<int> setInboxDays(int days) async {
+    _requireAuth();
+    final response = await _put(Uri.parse('$_server/api/data/inbox/settings'),
+        headers: _jsonHeaders, body: jsonEncode({'days': days}));
+    if (response.statusCode != 200) throw _httpError(response);
+    return ((jsonDecode(response.body) as Map<String, dynamic>)['days'] as num?)?.toInt() ?? days;
+  }
+
+  Future<bool> getPodcastInbox(int podcastId) async {
+    _requireAuth();
+    final response = await _get(Uri.parse('$_server/api/data/podcast/$podcastId/inbox'), headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+    return (jsonDecode(response.body) as Map<String, dynamic>)['inbox'] as bool? ?? true;
+  }
+
+  Future<void> setPodcastInbox(int podcastId, bool inbox) async {
+    _requireAuth();
+    final response = await _put(Uri.parse('$_server/api/data/podcast/$podcastId/inbox'),
+        headers: _jsonHeaders, body: jsonEncode({'inbox': inbox}));
+    if (response.statusCode != 200) throw _httpError(response);
+  }
+
+  Future<List<EpisodeLabel>> getLabels() async {
+    _requireAuth();
+    final response = await _get(Uri.parse('$_server/api/data/labels'), headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+    return (jsonDecode(response.body) as List).map((e) => EpisodeLabel.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Label ids on each (episode id, is YouTube).
+  Future<Map<(int, bool), List<int>>> getLabelAssignments() async {
+    _requireAuth();
+    final response = await _get(Uri.parse('$_server/api/data/labels/assignments'), headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+    final out = <(int, bool), List<int>>{};
+    for (final a in jsonDecode(response.body) as List) {
+      final m = a as Map<String, dynamic>;
+      final key = ((m['episode_id'] as num).toInt(), m['is_youtube'] as bool? ?? false);
+      (out[key] ??= []).add((m['label_id'] as num).toInt());
+    }
+    return out;
+  }
+
+  Future<EpisodeLabel> createLabel(String name, String color) async {
+    _requireAuth();
+    final response = await _post(Uri.parse('$_server/api/data/labels'),
+        headers: _jsonHeaders, body: jsonEncode({'name': name, 'color': color}));
+    if (response.statusCode != 200) throw _httpError(response);
+    return EpisodeLabel.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> updateLabel(int labelId, String name, String color) async {
+    _requireAuth();
+    final response = await _put(Uri.parse('$_server/api/data/labels/$labelId'),
+        headers: _jsonHeaders, body: jsonEncode({'name': name, 'color': color}));
+    if (response.statusCode != 200) throw _httpError(response);
+  }
+
+  Future<void> deleteLabel(int labelId) async {
+    _requireAuth();
+    final response = await _delete(Uri.parse('$_server/api/data/labels/$labelId'), headers: _jsonHeaders);
+    if (response.statusCode != 200) throw _httpError(response);
+  }
+
+  Future<int> setLabelOnEpisodes(int labelId, List<(int, bool)> episodes, bool assigned) =>
+      _inboxChange('labels/$labelId/episodes', {'episodes': _refs(episodes), 'assigned': assigned});
+
   // Get a podcast's favorite status.
   Future<bool> getPodcastFavoriteStatus(int podcastId, int userId) async {
     if (_server == null || _apiKey == null) {
@@ -1144,6 +1282,43 @@ class PinepodsService {
           {'user_id': userId, 'podcast_id': podcastId}) !=
       null;
 
+  /// Which app this is, recorded with the listening time for stats.
+  static String get progressClient => switch (defaultTargetPlatform) {
+        TargetPlatform.iOS => 'ios',
+        TargetPlatform.android => 'android',
+        _ => '',
+      };
+
+  /// Report listening progress: positions, time played and finished episodes,
+  /// each with the moment it was observed. The server lets the newest
+  /// observation of an episode win, whichever device made it, so a batch saved
+  /// up offline is safe to send late. [updates] are maps with `episode_id`,
+  /// `is_youtube`, `position`, `at` (unix ms), `listened`, `finished` and
+  /// optionally `duration`.
+  ///
+  /// Returns the server's state for each update. Throws
+  /// [ProgressUnsupportedException] when the server predates this endpoint,
+  /// and an [Exception] when the report didn't get through.
+  Future<List<Map<String, dynamic>>> sendProgress(List<Map<String, dynamic>> updates) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/progress');
+    final response = await _post(
+      url,
+      headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+      body: jsonEncode({'sent_at': DateTime.now().millisecondsSinceEpoch, 'client': progressClient, 'updates': updates}),
+    );
+    if (response.statusCode == 404 || response.statusCode == 405) {
+      throw ProgressUnsupportedException();
+    }
+    if (response.statusCode != 200) {
+      throw Exception('Progress report failed: ${response.statusCode}');
+    }
+    final results = (jsonDecode(response.body) as Map<String, dynamic>)['results'] as List? ?? const [];
+    return results.whereType<Map>().map((r) => r.cast<String, dynamic>()).toList();
+  }
+
   // Record listen duration for episode
   Future<bool> recordListenDuration(
     int episodeId,
@@ -1381,10 +1556,42 @@ class PinepodsService {
         return data
             .cast<Map<String, dynamic>>()
             .map(DownloadTask.fromJson)
-            .where((t) => t.taskType == 'download_episode' || t.taskType == 'podcast_download' || t.taskType == 'download_all_episodes')
+            .where((t) => const {'download_episode', 'podcast_download', 'download_all_episodes', 'transcribe_episode'}.contains(t.taskType))
             .toList();
       }
       return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<bool> _taskAction(String path) async {
+    if (_server == null || _apiKey == null) return false;
+    try {
+      final response = await _post(Uri.parse('$_server/api/tasks/$path'), headers: {'Api-Key': _apiKey!});
+      return response.statusCode == 200;
+    } catch (e) {
+      _devLog('Task action $path failed: $e');
+      return false;
+    }
+  }
+
+  /// Remove a finished task from the activity list on the server.
+  Future<bool> dismissTask(String taskId) => _taskAction('${Uri.encodeComponent(taskId)}/dismiss');
+
+  /// Cancel a task that is still queued, such as a transcription.
+  Future<bool> cancelTask(String taskId) => _taskAction('${Uri.encodeComponent(taskId)}/cancel');
+
+  /// Remove every finished task from the activity list on the server.
+  Future<bool> clearFinishedTasks() => _taskAction('clear_finished');
+
+  /// The user's server tasks of every type.
+  Future<List<DownloadTask>> getUserTasks(int userId) async {
+    if (_server == null || _apiKey == null) return [];
+    try {
+      final response = await _get(Uri.parse('$_server/api/tasks/user/$userId'), headers: {'Api-Key': _apiKey!});
+      if (response.statusCode != 200) return [];
+      return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>().map(DownloadTask.fromJson).toList();
     } catch (e) {
       return [];
     }
@@ -2267,6 +2474,40 @@ class PinepodsService {
     }
   }
 
+  /// The server's id for an episode of any feed, subscribed or not, so it can be played with
+  /// progress kept, queued, saved or downloaded. Returns (episodeId, podcastId), or null if the
+  /// server couldn't find it (or predates this).
+  Future<({int episodeId, int podcastId})?> resolveFeedEpisode({
+    required int userId,
+    required String feedUrl,
+    required String episodeUrl,
+    required String episodeTitle,
+  }) async {
+    if (_server == null || _apiKey == null) return null;
+    final url = Uri.parse('$_server/api/data/resolve_feed_episode');
+    try {
+      final response = await _post(
+        url,
+        headers: {'Content-Type': 'application/json', 'Api-Key': _apiKey!},
+        body: jsonEncode({
+          'user_id': userId,
+          'feed_url': feedUrl,
+          'episode_url': episodeUrl,
+          'episode_title': episodeTitle,
+        }),
+      );
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body);
+      final episodeId = data['episode_id'];
+      final podcastId = data['podcast_id'];
+      if (episodeId is! int || podcastId is! int) return null;
+      return (episodeId: episodeId, podcastId: podcastId);
+    } catch (e) {
+      _devLog('Error resolving feed episode: $e');
+      return null;
+    }
+  }
+
   // Add a podcast to the server
   Future<bool> addPodcast(UnifiedPinepodsPodcast podcast, int userId) async {
     if (_server == null || _apiKey == null) {
@@ -2659,6 +2900,39 @@ class PinepodsService {
     } catch (e) {
       _devLog('Error getting user stats: $e');
       rethrow;
+    }
+  }
+
+  /// All-time listening figures. Null on servers without the endpoint.
+  Future<ExtendedStats?> getExtendedStats(int userId) async {
+    if (_server == null || _apiKey == null) return null;
+    final url = Uri.parse('$_server/api/data/get_extended_stats')
+        .replace(queryParameters: {'user_id': userId.toString()});
+    try {
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
+      if (response.statusCode != 200) return null;
+      return ExtendedStats.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    } catch (e) {
+      _devLog('Error getting extended stats: $e');
+      return null;
+    }
+  }
+
+  /// Listening for local days [start]..[end] (`YYYY-MM-DD`), or all time when both are null.
+  /// Null on servers without the listening record.
+  Future<ListeningReport?> getListeningReport(int userId, {String? start, String? end}) async {
+    if (_server == null || _apiKey == null) return null;
+    final url = Uri.parse('$_server/api/data/listening_report').replace(queryParameters: {
+      'user_id': userId.toString(),
+      if (start != null && end != null) ...{'start': start, 'end': end},
+    });
+    try {
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
+      if (response.statusCode != 200) return null;
+      return ListeningReport.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    } catch (e) {
+      _devLog('Error getting listening report: $e');
+      return null;
     }
   }
 
@@ -3709,6 +3983,8 @@ class CreatePlaylistRequest {
   final double? playProgressMin;
   final double? playProgressMax;
   final int? timeFilterHours;
+  /// Only episodes with any of these labels.
+  final List<int>? labelIds;
 
   CreatePlaylistRequest({
     required this.userId,
@@ -3727,6 +4003,7 @@ class CreatePlaylistRequest {
     this.playProgressMin,
     this.playProgressMax,
     this.timeFilterHours,
+    this.labelIds,
   });
 
   Map<String, dynamic> toJson() {
@@ -3747,6 +4024,7 @@ class CreatePlaylistRequest {
       'play_progress_min': playProgressMin,
       'play_progress_max': playProgressMax,
       'time_filter_hours': timeFilterHours,
+      if (labelIds != null && labelIds!.isNotEmpty) 'label_ids': labelIds,
     };
   }
 }
@@ -4052,4 +4330,14 @@ class DownloadTask {
   bool get isCompleted => status == 'SUCCESS';
   bool get isFailed => status == 'FAILED';
   bool get isActive => status == 'PENDING' || status == 'DOWNLOADING';
+  bool get isTranscription => taskType == 'transcribe_episode';
+
+  /// A transcription still waiting its turn; the server can cancel it.
+  bool get isCancellable => isTranscription && status == 'PENDING';
+}
+
+/// The server is older than `POST /api/data/progress`.
+class ProgressUnsupportedException implements Exception {
+  @override
+  String toString() => 'The server does not support progress reports'; // i18n-ignore
 }

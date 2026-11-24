@@ -44,6 +44,8 @@ pub(super) struct NewEpisodeRow<'a> {
     ep: &'a EpisodeData,
     artwork: &'a str,
     duration: i32,
+    /// The description's visible words, for search.
+    text: String,
 }
 
 /// Rows per `INSERT ... UNNEST` statement when importing a back catalogue (Postgres).
@@ -164,7 +166,7 @@ impl DatabasePool {
                         (refreshnotbefore IS NOT NULL AND refreshnotbefore > NOW()) as throttled,
                         COALESCE(refreshpodcast, TRUE) as auto_refresh
                     FROM "Podcasts" 
-                    WHERE userid = $1"#
+                    WHERE userid = $1 AND subscribed = TRUE"#
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -219,7 +221,7 @@ impl DatabasePool {
                         (RefreshNotBefore IS NOT NULL AND RefreshNotBefore > NOW()) as throttled,
                         COALESCE(RefreshPodcast, 1) as auto_refresh
                     FROM Podcasts 
-                    WHERE UserID = ?"
+                    WHERE UserID = ? AND Subscribed = 1"
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -447,13 +449,15 @@ impl DatabasePool {
                 };
 
                 if needs_update {
+                    let text = crate::services::search_text::plain_text(&ep.description);
                     dialect_match!(self, {
                         pg(pool) => {
                             q::query(
                                 r#"UPDATE "Episodes"
                                    SET episodetitle = $1, episodedescription = $2, episodeurl = $3,
                                        episodeartwork = $4, episodepubdate = $5, episodeduration = $6,
-                                       is_video = $7, episodeguid = COALESCE($8, episodeguid)
+                                       is_video = $7, episodeguid = COALESCE($8, episodeguid),
+                                       descriptiontext = $10
                                    WHERE episodeid = $9"#,
                             )
                             .bind(&ep.title)
@@ -465,6 +469,7 @@ impl DatabasePool {
                             .bind(ep.is_video)
                             .bind(ep.guid.as_deref())
                             .bind(episode_id)
+                            .bind(&text)
                             .execute(pool)
                             .await?;
                         },
@@ -473,7 +478,8 @@ impl DatabasePool {
                                 "UPDATE Episodes
                                  SET EpisodeTitle = ?, EpisodeDescription = ?, EpisodeURL = ?,
                                      EpisodeArtwork = ?, EpisodePubDate = ?, EpisodeDuration = ?,
-                                     IsVideo = ?, EpisodeGUID = COALESCE(?, EpisodeGUID)
+                                     IsVideo = ?, EpisodeGUID = COALESCE(?, EpisodeGUID),
+                                     DescriptionText = ?
                                  WHERE EpisodeID = ?",
                             )
                             .bind(&ep.title)
@@ -484,6 +490,7 @@ impl DatabasePool {
                             .bind(ep.duration)
                             .bind(ep.is_video)
                             .bind(ep.guid.as_deref())
+                            .bind(&text)
                             .bind(episode_id)
                             .execute(pool)
                             .await?;
@@ -502,7 +509,7 @@ impl DatabasePool {
                     continue;
                 }
             }
-            pending.push(NewEpisodeRow { ep, artwork, duration: ep.duration });
+            pending.push(NewEpisodeRow { ep, artwork, duration: ep.duration, text: crate::services::search_text::plain_text(&ep.description) });
         }
 
         // Durations: probe only the newest few episodes that lack one (a new podcast's back
@@ -638,9 +645,10 @@ impl DatabasePool {
                     let returned = q::query(
                         r#"INSERT INTO "Episodes"
                            (podcastid, feedid, episodetitle, episodedescription, episodeurl, episodeartwork,
-                            episodepubdate, episodeduration, is_video, episodeguid)
+                            episodepubdate, episodeduration, is_video, episodeguid, descriptiontext)
                            SELECT $1, $10, t.* FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[],
-                                                      $6::timestamptz[], $7::int4[], $8::bool[], $9::text[]) AS t
+                                                      $6::timestamptz[], $7::int4[], $8::bool[], $9::text[],
+                                                      $11::text[]) AS t
                            ON CONFLICT DO NOTHING
                            RETURNING episodeid, episodeguid, episodeurl, episodetitle"#,
                     )
@@ -654,6 +662,7 @@ impl DatabasePool {
                     .bind(chunk.iter().map(|r| r.ep.is_video).collect::<Vec<_>>())
                     .bind(chunk.iter().map(|r| r.ep.guid.as_deref()).collect::<Vec<_>>())
                     .bind(feed_id)
+                    .bind(chunk.iter().map(|r| r.text.as_str()).collect::<Vec<_>>())
                     .fetch_all(&mut *tx)
                     .await?;
                     for row in returned {
@@ -683,8 +692,8 @@ impl DatabasePool {
                 for (i, r) in rows.iter().enumerate() {
                     let result = sqlx::query(
                         "INSERT IGNORE INTO Episodes
-                         (PodcastID, FeedID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration, IsVideo, EpisodeGUID)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                         (PodcastID, FeedID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration, IsVideo, EpisodeGUID, DescriptionText)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(podcast_id)
                     .bind(feed_id)
@@ -696,6 +705,7 @@ impl DatabasePool {
                     .bind(r.duration)
                     .bind(r.ep.is_video)
                     .bind(r.ep.guid.as_deref())
+                    .bind(&r.text)
                     .execute(&mut *tx)
                     .await?;
                     if result.rows_affected() == 1 {
@@ -917,7 +927,7 @@ impl DatabasePool {
         // Always issue the request (even with no prior validators) so we can capture ETag /
         // Last-Modified for next time.
         let mut request = crate::services::http::feed_client().get(url);
-        if let (Some(user), Some(pass)) = (username, password) {
+        if let Some((user, pass)) = crate::services::http::feed_credentials(username, password) {
             request = request.basic_auth(user, Some(pass));
         }
         if let Some(etag) = prev.etag {
@@ -1235,9 +1245,9 @@ impl DatabasePool {
     /// GET a feed with basic auth when credentials are stored.
     pub(super) fn feed_get(client: &reqwest::Client, url: &str, username: Option<&str>, password: Option<&str>) -> reqwest::RequestBuilder {
         let request = client.get(url);
-        match (username, password) {
-            (Some(user), Some(pass)) => request.basic_auth(user, Some(pass)),
-            _ => request,
+        match crate::services::http::feed_credentials(username, password) {
+            Some((user, pass)) => request.basic_auth(user, Some(pass)),
+            None => request,
         }
     }
 

@@ -342,6 +342,18 @@ class PinepodsLibrarySessionCallback(
         AudioPlayerPlugin.logToFlutter("INFO", TAG,
             "Media button ${key?.let { android.view.KeyEvent.keyCodeToString(it.keyCode) }} " +
                 "action=${key?.action} from ${controllerInfo.packageName}")
+        // Media3 only passes key-down here. Skip once per press: a held button
+        // auto-repeats.
+        val direction = key?.let { MediaKeySkip.direction(it.keyCode) }
+        if (key != null && direction != null) {
+            if (key.repeatCount == 0) {
+                when (direction) {
+                    MediaKeySkip.Direction.FORWARD -> session.player.seekForward()
+                    MediaKeySkip.Direction.BACK -> session.player.seekBack()
+                }
+            }
+            return true
+        }
         return super.onMediaButtonEvent(session, controllerInfo, intent)
     }
 

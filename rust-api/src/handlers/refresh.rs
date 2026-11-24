@@ -440,7 +440,8 @@ async fn unchanged_schedule(state: &AppState, rep: &PodcastRefreshItem, max_age:
     let interval = match rep.refresh_interval {
         Some(minutes) if !refresh_schedule::is_dormant(&dates, now) => {
             let floor = max_age.unwrap_or_default().min(refresh_schedule::ACTIVE_MAX_INTERVAL);
-            chrono::Duration::minutes(minutes.into()).max(floor).min(max)
+            // Clamped again: the interval may be from when the ceiling was higher.
+            chrono::Duration::minutes(minutes.into()).max(floor).min(refresh_schedule::ACTIVE_MAX_INTERVAL).min(max)
         }
         _ => refresh_schedule::interval(&dates, &hints, now, max),
     };
@@ -619,7 +620,7 @@ async fn load_refresh_items(
                           isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified, feedcontenthash,
                           refreshintervalminutes
                    FROM "Podcasts"
-                   WHERE COALESCE(refreshpodcast, TRUE) = TRUE
+                   WHERE COALESCE(refreshpodcast, TRUE) = TRUE AND subscribed = TRUE
                      AND (refreshnotbefore IS NULL OR refreshnotbefore <= NOW())
                      AND ($1 OR COALESCE(consecutivefailures, 0) = 0
                           OR lastrefreshattempt IS NULL
@@ -667,7 +668,7 @@ async fn load_refresh_items(
                         IsYouTubeChannel, UserID, FeedCutoffDays, FeedETag, FeedLastModified, FeedContentHash,
                         RefreshIntervalMinutes
                  FROM Podcasts
-                 WHERE COALESCE(RefreshPodcast, 1) = 1
+                 WHERE COALESCE(RefreshPodcast, 1) = 1 AND Subscribed = 1
                    AND (RefreshNotBefore IS NULL OR RefreshNotBefore <= NOW())
                    AND (? OR COALESCE(ConsecutiveFailures, 0) = 0
                         OR LastRefreshAttempt IS NULL

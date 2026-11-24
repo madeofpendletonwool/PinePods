@@ -119,7 +119,7 @@ pub async fn search_youtube_channels(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         error!("yt-dlp search failed for '{}': {}", query.query, stderr.trim());
-        return Err(AppError::external_error(&format!("yt-dlp search failed: {}", stderr.trim())));
+        return Err(ytdlp_failure("YouTube search failed", &stderr));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -279,9 +279,27 @@ pub async fn subscribe_to_youtube_channel(
     // Spawn background task to process YouTube videos
     let state_clone = state.clone();
     let channel_id_clone = query.channel_id.clone();
+    let channel_name = channel_info.get("name").cloned().unwrap_or_default();
+    let artwork = channel_info.get("thumbnail_url").cloned().filter(|u| !u.is_empty());
+    let user_id = query.user_id;
     tokio::spawn(async move {
         if let Err(e) = crate::handlers::refresh::import_added_channel(&state_clone, podcast_id, &channel_id_clone, feed_cutoff).await {
             warn!("Error processing YouTube channel {}: {}", channel_id_clone, e);
+            // The subscription went through, so say why it has no videos yet.
+            let _ = state_clone
+                .task_manager
+                .push_notification(
+                    user_id,
+                    "youtube",
+                    crate::services::task_manager::MsgSeverity::Warning,
+                    format!("Couldn't load videos for {}", channel_name),
+                    Some(e.to_string()),
+                    None,
+                    Some(podcast_id),
+                    artwork,
+                    None,
+                )
+                .await;
         }
     });
 
@@ -299,6 +317,27 @@ async fn run_ytdlp(args: &[&str]) -> Result<std::process::Output, AppError> {
         error!("Failed to execute yt-dlp {}: {}", bin, e);
         AppError::external_error(&format!("Failed to execute yt-dlp: {}", e))
     })
+}
+
+/// A yt-dlp failure as an error the user can act on. YouTube's bot check is called out,
+/// since it means the server's IP is blocked rather than anything wrong in Pinepods.
+fn ytdlp_failure(context: &str, stderr: &str) -> AppError {
+    let reason = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .find(|l| l.starts_with("ERROR"))
+        .or_else(|| stderr.lines().map(str::trim).filter(|l| !l.is_empty()).last())
+        .unwrap_or("yt-dlp gave no reason")
+        .to_string();
+    let lower = stderr.to_lowercase();
+    if lower.contains("not a bot") || lower.contains("sign in to confirm") || lower.contains("http error 429") {
+        AppError::service_unavailable(format!(
+            "{context}: YouTube is blocking requests from this server's IP address, which is common behind a VPN or on a datacenter connection. yt-dlp said: {reason}"
+        ))
+    } else {
+        AppError::service_unavailable(format!("{context}: {reason}"))
+    }
 }
 
 // yt-dlp prints one JSON object per line for --dump-json.
@@ -333,7 +372,7 @@ pub async fn get_youtube_channel_info(channel_id: &str) -> Result<HashMap<String
             return Err(AppError::not_found("Channel not found"));
         }
         error!("yt-dlp channel fetch failed for {}: {}", channel_id, stderr.trim());
-        return Err(AppError::external_error(&format!("yt-dlp channel fetch failed: {}", stderr.trim())));
+        return Err(ytdlp_failure("Couldn't read the YouTube channel", &stderr));
     }
     let channel: serde_json::Value = serde_json::from_slice(&output.stdout)
         .map_err(|e| AppError::external_error(&format!("Unreadable yt-dlp channel data: {}", e)))?;
@@ -364,17 +403,6 @@ fn parse_channel_info(channel_id: &str, channel: &serde_json::Value) -> HashMap<
     channel_info
 }
 
-
-// Helper function to get MP3 duration from file
-pub fn get_mp3_duration(file_path: &str) -> Option<i32> {
-    match mp3_metadata::read_from_file(file_path) {
-        Ok(metadata) => Some(metadata.duration.as_secs() as i32),
-        Err(e) => {
-            warn!("Failed to read MP3 metadata from {}: {}", file_path, e);
-            None
-        }
-    }
-}
 
 /// The channel ID in a YouTube channel podcast's feed URL (`https://www.youtube.com/channel/<id>`).
 pub fn channel_id_from_url(feed_url: &str) -> &str {
@@ -770,7 +798,7 @@ async fn download_missing_audio(state: &AppState, video_ids: &[&str]) {
         match result {
             Ok(_) => {
                 downloaded += 1;
-                match get_mp3_duration(&output_path) {
+                match crate::services::audio_duration::audio_duration(std::path::Path::new(&output_path)) {
                     Some(duration) => {
                         if let Err(e) = state.db_pool.update_youtube_video_duration(video_id, duration).await {
                             warn!("Failed to update duration for video {}: {}", video_id, e);
@@ -962,6 +990,17 @@ pub async fn check_youtube_channel(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ytdlp_bot_check_names_the_blocked_ip() {
+        let stderr = "WARNING: [youtube] something\nERROR: [youtube] UCabc: Sign in to confirm you're not a bot. Use --cookies\n";
+        let msg = ytdlp_failure("Couldn't read the YouTube channel", stderr).to_string();
+        assert!(msg.contains("blocking requests from this server's IP"), "{msg}");
+        assert!(msg.contains("ERROR: [youtube] UCabc: Sign in to confirm"), "{msg}");
+
+        let msg = ytdlp_failure("YouTube search failed", "ERROR: Unable to download webpage: timed out\n").to_string();
+        assert!(msg.ends_with("YouTube search failed: ERROR: Unable to download webpage: timed out"), "{msg}");
+    }
 
     #[test]
     fn channel_ids_from_feed_urls() {

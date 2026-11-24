@@ -7,7 +7,7 @@ import 'package:pinepods_mobile/entities/search_providers.dart';
 /// Every bottom-bar page, in the default order.
 /// These are page ids, not display text; see bottomNavLabel.
 const List<String> defaultBottomBarOrder = [
-  'Home', 'Feed', 'Saved', 'Podcasts', 'People', 'Downloads', 'History', 'Playlists', 'Search', // i18n-ignore
+  'Home', 'Feed', 'Inbox', 'Saved', 'Podcasts', 'People', 'Downloads', 'History', 'Playlists', 'Search', // i18n-ignore
 ];
 
 /// A saved bar order made usable: pages it doesn't know are dropped, and pages
@@ -104,6 +104,12 @@ class AppSettings {
   /// Tint episode cards with a colour pulled from the podcast artwork.
   final bool artworkAccentColors;
 
+  /// When an episode ends, start the next one in the queue.
+  final bool autoPlayQueue;
+
+  /// Android: pause, rather than lower the volume, for another app's short sounds.
+  final bool pauseForInterruptions;
+
   /// UI language code (e.g. en, pt-BR, zh-Hans); empty follows the device.
   final String language;
 
@@ -138,6 +144,8 @@ class AppSettings {
     this.deleteDownloadsAfterDays = 0,
     this.playButtonStyle = 'ring',
     this.artworkAccentColors = true,
+    this.autoPlayQueue = true,
+    this.pauseForInterruptions = true,
     this.language = '',
   });
 
@@ -172,6 +180,8 @@ class AppSettings {
         deleteDownloadsAfterDays = 0,
         playButtonStyle = 'ring',
         artworkAccentColors = true,
+        autoPlayQueue = true,
+        pauseForInterruptions = true,
         language = '';
 
   AppSettings copyWith({
@@ -205,6 +215,8 @@ class AppSettings {
     int? deleteDownloadsAfterDays,
     String? playButtonStyle,
     bool? artworkAccentColors,
+    bool? autoPlayQueue,
+    bool? pauseForInterruptions,
     String? language,
   }) =>
       AppSettings(
@@ -238,6 +250,8 @@ class AppSettings {
         deleteDownloadsAfterDays: deleteDownloadsAfterDays ?? this.deleteDownloadsAfterDays,
         playButtonStyle: playButtonStyle ?? this.playButtonStyle,
         artworkAccentColors: artworkAccentColors ?? this.artworkAccentColors,
+        autoPlayQueue: autoPlayQueue ?? this.autoPlayQueue,
+        pauseForInterruptions: pauseForInterruptions ?? this.pauseForInterruptions,
         language: language ?? this.language,
       );
 }

@@ -5,8 +5,10 @@ use crate::components::context::{
     AppState, EpisodeStatusState, HomePageState, PlaylistDataState, UIState,
 };
 use crate::components::episode_list_item::EpisodeListItem;
+use crate::components::home_cards::{ContinueHero, EpisodeTile, Shelf};
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
+use crate::components::page_cache;
 use crate::components::setting_components::nextcloud_options::SyncNoticeBanner;
 use crate::pages::routes::Route;
 use crate::requests::episode::Episode;
@@ -14,7 +16,7 @@ use crate::requests::pod_req::Playlist;
 use crate::requests::pod_req::{self};
 
 use gloo_timers::future::TimeoutFuture;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::HashSet;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
@@ -23,54 +25,40 @@ use yew_router::prelude::Link;
 use yewdux::prelude::*;
 
 #[derive(Properties, PartialEq, Clone)]
-struct QuickLinkProps {
-    route: Route,
-    icon: &'static str,
-    label: String,
-    #[prop_or_default]
-    count: Option<i32>,
-}
-
-#[derive(Properties, PartialEq, Clone)]
-struct WeeklyStatsProps {
+struct HomeStripProps {
     seconds_listened: i64,
     episodes_completed: i32,
+    downloaded_count: i32,
 }
 
-#[function_component(WeeklyStatsCard)]
-fn weekly_stats_card(props: &WeeklyStatsProps) -> Html {
+/// One line under the hero: this week's listening, plus a few shortcuts.
+#[function_component(HomeStrip)]
+fn home_strip(props: &HomeStripProps) -> Html {
     let (i18n, _) = use_translation();
-    let this_week = i18n.t("home.this_week").to_string();
-    let listened = i18n.t("home.listened").to_string();
-    let completed = i18n.t("home.completed").to_string();
-
     let secs = props.seconds_listened;
-    let hours = secs / 3600;
-    let mins = (secs % 3600) / 60;
-    let time_str = if hours > 0 {
-        format!("{}h {}m", hours, mins)
-    } else {
-        format!("{}m", mins)
-    };
+    let (hours, mins) = (secs / 3600, (secs % 3600) / 60);
+    let time_str = if hours > 0 { format!("{hours}h {mins}m") } else { format!("{mins}m") };
 
     html! {
-        <div class="section-container">
-            <h2 class="text-2xl font-bold mb-4 item_container-text">{ this_week }</h2>
-            <div class="weekly-stats-grid grid grid-cols-2 gap-2 md:gap-4">
-                <div class="weekly-stat-card quick-link-card rounded-lg">
-                    <i class="ph ph-clock"></i>
-                    <div class="weekly-stat-text">
-                        <span class="weekly-stat-value">{ time_str }</span>
-                        <span class="weekly-stat-label">{ listened }</span>
-                    </div>
-                </div>
-                <div class="weekly-stat-card quick-link-card rounded-lg">
-                    <i class="ph ph-check-circle"></i>
-                    <div class="weekly-stat-text">
-                        <span class="weekly-stat-value">{ props.episodes_completed }</span>
-                        <span class="weekly-stat-label">{ completed }</span>
-                    </div>
-                </div>
+        <div class="home-strip">
+            <Link<Route> to={Route::UserStats} classes="home-week">
+                <span class="home-week-label">{ i18n.t("home.this_week") }</span>
+                <span class="home-week-stat"><i class="ph ph-clock"></i>{ time_str }<span>{ i18n.t("home.listened") }</span></span>
+                <span class="home-week-stat"><i class="ph ph-check-circle"></i>{ props.episodes_completed }<span>{ i18n.t("home.completed") }</span></span>
+            </Link<Route>>
+            <div class="home-chips">
+                <Link<Route> to={Route::Feed} classes="home-chip">
+                    <i class="ph ph-bell-ringing"></i>{ i18n.t("app_drawer.feed") }
+                </Link<Route>>
+                <Link<Route> to={Route::Downloads} classes="home-chip">
+                    <i class="ph ph-download-simple"></i>{ i18n.t("app_drawer.downloads") }
+                    if props.downloaded_count > 0 {
+                        <span class="home-chip-count">{ props.downloaded_count }</span>
+                    }
+                </Link<Route>>
+                <Link<Route> to={Route::PodHistory} classes="home-chip">
+                    <i class="ph ph-clock-counter-clockwise"></i>{ i18n.t("app_drawer.history") }
+                </Link<Route>>
             </div>
         </div>
     }
@@ -87,8 +75,6 @@ struct ContinueListeningProps {
 /// queued episode into its place. Hides itself when nothing is left to show.
 #[function_component(ContinueListening)]
 fn continue_listening(props: &ContinueListeningProps) -> Html {
-    let (i18n, _) = use_translation();
-    let continue_listening_label = i18n.t("home.continue_listening").to_string();
 
     let completed = use_selector(|state: &EpisodeStatusState| state.completed_episodes.clone());
     // Ids mid-exit-animation (still mounted) and ids fully removed for this session.
@@ -163,43 +149,26 @@ fn continue_listening(props: &ContinueListeningProps) -> Html {
         );
     }
 
-    if visible.is_empty() {
+    let Some((first, rest)) = visible.split_first() else {
         return html! {};
-    }
+    };
+    let leaving_class = |ep: &Episode| leaving.contains(&ep.episodeid).then_some("leaving");
 
     html! {
-        <div class="section-container">
-            <h2 class="text-2xl font-bold mb-4 item_container-text">{ continue_listening_label }</h2>
-            <div class="continue-list">
-                { for visible.iter().map(|episode| {
-                    let is_leaving = leaving.contains(&episode.episodeid);
-                    html! {
-                        <div
-                            key={episode.episodeid}
-                            class={classes!("continue-item", is_leaving.then_some("leaving"))}
-                        >
+        <div class="home-continue">
+            <div key={first.episodeid} class={classes!("continue-item", leaving_class(first))}>
+                <ContinueHero episode={first.clone()} />
+            </div>
+            if !rest.is_empty() {
+                <div class="continue-list">
+                    { for rest.iter().map(|episode| html! {
+                        <div key={episode.episodeid} class={classes!("continue-item", leaving_class(episode))}>
                             <EpisodeListItem episode={ episode.clone() } />
                         </div>
-                    }
-                })}
-            </div>
-        </div>
-    }
-}
-
-#[function_component(QuickLink)]
-fn quick_link(props: &QuickLinkProps) -> Html {
-    html! {
-        <Link<Route> to={props.route.clone()} classes="quick-link-card rounded-lg">
-            <i class={classes!("ph", props.icon)}></i>
-            <span>{ props.label.clone() }</span>
-            {
-                match props.count {
-                    Some(count) if count > 0 => html! { <span class="quick-link-badge">{ count }</span> },
-                    _ => html! {},
-                }
+                    })}
+                </div>
             }
-        </Link<Route>>
+        </div>
     }
 }
 
@@ -291,60 +260,26 @@ fn welcome_home() -> Html {
     }
 }
 
-#[derive(Properties, PartialEq, Clone)]
-pub struct PlaylistCardProps {
-    pub playlist: Playlist,
-    pub onclick: Callback<MouseEvent>,
-}
-
-#[function_component(PlaylistCard)]
-fn playlist_card(props: &PlaylistCardProps) -> Html {
-    html! {
-        <div class="playlist-card" onclick={props.onclick.clone()}>
-            <div class="playlist-card-stack">
-                <div class="playlist-card-content">
-                    <i class={classes!("ph", props.playlist.icon_name.clone(), "playlist-icon")}></i>
-                    <div class="playlist-info">
-                        <h3 class="playlist-title">{&props.playlist.name}</h3>
-                        <span class="playlist-count">
-                            {format!("{} episodes", props.playlist.episode_count.unwrap_or(0))}
-                        </span>
-                        if let Some(description) = &props.playlist.description {
-                            <p class="playlist-description">{description}</p>
-                        }
-                    </div>
-                </div>
-            </div>
-        </div>
-    }
-}
-
 #[function_component(Home)]
 pub fn home() -> Html {
     let (i18n, _) = use_translation();
-    let (state, dispatch) = use_store::<AppState>();
+    let (state, _dispatch) = use_store::<AppState>();
     let (home_state, home_dispatch) = use_store::<HomePageState>();
     let (playlist_state, playlist_dispatch) = use_store::<PlaylistDataState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
-    let loading = use_state(|| true);
+    // Data from an earlier visit renders straight away; the fetch below refreshes it.
+    let loading = use_state(|| home_state.home_overview.is_none());
     let history = BrowserHistory::new();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
 
     // Capture i18n strings before they get moved
-    let i18n_quick_links = i18n.t("home.quick_links").to_string();
-    let i18n_saved = i18n.t("app_drawer.saved").to_string();
-    let i18n_downloads = i18n.t("app_drawer.downloads").to_string();
-    let i18n_history = i18n.t("app_drawer.history").to_string();
-    let i18n_feed = i18n.t("app_drawer.feed").to_string();
-    let i18n_podcasts = i18n.t("app_drawer.podcasts").to_string();
-    let i18n_up_next = i18n.t("home.up_next").to_string();
+    let i18n_collections = i18n.t("navigation.collections").to_string();
     let i18n_top_podcasts = i18n.t("home.top_podcasts").to_string();
     let i18n_smart_playlists = i18n.t("home.smart_playlists").to_string();
-    let i18n_no_playlists_available = i18n.t("home.no_playlists_available").to_string();
     let i18n_recent_episodes = i18n.t("home.recent_episodes").to_string();
-    let i18n_no_recent_episodes = i18n.t("home.no_recent_episodes").to_string();
+    let i18n_episode_count = i18n.t("home.episode_count").to_string();
     let i18n_welcome_to_pinepods = i18n.t("home.welcome_to_pinepods").to_string();
     let i18n_welcome_description = i18n.t("home.welcome_description").to_string();
     let i18n_no_description_provided = i18n.t("home.no_description_provided").to_string();
@@ -365,6 +300,36 @@ pub fn home() -> Html {
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
+                    let cache_key = page_cache::key("home", &server_name, user_id);
+                    let network_done = std::rc::Rc::new(std::cell::Cell::new(false));
+                    if effect_dispatch.get().home_overview.is_none() {
+                        let cache_key = cache_key.clone();
+                        let network_done = network_done.clone();
+                        let loading = loading.clone();
+                        let dispatch = effect_dispatch.clone();
+                        spawn_local(async move {
+                            if let Some(cached) =
+                                page_cache::stored::<pod_req::HomeOverview>(&cache_key).await
+                            {
+                                if !network_done.get() && dispatch.get().home_overview.is_none() {
+                                    let completed: std::collections::HashSet<i32> = cached
+                                        .recent_episodes
+                                        .iter()
+                                        .chain(cached.in_progress_episodes.iter())
+                                        .chain(cached.queue_preview.iter())
+                                        .filter(|ep| ep.completed)
+                                        .map(|ep| ep.episodeid)
+                                        .collect();
+                                    Dispatch::<EpisodeStatusState>::global()
+                                        .reduce_mut(move |state| state.completed_episodes = completed);
+                                    dispatch.reduce_mut(move |state| {
+                                        state.home_overview = Some(cached);
+                                    });
+                                    loading.set(false);
+                                }
+                            }
+                        });
+                    }
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_home_overview(
                             &server_name,
@@ -406,6 +371,8 @@ pub fn home() -> Html {
                                     .map(|ep| ep.clone())
                                     .collect();
 
+                                network_done.set(true);
+                                page_cache::put(&cache_key, &home_data);
                                 effect_dispatch.reduce_mut(move |state| {
                                     state.home_overview = Some(home_data);
                                 });
@@ -421,6 +388,7 @@ pub fn home() -> Html {
                                 loading.set(false);
                             }
                             Err(e) => {
+                                network_done.set(true);
                                 web_sys::console::log_1(
                                     &format!("Error fetching home data: {:?}", e).into(),
                                 );
@@ -446,11 +414,26 @@ pub fn home() -> Html {
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
+                    let cache_key = page_cache::key("home_playlists", &server_name, user_id);
+                    if playlist_dispatch.get().playlists.is_none() {
+                        let cache_key = cache_key.clone();
+                        let dispatch = playlist_dispatch.clone();
+                        spawn_local(async move {
+                            if let Some(cached) =
+                                page_cache::stored::<Vec<Playlist>>(&cache_key).await
+                            {
+                                if dispatch.get().playlists.is_none() {
+                                    dispatch.reduce_mut(move |state| state.playlists = Some(cached));
+                                }
+                            }
+                        });
+                    }
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_playlists(&server_name, &api_key.unwrap(), user_id)
                             .await
                         {
                             Ok(playlist_response) => {
+                                page_cache::put(&cache_key, &playlist_response.playlists);
                                 playlist_dispatch.reduce_mut(move |state| {
                                     state.playlists = Some(playlist_response.playlists);
                                 });
@@ -460,6 +443,42 @@ pub fn home() -> Html {
                                     &format!("Error fetching playlists: {:?}", e).into(),
                                 );
                             }
+                        }
+                    });
+                }
+                || ()
+            },
+        );
+    }
+
+    // Collections row: cached copy first, then the server's.
+    let collections = {
+        let initial = match (&server_name, user_id) {
+            (Some(server), Some(uid)) => {
+                page_cache::memory::<Vec<pod_req::Collection>>(&page_cache::key("home_collections", server, uid))
+            }
+            _ => None,
+        };
+        use_state(move || initial.unwrap_or_default())
+    };
+    {
+        let collections = collections.clone();
+        use_effect_with(
+            (api_key.clone(), user_id, server_name.clone()),
+            move |(api_key, user_id, server_name)| {
+                if let (Some(Some(api_key)), Some(user_id), Some(server_name)) =
+                    (api_key.clone(), *user_id, server_name.clone())
+                {
+                    let cache_key = page_cache::key("home_collections", &server_name, user_id);
+                    spawn_local(async move {
+                        if collections.is_empty() {
+                            if let Some(cached) = page_cache::stored::<Vec<pod_req::Collection>>(&cache_key).await {
+                                collections.set(cached);
+                            }
+                        }
+                        if let Ok(cols) = pod_req::call_get_collections(&server_name, &api_key, user_id).await {
+                            page_cache::put(&cache_key, &cols);
+                            collections.set(cols);
                         }
                     });
                 }
@@ -485,68 +504,48 @@ pub fn home() -> Html {
                         // Zero podcasts added — greet the user with the welcome page
                         <WelcomeHome />
                     } else {
-                    <div class="space-y-8">
-                        // Quick Links Section
-                        <div class="section-container">
-                            <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n_quick_links}</h2>
-                            <div class="grid grid-cols-3 gap-2 md:gap-4">
-                                <QuickLink route={Route::Saved} icon="ph-star" label={i18n_saved.clone()} count={Some(home_data.saved_count)} />
-                                <QuickLink route={Route::Downloads} icon="ph-download-simple" label={i18n_downloads.clone()} count={Some(home_data.downloaded_count)} />
-                                <QuickLink route={Route::Playlists} icon="ph-playlist" label={i18n_smart_playlists.clone()} />
-                                <QuickLink route={Route::PodHistory} icon="ph-clock-counter-clockwise" label={i18n_history.clone()} />
-                                <QuickLink route={Route::Feed} icon="ph-bell-ringing" label={i18n_feed.clone()} />
-                                <QuickLink route={Route::Podcasts} icon="ph-microphone-stage" label={i18n_podcasts.clone()} />
-                            </div>
-                        </div>
-
-                        // This Week stats widget
-                        <WeeklyStatsCard
-                            seconds_listened={home_data.weekly_stats.seconds_listened}
-                            episodes_completed={home_data.weekly_stats.episodes_completed}
-                        />
-
+                    <div class="home-page">
                         <ContinueListening episodes={home_data.in_progress_episodes.clone()} />
 
+                        <HomeStrip
+                            seconds_listened={home_data.weekly_stats.seconds_listened}
+                            episodes_completed={home_data.weekly_stats.episodes_completed}
+                            downloaded_count={home_data.downloaded_count}
+                        />
 
-                        // Up Next Section (queue preview)
-                        {
-                            if !home_data.queue_preview.is_empty() {
-                                html! {
-                                    <div class="section-container">
-                                        <h2 class="text-2xl font-bold mb-4 item_container-text">
-                                            { format!("{} ({})", &i18n_up_next, home_data.queue_count) }
-                                        </h2>
-                                        <div class="space-y-4">
-                                            { for home_data.queue_preview.iter().map(|episode| {
-                                                html! {
-                                                    <EpisodeListItem
-                                                        key={episode.episodeid}
-                                                        episode={ episode.clone() }
-                                                    />
-                                                }
-                                            })}
-                                        </div>
-                                    </div>
-                                }
-                            } else {
+                        // Newest episodes from subscriptions, minus what's already above
+                        {{
+                            let in_progress: HashSet<i32> = home_data
+                                .in_progress_episodes
+                                .iter()
+                                .take(3)
+                                .map(|e| e.episodeid)
+                                .collect();
+                            let recent: Vec<&Episode> = home_data
+                                .recent_episodes
+                                .iter()
+                                .filter(|e| !in_progress.contains(&e.episodeid))
+                                .take(12)
+                                .collect();
+                            if recent.is_empty() {
                                 html! {}
+                            } else {
+                                html! {
+                                    <Shelf title={i18n_recent_episodes.clone()} see_all={Some(Route::Feed)}>
+                                        { for recent.into_iter().map(|episode| html! {
+                                            <EpisodeTile key={episode.episodeid} episode={episode.clone()} />
+                                        })}
+                                    </Shelf>
+                                }
                             }
-                        }
+                        }}
 
-                        // Top Podcasts Section
-                        // In your top podcasts section, replace the existing podcast grid items with:
-                        <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n_top_podcasts}</h2>
-                        <div class="podcast-grid">
+                        <Shelf title={i18n_top_podcasts.clone()} see_all={Some(Route::Podcasts)} class="home-podcast-row">
                             { for home_data.top_podcasts.iter().map(|podcast| {
-                                let api_key_clone = api_key.clone();
-                                let server_name_clone = server_name.clone();
-                                let history_clone = history.clone();
-                                let _dispatch_clone = dispatch.clone();
-
                                 let on_title_click = create_on_title_click(
-                                    server_name_clone.unwrap_or_default(),
-                                    api_key_clone,
-                                    &history_clone,
+                                    server_name.clone().unwrap_or_default(),
+                                    api_key.clone(),
+                                    &history,
                                     podcast.podcastid,
                                     podcast.podcastindexid.unwrap_or(0),
                                     podcast.podcastname.clone(),
@@ -558,71 +557,55 @@ pub fn home() -> Html {
                                     podcast.episodecount.unwrap_or(0),
                                     podcast.categories.as_ref().map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", ")).or_else(|| Some(i18n_no_categories_found.clone())),
                                     podcast.websiteurl.clone().unwrap_or_else(|| i18n_no_website_provided.clone()),
-                                    user_id.unwrap(),
+                                    user_id.unwrap_or_default(),
                                     podcast.is_youtube,
                                 );
-
                                 html! {
-                                    <div class="podcast-grid-item" onclick={on_title_click}>
-                                        <div class="podcast-image-container">
-                                            <FallbackImage
-                                                src={podcast.artworkurl.clone().unwrap_or_default()}
-                                                alt={format!("Cover for {}", podcast.podcastname)}
-                                                class="podcast-image"
-                                            />
-                                        </div>
-                                        <div class="podcast-info">
-                                            <h3 class="podcast-title-grid">{&podcast.podcastname}</h3>
-                                        </div>
-                                    </div>
+                                    <button key={podcast.podcastid} class="home-podcast" onclick={on_title_click} title={podcast.podcastname.clone()}>
+                                        <FallbackImage size={Some(256)}
+                                            src={podcast.artworkurl.clone().unwrap_or_default()}
+                                            alt={format!("Cover for {}", podcast.podcastname)}
+                                            class="home-podcast-img"
+                                        />
+                                        <span class="home-podcast-name">{ &podcast.podcastname }</span>
+                                    </button>
                                 }
                             })}
-                        </div>
+                        </Shelf>
 
-                        <div class="section-container">
-                            <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n_smart_playlists}</h2>
-                            if let Some(playlists) = &playlist_state.playlists {
-                                <div class="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                    {
-                                        playlists.iter().map(|playlist| {
-                                            let history_clone = history.clone();
-                                            let playlist_id = playlist.playlist_id;
-                                            let onclick = Callback::from(move |_| {
-                                                let url = format!("/playlist/{}", playlist_id);
-                                                history_clone.push(url);
-                                            });
-                                            html! {
-                                                <PlaylistCard
-                                                    playlist={playlist.clone()}
-                                                    {onclick}
-                                                />
-                                            }
-                                        }).collect::<Html>()
+                        if !collections.is_empty() {
+                            <Shelf title={i18n_collections.clone()} see_all={Some(Route::Collections)} class="home-card-row">
+                                { for collections.iter().map(|c| {
+                                    let history = history.clone();
+                                    let id = c.collection_id;
+                                    let onclick = Callback::from(move |_| history.push(format!("/collections?id={id}")));
+                                    html! {
+                                        <button key={c.collection_id} class="home-card" {onclick}>
+                                            <i class={classes!("ph", c.icon.clone(), "home-card-icon")}></i>
+                                            <span class="home-card-title">{ &c.name }</span>
+                                            <span class="home-card-sub">{ i18n_episode_count.replace("{count}", &c.episode_count.to_string()) }</span>
+                                        </button>
                                     }
-                                </div>
-                            } else {
-                                <p class="item_container-text">{&i18n_no_playlists_available}</p>
-                            }
-                        </div>
+                                })}
+                            </Shelf>
+                        }
 
-                        // Recent Episodes Section
-                        <div class="section-container">
-                            <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n_recent_episodes}</h2>
-                            if home_data.recent_episodes.is_empty() {
-                                <p class="item_container-text">{&i18n_no_recent_episodes}</p>
-                            } else {
-                                <div class="space-y-4">
-                                    { for home_data.recent_episodes.iter().take(5).map(|episode| {
-                                        html! {
-                                            <EpisodeListItem
-                                                key={episode.episodeid}
-                                                episode={episode.clone()}
-                                            />
-                                        }
-                                    })}
-                                </div>
-                            }
-                        </div>
+                        if let Some(playlists) = playlist_state.playlists.as_ref().filter(|p| !p.is_empty()) {
+                            <Shelf title={i18n_smart_playlists.clone()} see_all={Some(Route::Playlists)} class="home-card-row">
+                                { for playlists.iter().map(|playlist| {
+                                    let history = history.clone();
+                                    let id = playlist.playlist_id;
+                                    let onclick = Callback::from(move |_| history.push(format!("/playlist/{id}")));
+                                    html! {
+                                        <button key={playlist.playlist_id} class="home-card" {onclick}>
+                                            <i class={classes!("ph", playlist.icon_name.clone(), "home-card-icon")}></i>
+                                            <span class="home-card-title">{ &playlist.name }</span>
+                                            <span class="home-card-sub">{ i18n_episode_count.replace("{count}", &playlist.episode_count.unwrap_or(0).to_string()) }</span>
+                                        </button>
+                                    }
+                                })}
+                            </Shelf>
+                        }
                         <div class="h-30"></div>
                     </div>
                     }

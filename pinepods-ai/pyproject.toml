@@ -17,3 +17,10 @@ dependencies = [
     "requests==2.34.2",
     "uvicorn[standard]==0.54.0",
 ]
+
+[project.optional-dependencies]
+# CUDA libraries for WHISPER_DEVICE=cuda (the -cuda image, amd64 only).
+cuda = [
+    "nvidia-cublas-cu12==12.*; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "nvidia-cudnn-cu12==9.*; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]

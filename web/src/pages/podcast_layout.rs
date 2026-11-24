@@ -10,7 +10,7 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::UnifiedPodcast;
 use crate::components::app_drawer::App_drawer;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use web_sys::MouseEvent;
@@ -141,10 +141,21 @@ pub struct PodcastProps {
     pub podcast: UnifiedPodcast,
 }
 
-#[function_component(PodcastItem)]
-pub fn podcast_item(props: &PodcastProps) -> Html {
+/// Follow state and actions for a podcast from search or discovery: whether it is in the
+/// library, a follow/unfollow toggle, and a callback that opens its page.
+pub struct PodcastFollow {
+    pub is_added: bool,
+    pub loading: bool,
+    pub toggle: Callback<MouseEvent>,
+    pub open: Callback<MouseEvent>,
+}
+
+/// `check_on_mount` asks the server whether the podcast is already followed; pass false
+/// when the caller has filled `PodcastState::added_podcast_urls` itself.
+#[hook]
+pub fn use_podcast_follow(podcast: &UnifiedPodcast, check_on_mount: bool) -> PodcastFollow {
     let (i18n, _) = use_translation();
-    let podcast = props.podcast.clone();
+    let podcast = podcast.clone();
     let podcast_url = podcast.url.clone();
     let podcast_title = podcast.title.clone();
 
@@ -174,7 +185,8 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         let podcast_title = podcast_title.clone();
 
         use_effect_with((), move |_| {
-            if let (Some(api_key), Some(user_id), Some(server_name)) = (
+            if let (true, Some(api_key), Some(user_id), Some(server_name)) = (
+                check_on_mount,
                 eff_api_key.clone(),
                 user_id.clone(),
                 eff_server_name.clone(),
@@ -217,7 +229,8 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         let podcast_added_msg = podcast_added_msg.clone();
         let add_error_msg = add_error_msg.clone();
 
-        Callback::from(move |_: MouseEvent| {
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
             let podcast = podcast_clone.clone();
             let podcast_url = podcast.url.clone();
             let is_loading = is_loading.clone();
@@ -369,9 +382,25 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         }
     };
 
-    // Determine button icon based on podcast state
     let is_added = podcast_state.added_podcast_urls.contains(&podcast.url);
-    let button_icon = if *is_loading {
+    PodcastFollow {
+        is_added,
+        loading: *is_loading,
+        toggle: toggle_podcast,
+        open: on_title_click,
+    }
+}
+
+#[function_component(PodcastItem)]
+pub fn podcast_item(props: &PodcastProps) -> Html {
+    let (i18n, _) = use_translation();
+    let podcast = props.podcast.clone();
+    let follow = use_podcast_follow(&podcast, true);
+    let is_loading = follow.loading;
+    let toggle_podcast = follow.toggle.clone();
+    let on_title_click = follow.open.clone();
+    let is_added = follow.is_added;
+    let button_icon = if is_loading {
         "ph-spinner-gap animate-spin"
     } else if is_added {
         "ph-check"
@@ -387,7 +416,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     html! {
         <div class="podcast-card">
             <div class="podcast-card__cover">
-                <FallbackImage
+                <FallbackImage size={Some(384)}
                     src={podcast.image.clone()}
                     alt={format!("Cover for {}", podcast.title)}
                     class="podcast-card__img"
@@ -405,7 +434,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 <button
                     class="podcast-card__action"
                     onclick={toggle_podcast}
-                    disabled={*is_loading}
+                    disabled={is_loading}
                     title={action_title.clone()}
                     aria-label={action_title}
                 >

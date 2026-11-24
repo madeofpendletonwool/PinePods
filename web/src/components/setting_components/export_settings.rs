@@ -6,7 +6,7 @@ use wasm_bindgen::JsValue;
 use web_sys::{window, Blob, BlobPropertyBag, Url};
 use yew::prelude::*;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 
 #[function_component(ExportOptions)]
 pub fn export_options() -> Html {

@@ -15,7 +15,7 @@ use yewdux::dispatch::Dispatch;
 use crate::requests::search_pods::{call_search_database_paged, SearchRequest};
 use gloo_events::EventListener;
 use gloo_timers::future::TimeoutFuture;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::HashSet;
 use std::rc::Rc;
 use wasm_bindgen::JsCast;
@@ -967,7 +967,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                 html! {
                                     <div class="sp-tile" key={pod.podcastid} onclick={on_click}>
                                         <div class="sp-tile-cover">
-                                            <FallbackImage
+                                            <FallbackImage size={Some(384)}
                                                 src={pod.artworkurl.clone().unwrap_or_default()}
                                                 alt={format!("Cover for {}", pod.podcastname)}
                                                 class="sp-tile-cover-img"

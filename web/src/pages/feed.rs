@@ -4,11 +4,14 @@ use crate::components::context::{AppState, EpisodeStatusState, FilterState, Podc
 use crate::components::episode_list_view::EpisodeListView;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
+use crate::components::page_cache;
 use crate::requests::episode::Episode;
 use crate::requests::pod_req;
 use crate::requests::pod_req::PodcastResponseExtra;
 use gloo_timers::future::TimeoutFuture;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
+use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::rc::Rc;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
@@ -16,6 +19,26 @@ use yew::{function_component, html, Html};
 use yewdux::prelude::*;
 
 const PAGE_SIZE: i64 = 50;
+
+/// First page of the feed as last seen, shown while the fresh copy loads.
+#[derive(Clone, Serialize, Deserialize)]
+struct CachedFeed {
+    episodes: Vec<Episode>,
+    total: i64,
+}
+
+/// Seed the shared saved/queued/completed state from a page of episodes.
+fn apply_episode_status(episodes: &[Episode]) {
+    let completed: std::collections::HashSet<i32> =
+        episodes.iter().filter(|ep| ep.completed).map(|ep| ep.episodeid).collect();
+    let saved: Vec<Episode> = episodes.iter().filter(|ep| ep.saved).cloned().collect();
+    let queued: Vec<i32> = episodes.iter().filter(|ep| ep.queued).map(|ep| ep.episodeid).collect();
+    Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
+        state.completed_episodes = completed;
+        state.saved_episodes = saved;
+        state.queued_episode_ids = Some(queued);
+    });
+}
 
 #[function_component(Feed)]
 pub fn feed() -> Html {
@@ -50,6 +73,8 @@ pub fn feed() -> Html {
     let loading = use_state(|| true);
     let loading_more = use_state(|| false);
     let error = use_state(|| None::<String>);
+    // False while showing the cached first page; paging waits for the fresh one.
+    let refreshed = use_state(|| false);
 
     // Initial page fetch
     {
@@ -58,6 +83,7 @@ pub fn feed() -> Html {
         let offset = offset.clone();
         let loading = loading.clone();
         let error = error.clone();
+        let refreshed = refreshed.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
@@ -90,11 +116,41 @@ pub fn feed() -> Html {
                         });
                     }
 
+                    let cache_key = page_cache::key("feed", &server_name, user_id);
+                    let network_done = Rc::new(Cell::new(false));
+                    let show_cached = {
+                        let episodes = episodes.clone();
+                        let total = total.clone();
+                        let offset = offset.clone();
+                        let loading = loading.clone();
+                        move |cached: CachedFeed| {
+                            apply_episode_status(&cached.episodes);
+                            offset.set(cached.episodes.len() as i64);
+                            total.set(cached.total);
+                            episodes.set(Rc::new(cached.episodes));
+                            loading.set(false);
+                        }
+                    };
+                    if let Some(cached) = page_cache::memory::<CachedFeed>(&cache_key) {
+                        show_cached(cached);
+                    } else {
+                        let cache_key = cache_key.clone();
+                        let network_done = network_done.clone();
+                        spawn_local(async move {
+                            if let Some(cached) = page_cache::stored::<CachedFeed>(&cache_key).await {
+                                if !network_done.get() {
+                                    show_cached(cached);
+                                }
+                            }
+                        });
+                    }
+
                     let episodes = episodes.clone();
                     let total = total.clone();
                     let offset = offset.clone();
                     let loading = loading.clone();
                     let error = error.clone();
+                    let refreshed = refreshed.clone();
 
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_recent_eps_paged(
@@ -107,29 +163,12 @@ pub fn feed() -> Html {
                         .await
                         {
                             Ok(page) => {
-                                let completed_episode_ids: std::collections::HashSet<i32> = page
-                                    .episodes
-                                    .iter()
-                                    .filter(|ep| ep.completed)
-                                    .map(|ep| ep.episodeid)
-                                    .collect();
-                                let saved_episodes: Vec<Episode> = page
-                                    .episodes
-                                    .iter()
-                                    .filter(|ep| ep.saved)
-                                    .cloned()
-                                    .collect();
-                                let queued_episode_ids: Vec<i32> = page
-                                    .episodes
-                                    .iter()
-                                    .filter(|ep| ep.queued)
-                                    .map(|ep| ep.episodeid)
-                                    .collect();
-                                Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
-                                    state.completed_episodes = completed_episode_ids;
-                                    state.saved_episodes = saved_episodes;
-                                    state.queued_episode_ids = Some(queued_episode_ids);
-                                });
+                                network_done.set(true);
+                                apply_episode_status(&page.episodes);
+                                page_cache::put(
+                                    &cache_key,
+                                    &CachedFeed { episodes: page.episodes.clone(), total: page.total },
+                                );
 
                                 #[cfg(not(feature = "server_build"))]
                                 {
@@ -153,8 +192,10 @@ pub fn feed() -> Html {
                                 offset.set(new_offset);
                                 episodes.set(Rc::new(page.episodes));
                                 loading.set(false);
+                                refreshed.set(true);
                             }
                             Err(e) => {
+                                network_done.set(true);
                                 error.set(Some(e.to_string()));
                                 loading.set(false);
                             }
@@ -245,7 +286,7 @@ pub fn feed() -> Html {
         } else {
             (*episodes).clone()
         };
-    let backend_can_load_more = *offset < *total;
+    let backend_can_load_more = *refreshed && *offset < *total;
     let episodes_empty = filtered_episodes_rc.is_empty();
 
     html! {

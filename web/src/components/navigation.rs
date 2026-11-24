@@ -6,7 +6,10 @@ use crate::requests::login_requests::{
     call_get_time_info, call_verify_key, use_check_authentication,
 };
 use crate::requests::setting_reqs::{call_get_theme, call_get_unmatched_podcasts};
-use i18nrs::yew::use_translation;
+use crate::components::context::NotificationMessage;
+
+const UNMATCHED_NOTICE_ID: &str = "local:unmatched-podcasts";
+use crate::components::i18n::use_translation;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
@@ -156,13 +159,29 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
                                                                     }
 
                                                                     if let Ok(unmatched_response) = unmatched_result {
-                                                                        if !unmatched_response.podcasts.is_empty() {
-                                                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                                                                state.info_message = Some(
-                                                                                    format!("{}", i18n_unmatched_podcasts_notification.replace("{count}", &unmatched_response.podcasts.len().to_string()))
-                                                                                );
+                                                                        // A quiet Activity center notice, not a toast on every load.
+                                                                        let count = unmatched_response.podcasts.len();
+                                                                        Dispatch::<NotificationState>::global().reduce_mut(move |state| {
+                                                                            if count == 0 {
+                                                                                state.local_messages.retain(|m| m.id != UNMATCHED_NOTICE_ID);
+                                                                                return;
+                                                                            }
+                                                                            state.show_local_notice(NotificationMessage {
+                                                                                id: UNMATCHED_NOTICE_ID.to_string(),
+                                                                                user_id,
+                                                                                category: "podcast_index".to_string(),
+                                                                                severity: "info".to_string(),
+                                                                                title: i18n_unmatched_podcasts_notification.replace("{count}", &count.to_string()),
+                                                                                body: None,
+                                                                                episode_id: None,
+                                                                                podcast_id: None,
+                                                                                art_url: None,
+                                                                                link: Some("/settings".to_string()),
+                                                                                created_at: String::from(js_sys::Date::new_0().to_iso_string()),
+                                                                                read: false,
+                                                                                expires_at: None,
                                                                             });
-                                                                        }
+                                                                        });
                                                                     }
                                                                 }
                                                             }

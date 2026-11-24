@@ -4,7 +4,7 @@ use crate::requests::pod_req::{call_get_collections, call_get_playlists, Collect
 use crate::requests::setting_reqs::{
     call_get_rss_key, call_rss_feed_status, call_toggle_rss_feeds,
 };
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::borrow::Borrow;
 use web_sys::console;
 use yew::platform::spawn_local;

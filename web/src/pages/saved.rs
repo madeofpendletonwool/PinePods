@@ -17,7 +17,7 @@ use crate::requests::pod_req::{
     Collection, CreateCollectionRequest, UpdateCollectionRequest,
 };
 use gloo_timers::future::TimeoutFuture;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::rc::Rc;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
@@ -125,7 +125,15 @@ pub fn saved() -> Html {
                     spawn_local(async move {
                         match pod_req::call_get_collections(&server_name, &api_key, user_id).await {
                             Ok(cols) => {
-                                let default = cols.iter().find(|c| c.is_default).cloned()
+                                // `?id=N` (from the home page) opens that collection.
+                                let requested = web_sys::window()
+                                    .and_then(|w| w.location().search().ok())
+                                    .and_then(|q| web_sys::UrlSearchParams::new_with_str(&q).ok())
+                                    .and_then(|p| p.get("id"))
+                                    .and_then(|id| id.parse::<i32>().ok());
+                                let default = requested
+                                    .and_then(|id| cols.iter().find(|c| c.collection_id == id).cloned())
+                                    .or_else(|| cols.iter().find(|c| c.is_default).cloned())
                                     .or_else(|| cols.first().cloned());
                                 active_collection.set(default);
                                 collections.set(cols);

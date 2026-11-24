@@ -9,7 +9,7 @@ use crate::components::episode_list_item::EpisodeListItem;
 use crate::requests::episode::Episode;
 
 use crate::requests::pod_req::{Podcast, PodcastDetails, PodcastResponse};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -1004,7 +1004,7 @@ pub fn render_podcast_with_episodes(
                         html! {}
                     }}
 
-                    <FallbackImage
+                    <FallbackImage size={Some(192)}
                         src={podcast.artworkurl.clone().unwrap()}
                         alt={format!("Cover for {}", podcast.podcastname.clone())}
                         class="podcast-dropdown-image"

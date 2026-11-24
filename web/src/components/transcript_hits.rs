@@ -7,7 +7,7 @@ use crate::components::gen_components::FallbackImage;
 use crate::components::gen_funcs::{format_date, format_time_rm_hour};
 use crate::requests::episode::Episode;
 use crate::requests::search_pods::{call_search_transcripts, TranscriptHit, TranscriptSearchPage};
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::collections::HashSet;
 use std::rc::Rc;
 use wasm_bindgen_futures::spawn_local;
@@ -286,7 +286,7 @@ fn render_hit(
     html! {
         <article class="ts-hit" key={id}>
             <button class="ts-hit-art" onclick={open_episode.clone()} aria-label={ep.episodetitle.clone()}>
-                <FallbackImage src={art} alt={ep.episodetitle.clone()} class="ts-hit-art-img" />
+                <FallbackImage size={Some(128)} src={art} alt={ep.episodetitle.clone()} class="ts-hit-art-img" />
             </button>
             <div class="ts-hit-body">
                 <button class="ts-hit-title" onclick={open_episode}>{ &ep.episodetitle }</button>

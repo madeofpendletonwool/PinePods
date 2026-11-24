@@ -6,7 +6,7 @@ use crate::requests::setting_reqs::{
     call_update_podcast_index_id, UnmatchedPodcast,
 };
 use gloo_events::EventListener;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlElement;
@@ -500,7 +500,7 @@ pub fn podcast_index_matching() -> Html {
                                         style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:8px;border-radius:6px;"
                                         onclick={click_handler}
                                     >
-                                        <FallbackImage
+                                        <FallbackImage size={Some(128)}
                                             src={podcast.artwork_url.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
                                             alt={format!("Cover for {}", podcast.podcast_name)}
                                             class="w-16 h-16 rounded object-cover flex-shrink-0"
@@ -625,7 +625,7 @@ pub fn podcast_index_matching() -> Html {
                                                                         onclick={match_handler}
                                                                         style="display:flex;align-items:center;padding:8px;border-radius:6px;cursor:pointer;gap:12px;"
                                                                     >
-                                                                        <FallbackImage
+                                                                        <FallbackImage size={Some(128)}
                                                                             src={result.image.clone()}
                                                                             alt={format!("Cover for {}", result.title)}
                                                                             class="w-12 h-12 rounded object-cover"
@@ -684,7 +684,7 @@ pub fn podcast_index_matching() -> Html {
 
                                 html! {
                                     <div key={podcast.podcast_id} style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(128,128,128,0.12);">
-                                        <FallbackImage
+                                        <FallbackImage size={Some(128)}
                                             src={podcast.artwork_url.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
                                             alt={format!("Cover for {}", podcast.podcast_name)}
                                             class="w-12 h-12 rounded object-cover flex-shrink-0"

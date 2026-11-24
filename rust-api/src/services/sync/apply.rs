@@ -50,7 +50,8 @@ pub async fn apply_episode_actions(db: &DatabasePool, user_id: i32, actions: &[E
 /// - Only `play` and `new` change state; `download`/`delete` are ignored.
 /// - Per episode only the newest action (by action time) counts; on a tie the later one wins.
 /// - Last-write-wins: it's applied only if newer than the local `ListenDate` (progress or
-///   completion time). Positions can go backwards.
+///   completion time). Positions can go backwards. The time a losing play covers still counts. An action dated in the future counts as
+///   happening now.
 /// - `play` at or past `total - AutoCompleteSeconds` (60s when that's off) completes the
 ///   episode; `total` is the action's, else the local duration. A local duration of 0 is
 ///   replaced by the action's total.
@@ -65,10 +66,15 @@ pub async fn apply_resolved(
     let mut summary = ApplySummary { received: actions.len(), matched: resolved.iter().flatten().count(), ..Default::default() };
 
     let mut newest: HashMap<i32, &EpisodeAction> = HashMap::new();
+    // Seconds played per episode across all its play actions (each covers `started` to `position`).
+    let mut played: HashMap<i32, i32> = HashMap::new();
     for (action, episode_id) in actions.iter().zip(resolved) {
         let Some(episode_id) = *episode_id else { continue };
         if !matches!(action.action, ActionKind::Play | ActionKind::New) {
             continue;
+        }
+        if action.action == ActionKind::Play {
+            *played.entry(episode_id).or_insert(0) += play_seconds(action);
         }
         let keep = newest.get(&episode_id).is_none_or(|current| action.timestamp >= current.timestamp);
         if keep {
@@ -86,10 +92,27 @@ pub async fn apply_resolved(
         _ => DEFAULT_COMPLETE_WITHIN,
     };
 
+    let received = chrono::Utc::now();
     for (episode_id, action) in newest {
         // Not one of the user's episodes (can't happen through the resolver, but cheap to check).
         let Some(state) = states.get(&episode_id) else { continue };
-        if state.listen_date.is_some_and(|local| action.timestamp <= local) {
+        // A remote clock that runs ahead can't put a change in the future, where it would beat
+        // every local write until the time came.
+        let at = action.timestamp.min(received);
+        let listened = played.get(&episode_id).copied().unwrap_or(0).min(86_400);
+        if state.listen_date.is_some_and(|local| at <= local) {
+            // The position loses to the newer local change; the time played still counts.
+            if listened > 0 {
+                use crate::database::{ListenClient, Observed, ProgressWrite, WriteRule};
+                let write = ProgressWrite {
+                    observed: Observed::At(at.naive_utc()),
+                    client: ListenClient::Sync,
+                    listened,
+                    ..ProgressWrite::now(episode_id, false, action.position.unwrap_or(0), WriteRule::ListenOnly)
+                };
+                db.write_progress(user_id, write, origin).await?;
+                db.add_listen_seconds(user_id, listened).await?;
+            }
             summary.older += 1;
             continue;
         }
@@ -102,17 +125,27 @@ pub async fn apply_resolved(
                     db.set_episode_duration_if_missing(episode_id, total).await?;
                 }
                 let total = action_total.or(local_duration);
-                if total.is_some_and(|t| position >= t - complete_within) {
+                let finished = total.is_some_and(|t| position >= t - complete_within);
+                if !finished || listened > 0 {
+                    use crate::database::{ListenClient, Observed, ProgressWrite, WriteRule};
+                    let write = ProgressWrite {
+                        observed: Observed::At(at.naive_utc()),
+                        client: ListenClient::Sync,
+                        listened,
+                        ..ProgressWrite::now(episode_id, false, position, WriteRule::Newest)
+                    };
+                    db.write_progress(user_id, write, origin).await?;
+                    db.add_listen_seconds(user_id, listened).await?;
+                }
+                if finished {
                     db.mark_episode_completed(episode_id, user_id, false, origin).await?;
-                } else {
-                    db.set_listen_position(user_id, episode_id, position, action.timestamp, origin).await?;
                 }
             }
             ActionKind::New => db.mark_episode_uncompleted(episode_id, user_id, false, origin).await?,
             ActionKind::Download | ActionKind::Delete => continue,
         }
         // The change is as of the action's time, not ours, for the next comparison.
-        db.sync_set_listen_date(user_id, episode_id, action.timestamp).await?;
+        db.sync_set_listen_date(user_id, episode_id, at).await?;
         summary.applied += 1;
     }
     debug!(
@@ -120,6 +153,14 @@ pub async fn apply_resolved(
         user_id, summary.received, summary.matched, summary.applied, summary.older
     );
     Ok(summary)
+}
+
+/// Seconds a play action covers: from `started` to `position`, at most a day.
+fn play_seconds(action: &EpisodeAction) -> i32 {
+    match (action.started, action.position) {
+        (Some(started), Some(position)) if started >= 0 => (position - started).clamp(0, 86_400),
+        _ => 0,
+    }
 }
 
 /// After new episodes were inserted for `podcast_id`, match the log's unmatched actions for that

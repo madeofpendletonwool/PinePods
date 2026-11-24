@@ -35,6 +35,7 @@ pub const ADMIN_ONLY: &[&str] = &[
     "POST /api/data/remove_oidc_provider",
     "GET /api/data/ai_settings",
     "POST /api/data/ai_settings",
+    "POST /api/data/ai_enabled",
     "GET /api/data/ai_models",
     "POST /api/data/ai_pull_model",
     "GET /api/data/ytdlp_settings",

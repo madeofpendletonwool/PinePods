@@ -11,7 +11,7 @@ use crate::requests::people_req::{
     call_get_person_profile, call_lookup_person, PersonPodcast, PersonProfile,
 };
 use gloo_timers::future::TimeoutFuture;
-use i18nrs::yew::use_translation;
+use crate::components::i18n::use_translation;
 use std::rc::Rc;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
@@ -212,7 +212,7 @@ pub fn person(props: &PersonProps) -> Html {
         html! {
             <button type="button" class="pp-show" {onclick} title={show.podcastname.clone()}>
                 <div class="pp-show-art">
-                    <FallbackImage
+                    <FallbackImage size={Some(384)}
                         src={show.artworkurl.clone().unwrap_or_default()}
                         alt={show.podcastname.clone()}
                         class={Some("pp-show-img".to_string())}

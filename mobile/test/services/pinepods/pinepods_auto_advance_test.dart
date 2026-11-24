@@ -23,20 +23,23 @@ void main() {
   late MockPinepodsService api;
   late PinepodsAudioService service;
   late BehaviorSubject<PositionState> positions;
+  late MockSettingsBloc settingsBloc;
+  late AppSettings settings;
 
   setUpAll(registerCommonFallbacks);
 
   setUp(() async {
     audio = MockAudioPlayerService();
     api = MockPinepodsService();
-    final settingsBloc = MockSettingsBloc();
+    settingsBloc = MockSettingsBloc();
     service = PinepodsAudioService(audio, api, settingsBloc);
     positions = BehaviorSubject<PositionState>();
     addTearDown(service.dispose);
     addTearDown(positions.close);
 
-    when(() => settingsBloc.currentSettings).thenReturn(AppSettings.sensibleDefaults()
-        .copyWith(pinepodsUserId: 42, pinepodsServer: 'https://pods.example', pinepodsApiKey: 'key'));
+    settings = AppSettings.sensibleDefaults()
+        .copyWith(pinepodsUserId: 42, pinepodsServer: 'https://pods.example', pinepodsApiKey: 'key');
+    when(() => settingsBloc.currentSettings).thenAnswer((_) => settings);
     when(() => audio.playPosition).thenAnswer((_) => positions.stream);
     when(() => audio.findDownloadedEpisode(any())).thenAnswer((_) async => null);
     when(() => audio.playEpisode(
@@ -103,6 +106,42 @@ void main() {
   test('an empty queue stops playback', () async {
     queue([101]);
     expect(await service.handleEpisodeCompleted(), isFalse);
+  });
+
+  test('with queue auto-play off the queue is not started', () async {
+    queue([101, 202]);
+    settings = settings.copyWith(autoPlayQueue: false);
+    expect(await service.handleEpisodeCompleted(), isFalse);
+    verifyNever(() => audio.playEpisode(
+          episode: any(named: 'episode'),
+          resume: any(named: 'resume'),
+          playbackSpeed: any(named: 'playbackSpeed'),
+        ));
+  });
+
+  test('queue auto-play turned off after the next episode was picked is honoured', () async {
+    queue([101, 202]);
+    positions.add(PositionState(
+      position: const Duration(seconds: 550),
+      length: const Duration(seconds: 600),
+      percentage: 91,
+    ));
+    service.prefetchNextIfNearEnd();
+    await pumpEventQueue();
+
+    settings = settings.copyWith(autoPlayQueue: false);
+    expect(await service.handleEpisodeCompleted(), isFalse);
+  });
+
+  test('with queue auto-play off the podcast\'s auto-play next still works', () async {
+    settings = settings.copyWith(autoPlayQueue: false);
+    queue([101, 202]);
+    when(() => api.getAutoPlayNextStatus(any(), any())).thenAnswer((_) async => true);
+    when(() => api.getNextPodcastEpisode(101, 42)).thenAnswer(
+      (_) async => buildPinepodsEpisode(episodeId: 102, episodeTitle: 'Next in podcast'),
+    );
+    expect(await service.handleEpisodeCompleted(), isTrue);
+    expect(started().title, 'Next in podcast');
   });
 
   group('with auto-play next on for the podcast', () {

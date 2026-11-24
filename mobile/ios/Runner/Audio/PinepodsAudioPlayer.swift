@@ -47,6 +47,10 @@ class PinepodsAudioPlayer: NSObject {
     // Last healthy playhead (ms), used as the resume point when rebuilding.
     private var lastKnownPositionMs = 0
 
+    // The item stopped mid-stream (network loss) while still reporting ready;
+    // play() rebuilds it rather than resuming a dead item.
+    private var itemFailedMidStream = false
+
     init(eventSink: FlutterEventSink?) {
         self.eventSink = eventSink
         super.init()
@@ -122,28 +126,29 @@ class PinepodsAudioPlayer: NSObject {
     private func setupPlayer() {
         guard !isPlayerSetup else { return }
 
-        player = AVPlayer()
-        player?.automaticallyWaitsToMinimizeStalling = true
-
-        // Observe player status
-        player?.addObserver(self, forKeyPath: #keyPath(AVPlayer.timeControlStatus), options: [.new], context: &playerContext)
-        player?.addObserver(self, forKeyPath: #keyPath(AVPlayer.rate), options: [.new], context: &playerContext)
-
-        // Setup periodic time observer for position updates (every 1s; battery)
-        let interval = CMTime(seconds: 1.0, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-        timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            if time.isValid && !time.isIndefinite && time.seconds > 0 {
-                self?.lastKnownPositionMs = Int(time.seconds * 1000)
-            }
-            self?.applySilenceSkipIfNeeded(at: time.seconds)
-            self?.sendPlaybackStateEvent(updateNowPlaying: false)
-        }
+        makePlayer()
 
         // Setup notification for playback end
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(playerDidFinishPlaying),
             name: .AVPlayerItemDidPlayToEndTime,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(playerItemFailedToPlayToEnd),
+            name: .AVPlayerItemFailedToPlayToEndTime,
+            object: nil
+        )
+
+        // A media services reset invalidates every AVPlayer; without rebuilding,
+        // play stays dead until the app is relaunched.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMediaServicesReset),
+            name: AVAudioSession.mediaServicesWereResetNotification,
             object: nil
         )
 
@@ -167,6 +172,47 @@ class PinepodsAudioPlayer: NSObject {
         NSLog("[PinepodsAudioPlayer] Player setup complete")
     }
 
+    private func makePlayer() {
+        let player = AVPlayer()
+        player.automaticallyWaitsToMinimizeStalling = true
+
+        // Observe player status
+        player.addObserver(self, forKeyPath: #keyPath(AVPlayer.timeControlStatus), options: [.new], context: &playerContext)
+        player.addObserver(self, forKeyPath: #keyPath(AVPlayer.rate), options: [.new], context: &playerContext)
+
+        // Setup periodic time observer for position updates (every 1s; battery)
+        let interval = CMTime(seconds: 1.0, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            if time.isValid && !time.isIndefinite && time.seconds > 0 {
+                self?.lastKnownPositionMs = Int(time.seconds * 1000)
+            }
+            self?.applySilenceSkipIfNeeded(at: time.seconds)
+            self?.sendPlaybackStateEvent(updateNowPlaying: false)
+        }
+        self.player = player
+    }
+
+    private func tearDownPlayer() {
+        guard let player = player else { return }
+        if let observer = timeObserver {
+            player.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+        if let observer = skipBoundaryObserver {
+            player.removeTimeObserver(observer)
+            skipBoundaryObserver = nil
+        }
+        player.removeObserver(self, forKeyPath: #keyPath(AVPlayer.timeControlStatus), context: &playerContext)
+        player.removeObserver(self, forKeyPath: #keyPath(AVPlayer.rate), context: &playerContext)
+        if let item = playerItem {
+            item.removeObserver(self, forKeyPath: #keyPath(AVPlayerItem.status), context: &itemContext)
+            playerItem = nil
+        }
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        self.player = nil
+    }
+
     private func setupRemoteCommands() {
         guard !isRemoteCommandsSetup else { return }
 
@@ -188,25 +234,7 @@ class PinepodsAudioPlayer: NSObject {
     private func cleanup() {
         NSLog("[PinepodsAudioPlayer] Cleaning up...")
 
-        if let observer = timeObserver {
-            player?.removeTimeObserver(observer)
-            timeObserver = nil
-        }
-        if let observer = skipBoundaryObserver {
-            player?.removeTimeObserver(observer)
-            skipBoundaryObserver = nil
-        }
-
-        // Safely remove observers
-        if player != nil {
-            player?.removeObserver(self, forKeyPath: #keyPath(AVPlayer.timeControlStatus), context: &playerContext)
-            player?.removeObserver(self, forKeyPath: #keyPath(AVPlayer.rate), context: &playerContext)
-        }
-
-        if playerItem != nil {
-            playerItem?.removeObserver(self, forKeyPath: #keyPath(AVPlayerItem.status), context: &itemContext)
-        }
-
+        tearDownPlayer()
         NotificationCenter.default.removeObserver(self)
 
         // Stop receiving remote control events
@@ -214,10 +242,6 @@ class PinepodsAudioPlayer: NSObject {
 
         // Clear now playing info
         nowPlayingManager?.clearNowPlaying()
-
-        player?.pause()
-        player?.replaceCurrentItem(with: nil)
-        player = nil
 
         remoteCommandManager = nil
         nowPlayingManager = nil
@@ -304,6 +328,45 @@ class PinepodsAudioPlayer: NSObject {
         sendEvent([
             "type": "completed"
         ])
+    }
+
+    @objc private func playerItemFailedToPlayToEnd(notification: Notification) {
+        let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let item = notification.object as? AVPlayerItem,
+                  item === self.playerItem else { return }
+            NSLog("[PinepodsAudioPlayer] Item failed to play to end: \(error?.localizedDescription ?? "unknown")")
+            self.itemFailedMidStream = true
+            self.player?.pause()
+            self.sendError(code: error?.code ?? -2,
+                           message: "Playback stopped: \(error?.localizedDescription ?? "the stream ended early")")
+        }
+    }
+
+    /// Rebuild the player and audio session, then reload the episode at the
+    /// last playhead, playing only if playback was wanted before the reset.
+    @objc private func handleMediaServicesReset() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            NSLog("[PinepodsAudioPlayer] Media services were reset, rebuilding player")
+            let wasPlaying = self.playbackIntent.canPlay
+            let skip = (enabled: self.skipSilenceEnabled, segments: self.skipSegments)
+            self.tearDownPlayer()
+            self.loadInFlight = false
+            self.isAudioSessionConfigured = false
+            self.setupAudioSession()
+            self.makePlayer()
+
+            guard let request = self.lastRequest else {
+                self.sendEvent(["type": "playbackState", "state": "stopped", "position": 0,
+                                "bufferedPosition": 0, "duration": 0, "speed": 0])
+                return
+            }
+            self.playEpisode(url: request.url, startPosition: self.lastKnownPositionMs,
+                             isLocal: request.isLocal, metadata: self.currentMetadata)
+            if !wasPlaying { self.pause() }
+            self.setSkipSegments(enabled: skip.enabled, segments: skip.segments)
+        }
     }
 
     @objc private func handleInterruption(notification: Notification) {
@@ -431,10 +494,12 @@ class PinepodsAudioPlayer: NSObject {
         if let oldItem = playerItem {
             oldItem.removeObserver(self, forKeyPath: #keyPath(AVPlayerItem.status), context: &itemContext)
         }
+        itemFailedMidStream = false
         playerItem = AVPlayerItem(asset: asset)
 
         // Configure buffering for streaming
-        playerItem?.preferredForwardBufferDuration = 180  // 3 min forward buffer
+        // About ten minutes ahead, so playback rides out a dead zone (~10 MB of audio).
+        playerItem?.preferredForwardBufferDuration = 600
         playerItem?.canUseNetworkResourcesForLiveStreamingWhilePaused = true
 
         // Observe player item status
@@ -484,18 +549,36 @@ class PinepodsAudioPlayer: NSObject {
         }
     }
 
+    /// No item, or one that failed (at load or mid-stream), so it can't resume.
+    private var currentItemUnusable: Bool {
+        guard let item = player?.currentItem else { return true }
+        return item.status == .failed || itemFailedMidStream
+    }
+
     func play() {
-        // A failed (or cleared) item can't resume; rebuild it from the last
-        // request at the last known position instead of silently doing nothing.
-        if let request = lastRequest, !loadInFlight,
-           player?.currentItem == nil || player?.currentItem?.status == .failed {
-            NSLog("[PinepodsAudioPlayer] play: current item unusable, reloading")
+        // A failed (or cleared) item, or a load that never finished, can't
+        // resume; rebuild it from the last request at the last known position
+        // instead of silently doing nothing.
+        if let request = lastRequest,
+           (!loadInFlight && currentItemUnusable) || playbackIntent.loadStalled() {
+            NSLog("[PinepodsAudioPlayer] play: current item unusable or stalled, reloading")
             playEpisode(url: request.url, startPosition: lastKnownPositionMs,
                         isLocal: request.isLocal, metadata: currentMetadata)
             return
         }
         playbackIntent.play()
         resumeRequestedPlayback()
+    }
+
+    /// A headset or remote play/pause toggle. See PlaybackIntent.toggleShouldPause.
+    func togglePlayPause() {
+        let itemUsable = !currentItemUnusable
+        let transportActive = player.map { $0.timeControlStatus != .paused } ?? false
+        if playbackIntent.toggleShouldPause(transportActive: transportActive, itemUsable: itemUsable) {
+            pause()
+        } else {
+            play()
+        }
     }
 
     private func resumeRequestedPlayback() {
