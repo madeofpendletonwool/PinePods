@@ -13,6 +13,7 @@ pub(crate) mod player_ui;
 pub(crate) mod media_session;
 pub(crate) mod progress;
 pub(crate) mod loading;
+pub mod login_shell;
 pub mod misc_func;
 pub(crate) mod navigation;
 pub(crate) mod notification_center;

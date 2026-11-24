@@ -1,6 +1,7 @@
 use crate::components::context::{AppState, NotificationState, UIState, UserPreferencesState};
 use crate::components::gen_components::{AdminSetupData, FirstAdminModal};
 use crate::components::gen_funcs::format_error_message;
+use crate::components::login_shell::{CardHead, LoginField, LoginShell, PlayButton};
 use crate::components::gen_funcs::{encode_password, validate_user_input, ValidationError};
 use crate::components::notification_center::ToastNotification;
 use crate::components::setting_components::theme_options::initialize_default_theme;
@@ -20,7 +21,6 @@ use base64::Engine;
 use chrono_tz::{Tz, TZ_VARIANTS};
 use crate::components::i18n::use_translation;
 use md5;
-use wasm_bindgen::JsCast;
 use web_sys::{console, window};
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
@@ -85,13 +85,11 @@ pub fn login() -> Html {
     let _i18n_error_validating_mfa = i18n.t("login.error_validating_mfa").to_string();
     let i18n_language = i18n.t("common.language").to_string();
     let i18n_login = i18n.t("auth.login").to_string();
-    let i18n_pinepods = i18n.t("common.pinepods").to_string();
     let i18n_password_reset_successfully = i18n.t("login.password_reset_successfully").to_string();
     let i18n_sending_reset_code = i18n.t("login.sending_reset_code").to_string();
     let i18n_please_wait_processing = i18n.t("login.please_wait_processing").to_string();
     let i18n_date_format_julian = i18n.t("login.date_format_julian").to_string();
     let i18n_date_format_iso8601 = i18n.t("login.date_format_iso8601").to_string();
-    let i18n_tagline = i18n.t("login.tagline").to_string();
     let i18n_forgot_password_link = i18n.t("login.forgot_password_link").to_string();
     let _i18n_login_button = i18n.t("login.login_button").to_string();
 
@@ -122,6 +120,7 @@ pub fn login() -> Html {
     let loading = use_state(|| true);
     // Define the initial state
     let page_state = use_state(|| PageState::Default);
+    let submitting = use_state(|| false);
     let self_service_enabled = use_state(|| false); // State to store self-service status
     let effect_self_service = self_service_enabled.clone();
     let first_admin_created = use_state(|| true);
@@ -445,23 +444,6 @@ pub fn login() -> Html {
         }
     });
 
-    // This effect runs only once when the component mounts
-    let background_image_url = use_state(|| String::new());
-    let effect_background_image = background_image_url.clone();
-    // This effect runs only once when the component mounts
-    use_effect_with(
-        (), // Dependencies, an empty tuple here signifies no dependencies.
-        move |_| {
-            let background_number = rand::random_range(1..=9); // Assuming you have images named 1.jpg through 9.jpg.
-            effect_background_image.set(format!(
-                "static/assets/backgrounds/{}.webp",
-                background_number
-            ));
-
-            // Return the cleanup function, which is required but can be empty if no cleanup is needed.
-            || {}
-        },
-    );
 
     let on_login_username_change = {
         let username = username.clone();
@@ -494,7 +476,10 @@ pub fn login() -> Html {
         let i18n_error_checking_mfa = (&i18n_error_checking_mfa).clone();
         let i18n_error_checking_first_login = (&i18n_error_checking_first_login).clone();
         let i18n_credentials_incorrect = (&i18n_credentials_incorrect).clone();
+        let submitting = submitting.clone();
         Callback::from(move |_| {
+            let submitting = submitting.clone();
+            submitting.set(true);
             let i18n_error_checking_mfa = (&i18n_error_checking_mfa).clone();
             let i18n_error_checking_first_login = (&i18n_error_checking_first_login).clone();
             let i18n_credentials_incorrect = (&i18n_credentials_incorrect).clone();
@@ -657,6 +642,7 @@ pub fn login() -> Html {
                                             }
                                         }
                                         Err(_) => {
+                                            submitting.set(false);
                                             Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                 state.error_message =
                                                     Option::from((&i18n_error_checking_mfa).clone())
@@ -668,6 +654,7 @@ pub fn login() -> Html {
                                 }
                             }
                             Err(_) => {
+                                submitting.set(false);
                                 Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message =
                                         Option::from((&i18n_error_checking_first_login).clone())
@@ -692,6 +679,7 @@ pub fn login() -> Html {
                         page_state.set(PageState::MFAPrompt);
                     }
                     Err(_) => {
+                        submitting.set(false);
                         Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Option::from((&i18n_credentials_incorrect).clone())
@@ -739,20 +727,7 @@ pub fn login() -> Html {
         })
     };
 
-    let on_background_click = {
-        let on_close_modal = on_close_modal.clone();
-        Callback::from(move |e: MouseEvent| {
-            let target = e.target().unwrap();
-            let element = target.dyn_into::<web_sys::Element>().unwrap();
-            if element.tag_name() == "DIV" {
-                on_close_modal.emit(e);
-            }
-        })
-    };
 
-    let stop_propagation = Callback::from(|e: MouseEvent| {
-        e.stop_propagation();
-    });
 
     let on_fullname_change = {
         let fullname = fullname.clone();
@@ -909,59 +884,60 @@ pub fn login() -> Html {
     };
     // Define the modal components
     let create_user_modal = html! {
-            <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                    <div class="modal-container relative rounded-lg shadow">
-                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                            <h3 class="text-xl font-semibold">
-    {&i18n.t("login.create_new_user")}
-                            </h3>
-                            <button onclick={on_close_modal.clone()} class="modal-close-btn">
-                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                                </svg>
-                                <span class="sr-only">{&i18n.t("common.close_modal")}</span>
-                            </button>
-                        </div>
-                        <div class="p-4 md:p-5">
-                            <form class="space-y-4" action="#">
-                                <div>
-                                    <input oninput={on_username_change.clone()} type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("common.username")} required=true />
-                                    {
-                                        match *username_error {
-                                            username_error_notice::Hidden => html! {},
-                                            username_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{&i18n.t("validation.username_min_length")}</p>},
-                                        }
-                                    }
-                                </div>
-                                <div>
-                                    <input oninput={on_fullname_change} type="text" id="fullname" name="fullname" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("common.full_name")} required=true />
-                                </div>
-                                <div>
-                                    <input oninput={on_email_change} type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("common.email")} required=true />
-                                    {
-                                        match *email_error {
-                                            email_error_notice::Hidden => html! {},
-                                            email_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{&i18n.t("validation.invalid_email")}</p>},
-                                        }
-                                    }
-                                </div>
-                                <div>
-                                    <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("common.password")} required=true />
-                                    {
-                                        match *password_error {
-                                            password_error_notice::Hidden => html! {},
-                                            password_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{&i18n.t("validation.password_min_length")}</p>},
-                                        }
-                                    }
-                                </div>
-                                <button type="submit" onclick={on_create_submit} class="modal-button w-full">{&i18n.t("common.submit")}</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        };
+        <div class="lp-panel" key="create">
+            <CardHead
+                title={i18n.t("login.create_account_title")}
+                subtitle={Some(AttrValue::from(i18n.t("login.create_account_subtitle")))}
+                on_back={Some(on_close_modal.clone())}
+            />
+            <form action="#">
+                <LoginField
+                    id="fullname"
+                    label={i18n.t("common.full_name")}
+                    icon="ph-identification-card"
+                    autocomplete={Some(AttrValue::Static("name"))}
+                    autofocus=true
+                    oninput={on_fullname_change}
+                />
+                <LoginField
+                    id="new_username"
+                    label={i18n.t("common.username")}
+                    icon="ph-user"
+                    autocomplete={Some(AttrValue::Static("username"))}
+                    oninput={on_username_change.clone()}
+                    error={match *username_error {
+                        username_error_notice::Shown => Some(AttrValue::from(i18n.t("validation.username_min_length"))),
+                        username_error_notice::Hidden => None,
+                    }}
+                />
+                <LoginField
+                    id="new_email"
+                    kind="email"
+                    label={i18n.t("common.email")}
+                    icon="ph-envelope-simple"
+                    autocomplete={Some(AttrValue::Static("email"))}
+                    oninput={on_email_change}
+                    error={match *email_error {
+                        email_error_notice::Shown => Some(AttrValue::from(i18n.t("validation.invalid_email"))),
+                        email_error_notice::Hidden => None,
+                    }}
+                />
+                <LoginField
+                    id="new_password"
+                    kind="password"
+                    label={i18n.t("common.password")}
+                    icon="ph-lock-key"
+                    autocomplete={Some(AttrValue::Static("new-password"))}
+                    oninput={on_password_change.clone()}
+                    error={match *password_error {
+                        password_error_notice::Shown => Some(AttrValue::from(i18n.t("validation.password_min_length"))),
+                        password_error_notice::Hidden => None,
+                    }}
+                />
+                <PlayButton label={i18n.t("login.create_account")} icon="ph-user-plus" onclick={Some(on_create_submit)} />
+            </form>
+        </div>
+    };
 
     let on_forgot_password = {
         let page_state = page_state.clone();
@@ -1028,38 +1004,33 @@ pub fn login() -> Html {
     };
 
     let forgot_password_modal = html! {
-            <div id="forgot-password-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                    <div class="modal-container relative rounded-lg shadow">
-                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                            <h3 class="text-xl font-semibold">
-    {&i18n_forgot_password}
-                            </h3>
-                            <button onclick={on_close_modal.clone()} class="modal-close-btn">
-                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                                </svg>
-                                <span class="sr-only">{&i18n.t("common.close_modal")}</span>
-                            </button>
-                        </div>
-                        <div class="p-4 md:p-5">
-                            <form class="space-y-4" action="#">
-                                <p class="text-m font-semibold">
-    {&i18n_reset_instructions}
-                                </p>
-                                <div>
-                                    <input oninput={on_forgot_username_change} type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("common.username")} required=true />
-                                </div>
-                                <div>
-                                    <input oninput={on_forgot_email_change} type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("common.email")} required=true />
-                                </div>
-                                <button onclick={on_reset_submit} type="submit" class="modal-button w-full">{&i18n.t("common.submit")}</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        };
+        <div class="lp-panel" key="forgot">
+            <CardHead
+                title={i18n_forgot_password.clone()}
+                subtitle={Some(AttrValue::from(i18n_reset_instructions.clone()))}
+                on_back={Some(on_close_modal.clone())}
+            />
+            <form action="#">
+                <LoginField
+                    id="forgot_username"
+                    label={i18n.t("common.username")}
+                    icon="ph-user"
+                    autocomplete={Some(AttrValue::Static("username"))}
+                    autofocus=true
+                    oninput={on_forgot_username_change}
+                />
+                <LoginField
+                    id="forgot_email"
+                    kind="email"
+                    label={i18n.t("common.email")}
+                    icon="ph-envelope-simple"
+                    autocomplete={Some(AttrValue::Static("email"))}
+                    oninput={on_forgot_email_change}
+                />
+                <PlayButton label={i18n.t("login.send_reset_code")} icon="ph-envelope-simple" onclick={Some(on_reset_submit)} />
+            </form>
+        </div>
+    };
 
     let on_reset_code_change = {
         let reset_code = reset_code.clone();
@@ -1192,54 +1163,48 @@ pub fn login() -> Html {
     };
 
     let enter_code_modal = html! {
-            <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                    <div class="modal-container relative rounded-lg shadow">
-                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                            <h3 class="text-xl font-semibold">
-    {&i18n_password_reset_title}
-                            </h3>
-                            <button onclick={on_close_modal.clone()} class="modal-close-btn">
-                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                                </svg>
-                                <span class="sr-only">{&i18n.t("common.close_modal")}</span>
-                            </button>
-                        </div>
-                        <div class="p-4 md:p-5">
-                            <form class="space-y-4" action="#">
-                                <p class="text-m font-semibold">
-    {&i18n_reset_code_sent}
-                                </p>
-                                <div>
-                                    <input oninput={on_reset_code_change} type="text" id="reset_code" name="reset_code" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.enter_password_reset_code")} required=true />
-                                </div>
-                                <div>
-                                    <input oninput={on_reset_password_change} type="password" id="reset_password" name="reset_password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.enter_new_password")} required=true />
-                                </div>
-                                <div>
-                                    <input oninput={on_reset_password_confirm_change} type="password" id="reset_password_confirm" name="reset_password_confirm" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.confirm_new_password")} required=true />
-                                </div>
-                                <button type="submit" onclick={on_reset_code_submit} class="modal-button w-full">{&i18n.t("login.reset_password_button")}</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        };
+        <div class="lp-panel" key="enter-code">
+            <CardHead
+                title={i18n_password_reset_title.clone()}
+                subtitle={Some(AttrValue::from(i18n_reset_code_sent.clone()))}
+                on_back={Some(on_close_modal.clone())}
+            />
+            <form action="#">
+                <LoginField
+                    id="reset_code"
+                    label={i18n.t("auth.enter_password_reset_code")}
+                    icon="ph-key"
+                    autocomplete={Some(AttrValue::Static("one-time-code"))}
+                    autofocus=true
+                    oninput={on_reset_code_change}
+                />
+                <LoginField
+                    id="reset_password"
+                    kind="password"
+                    label={i18n.t("auth.enter_new_password")}
+                    icon="ph-lock-key"
+                    autocomplete={Some(AttrValue::Static("new-password"))}
+                    oninput={on_reset_password_change}
+                />
+                <LoginField
+                    id="reset_password_confirm"
+                    kind="password"
+                    label={i18n.t("auth.confirm_new_password")}
+                    icon="ph-lock-key"
+                    autocomplete={Some(AttrValue::Static("new-password"))}
+                    oninput={on_reset_password_confirm_change}
+                />
+                <PlayButton label={i18n.t("login.reset_password_button")} icon="ph-key" onclick={Some(on_reset_code_submit)} />
+            </form>
+        </div>
+    };
 
     let forgot_password_loading_modal = html! {
-        <div id="forgot-password-loading-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
-                <div class="modal-container relative rounded-lg shadow">
-                    <div class="flex items-center justify-center p-8">
-                        <div class="text-center">
-                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-current mx-auto mb-4"></div>
-                            <h3 class="text-lg font-semibold mb-2 item_container-text">{ &i18n_sending_reset_code }</h3>
-<p class="text-sm item_container-text">{ &i18n_please_wait_processing }</p>
-                        </div>
-                    </div>
-                </div>
+        <div class="lp-panel" key="sending">
+            <div class="lp-busy">
+                <span class="lp-eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                <h3>{ &i18n_sending_reset_code }</h3>
+                <p>{ &i18n_please_wait_processing }</p>
             </div>
         </div>
     };
@@ -1772,33 +1737,26 @@ pub fn login() -> Html {
     };
 
     let mfa_code_modal = html! {
-            <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                    <div class="modal-container relative rounded-lg shadow">
-                        <div class="modal-inner-header">
-                            <h3 class="text-xl font-semibold item_container-text">
-    {&i18n_mfa_login}
-                            </h3>
-                            <button onclick={on_close_modal.clone()} class="modal-close-btn">
-                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                                </svg>
-                                <span class="sr-only">{&i18n.t("common.close_modal")}</span>
-                            </button>
-                        </div>
-                        <div class="p-4 md:p-5">
-                            <form class="space-y-4" action="#">
-                                <p class="text-m font-semibold item_container-text">
-    {&i18n.t("login.mfa_welcome")}
-                                </p>
-                                <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.enter_mfa_code")} />
-                                <button type="submit" onclick={on_mfa_submit} class="modal-button w-full">{&i18n.t("common.submit")}</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        };
+        <div class="lp-panel" key="mfa">
+            <CardHead
+                title={i18n_mfa_login.clone()}
+                subtitle={Some(AttrValue::from(i18n.t("login.mfa_subtitle")))}
+                on_back={Some(on_close_modal.clone())}
+            />
+            <form action="#">
+                <LoginField
+                    id="mfa_code"
+                    label={i18n.t("auth.enter_mfa_code")}
+                    icon="ph-shield-check"
+                    inputmode={Some(AttrValue::Static("numeric"))}
+                    autocomplete={Some(AttrValue::Static("one-time-code"))}
+                    autofocus=true
+                    oninput={on_mfa_change}
+                />
+                <PlayButton label={i18n.t("login.verify")} icon="ph-shield-check" onclick={Some(on_mfa_submit)} />
+            </form>
+        </div>
+    };
 
     let modal_content = {
         if !*first_admin_created {
@@ -1812,121 +1770,25 @@ pub fn login() -> Html {
         }
     };
 
-    html! {
+    let busy = *submitting && *page_state == PageState::Default;
+    let server_host = window().and_then(|w| w.location().host().ok());
+
+    let oidc_block = if oidc_providers.is_empty() {
+        html! {}
+    } else {
+        html! {
             <>
-            if *loading {
-                <div class="loading-animation fixed inset-0 flex justify-center items-center bg-opacity-80 z-50">
-                    <div class="frame1"></div>
-                    <div class="frame2"></div>
-                    <div class="frame3"></div>
-                    <div class="frame4"></div>
-                    <div class="frame5"></div>
-                    <div class="frame6"></div>
-                </div>
-            } else {
-            <div id="login-page" style={format!("background-image: url('{}'); background-repeat: no-repeat; background-attachment: fixed; background-size: cover;", *background_image_url)}>
-            {
-                match *page_state {
-                PageState::CreateUser => create_user_modal,
-                PageState::ForgotPassword => forgot_password_modal,
-                PageState::ForgotPasswordLoading => forgot_password_loading_modal,
-                PageState::TimeZone => time_zone_setup_modal,
-                PageState::MFAPrompt => mfa_code_modal,
-                PageState::EnterCode => enter_code_modal,
-                _ => html! {},
+                // The divider separates the OIDC buttons from the standard login form,
+                // so skip it when that form is hidden.
+                if !*disable_standard_login {
+                    <div class="lp-divider">{ &i18n_or_continue_with }</div>
                 }
-            }
-            {modal_content}
-
-                <div class="flex justify-center items-start pt-[10vh] h-screen">
-                    <div class="login-card">
-                        <div class="flex justify-center items-center">
-                            <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
-                        </div>
-                        <h1 class="item_container-text text-xl font-bold mb-2 text-center">{&i18n_pinepods}</h1>
-                        <p class="item_container-text text-center">{ &i18n_tagline }</p>
-                        {
-                            if !*disable_standard_login {
-                                html! {
-                                    <form class="contents" onsubmit={on_form_submit}>
-                                        <input
-                                            type="text"
-                                            id="username"
-                                            name="username"
-                                            autocomplete="username"
-                                            placeholder={i18n.t("auth.username")}
-                                            class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                                            oninput={on_login_username_change}
-                                        />
-                                        <input
-                                            type="password"
-                                            id="current-password"
-                                            name="current-password"
-                                            autocomplete="current-password"
-                                            placeholder={i18n.t("auth.password")}
-                                            class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                                            oninput={on_login_password_change}
-                                        />
-                                        <div class="flex justify-between">
-                                            <button
-                                                type="button"
-                                                onclick={on_forgot_password}
-                                                class="login-link text-sm"
-                                            >
-                                                { &i18n_forgot_password_link }
-                                            </button>
-                                            {
-                                                if *self_service_enabled {
-                                                    html! {
-                                                        <button
-                                                            type="button"
-                                                            onclick={on_create_new_user.clone()}
-                                                            class="text-sm login-link"
-                                                        >
-                                                            {&i18n.t("login.create_new_user")}
-                                                        </button>
-                                                    }
-                                                } else {
-                                                    html! {}
-                                                }
-                                            }
-                                        </div>
-                                        <button
-                                            type="submit"
-                                            class="modal-button w-full"
-                                        >
-                                            {&i18n_login}
-                                        </button>
-                                    </form>
-                                }
-                            } else {
-                                html! {}
-                            }
-                        }
-
-
-                        // In your HTML template:
-                        {
-                            if !oidc_providers.is_empty() {
-                                html! {
-                                    <>
-                                        // The divider separates the OIDC buttons from the
-                                        // standard login form, so skip it when that form is hidden.
-                                        if !*disable_standard_login {
-                                            <div class="oidc-divider">
-                                                <div class="oidc-divider-line"></div>
-                                                <div class="relative flex justify-center">
-                                                    <span class="oidc-divider-text item_container-text">{&i18n_or_continue_with}</span>
-                                                </div>
-                                            </div>
-                                        }
-
-                                        <div class="flex flex-col space-y-2">
-                                            {
-                                                oidc_providers.iter().map(|provider| {
+                <div class="lp-oidc">
+                    {
+                        oidc_providers.iter().map(|provider| {
                                                     let button_style = format!(
-                                                        "background-color: {}",
-                                                        provider.button_color
+                                                        "background-color: {}; color: {}",
+                                                        provider.button_color, provider.button_text_color
                                                     );
                                                     let button_text_style = format!(
                                                         "color: {}",
@@ -1935,7 +1797,7 @@ pub fn login() -> Html {
 
                                                     html! {
                                                         <button
-                                                            class="oidc-button"
+                                                            class="lp-oidc-button" type="button"
                                                             style={button_style}
                                                             onclick={
                                                                 let auth_url = provider.authorization_url.clone();
@@ -2015,7 +1877,7 @@ pub fn login() -> Html {
                                                             }
                                                         >
                                                             if let Some(icon) = &provider.icon_svg {
-                                                                <div class="oidc-icon">
+                                                                <div class="lp-oidc-icon">
                                                                     {Html::from_html_unchecked(AttrValue::from(icon.clone()))}
                                                                 </div>
                                                             }
@@ -2023,33 +1885,94 @@ pub fn login() -> Html {
                                                         </button>
                                                     }
                                                 }).collect::<Html>()
-                                            }
-                                        </div>
-                                    </>
-                                }
-                            } else {
-                                html! {}
-                            }
-                        }
+                    }
+                </div>
+            </>
+        }
+    };
 
-
-                    </div>
-                    <ToastNotification />
-                    // Connect to Different Server button at bottom right
-                    <div class="fixed bottom-4 right-4">
-                        <button
-                            onclick={on_different_server}
-                            class="change-server-btn"
-                        >
-    {&i18n_connect_different_server}
+    let main_panel = html! {
+        <div class="lp-panel" key="main">
+            <CardHead
+                title={i18n.t("login.welcome_back")}
+                subtitle={Some(AttrValue::from(i18n.t("login.sign_in_subtitle")))}
+            />
+            if !*disable_standard_login {
+                <form onsubmit={on_form_submit}>
+                    <LoginField
+                        id="username"
+                        label={i18n.t("auth.username")}
+                        icon="ph-user"
+                        autocomplete={Some(AttrValue::Static("username"))}
+                        oninput={on_login_username_change}
+                    />
+                    <LoginField
+                        id="current-password"
+                        kind="password"
+                        label={i18n.t("auth.password")}
+                        icon="ph-lock-key"
+                        autocomplete={Some(AttrValue::Static("current-password"))}
+                        oninput={on_login_password_change}
+                    />
+                    <div class="lp-row">
+                        <button type="button" class="lp-link" onclick={on_forgot_password}>
+                            { &i18n_forgot_password_link }
                         </button>
                     </div>
-                </div>
-                </div>
+                    <PlayButton label={i18n_login.clone()} busy={busy} />
+                </form>
             }
-            </>
+            { oidc_block }
+            if *self_service_enabled && !*disable_standard_login {
+                <p class="lp-note">
+                    { i18n.t("login.new_here") }
+                    <button type="button" class="lp-link" onclick={on_create_new_user.clone()}>
+                        { i18n.t("login.create_account") }
+                    </button>
+                </p>
+            }
+        </div>
+    };
 
+    let card_body = match *page_state {
+        PageState::CreateUser => create_user_modal,
+        PageState::ForgotPassword => forgot_password_modal,
+        PageState::ForgotPasswordLoading => forgot_password_loading_modal,
+        PageState::MFAPrompt => mfa_code_modal,
+        PageState::EnterCode => enter_code_modal,
+        _ => main_panel,
+    };
+
+    let corner = html! {
+        <button type="button" class="lp-ghost" onclick={on_different_server}>
+            <i class="ph ph-arrows-left-right" aria-hidden="true"></i>
+            <span>{ &i18n_connect_different_server }</span>
+        </button>
+    };
+
+    html! {
+        <>
+        if *loading {
+            <div class="loading-animation fixed inset-0 flex justify-center items-center bg-opacity-80 z-50">
+                <div class="frame1"></div>
+                <div class="frame2"></div>
+                <div class="frame3"></div>
+                <div class="frame4"></div>
+                <div class="frame5"></div>
+                <div class="frame6"></div>
+            </div>
+        } else {
+            <LoginShell tuning={busy} server={server_host} corner={corner}>
+                <div class="lp-card">{ card_body }</div>
+            </LoginShell>
+            if *page_state == PageState::TimeZone {
+                { time_zone_setup_modal }
+            }
+            { modal_content }
+            <ToastNotification />
         }
+        </>
+    }
 }
 
 // Store a login that passed its second factor, load the user's theme and time settings, then
@@ -2116,8 +2039,6 @@ pub fn login() -> Html {
     let i18n_language_updated = i18n.t("login.language_updated").to_string();
     let i18n_error_validating_mfa = i18n.t("login.error_validating_mfa").to_string();
     let i18n_language = i18n.t("common.language").to_string();
-    let i18n_pinepods = i18n.t("common.pinepods").to_string();
-    let i18n_tagline = i18n.t("login.tagline").to_string();
     let i18n_login_button = i18n.t("login.login_button").to_string();
     let i18n_date_format_julian = i18n.t("login.date_format_julian").to_string();
     let i18n_date_format_iso8601 = i18n.t("login.date_format_iso8601").to_string();
@@ -2139,26 +2060,10 @@ pub fn login() -> Html {
     // Set when the server asks for a second factor before handing out an API key.
     let mfa_session_token = use_state(|| "".to_string());
     let page_state = use_state(|| PageState::Default);
+    let submitting = use_state(|| false);
     let user_language = use_state(|| "en".to_string());
     let available_languages: UseStateHandle<Vec<AvailableLanguage>> = use_state(Vec::new);
 
-    // This effect runs only once when the component mounts
-    let background_image_url = use_state(|| String::new());
-    let effect_background_image = background_image_url.clone();
-    // This effect runs only once when the component mounts
-    use_effect_with(
-        (), // Dependencies, an empty tuple here signifies no dependencies.
-        move |_| {
-            let background_number = rand::random_range(1..=9); // Assuming you have images named 1.jpg through 9.jpg.
-            effect_background_image.set(format!(
-                "static/assets/backgrounds/{}.webp",
-                background_number
-            ));
-
-            // Return the cleanup function, which is required but can be empty if no cleanup is needed.
-            || {}
-        },
-    );
 
     // Load available languages
     let effect_available_languages = available_languages.clone();
@@ -2186,6 +2091,7 @@ pub fn login() -> Html {
         || ()
     });
 
+    let server_display = server_name.clone();
     let on_server_name_change = {
         let server_name = server_name.clone();
         Callback::from(move |e: InputEvent| {
@@ -2229,7 +2135,10 @@ pub fn login() -> Html {
         let i18n_error_checking_mfa = (&i18n_error_checking_mfa).clone();
         let i18n_error_checking_first_login = (&i18n_error_checking_first_login).clone();
         let i18n_credentials_incorrect = (&i18n_credentials_incorrect).clone();
+        let submitting = submitting.clone();
         Callback::from(move |_| {
+            let submitting = submitting.clone();
+            submitting.set(true);
             let i18n_error_checking_mfa = (&i18n_error_checking_mfa).clone();
             let i18n_error_checking_first_login = (&i18n_error_checking_first_login).clone();
             let i18n_credentials_incorrect = (&i18n_credentials_incorrect).clone();
@@ -2397,6 +2306,7 @@ pub fn login() -> Html {
                                             }
                                         }
                                         Err(_) => {
+                                            submitting.set(false);
                                             Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                 state.error_message =
                                                     Option::from((&i18n_error_checking_mfa).clone())
@@ -2408,6 +2318,7 @@ pub fn login() -> Html {
                                 }
                             }
                             Err(_) => {
+                                submitting.set(false);
                                 Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message =
                                         Option::from((&i18n_error_checking_first_login).clone())
@@ -2417,6 +2328,7 @@ pub fn login() -> Html {
                     }
                     Err(_) => {
                         // console::log_1(&format!("Error logging into server: {}", server_name).into());
+                        submitting.set(false);
                         Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Option::from((&i18n_credentials_incorrect).clone())
@@ -2425,12 +2337,6 @@ pub fn login() -> Html {
                     }
                 }
             });
-        })
-    };
-    let on_submit_click = {
-        let on_submit = on_submit.clone(); // Clone the existing on_submit logic
-        Callback::from(move |_: MouseEvent| {
-            on_submit.emit(()); // Invoke the existing on_submit logic
         })
     };
 
@@ -2449,14 +2355,6 @@ pub fn login() -> Html {
             history.push("/"); // Use the route path
         })
     };
-    let handle_key_press = {
-        let on_submit = on_submit.clone(); // Clone the on_submit callback
-        Callback::from(move |e: KeyboardEvent| {
-            if e.key() == "Enter" {
-                on_submit.emit(());
-            }
-        })
-    };
     // Define the callback function for closing the modal
     let on_close_modal = {
         let page_state = page_state.clone();
@@ -2465,20 +2363,7 @@ pub fn login() -> Html {
         })
     };
 
-    let on_background_click = {
-        let on_close_modal = on_close_modal.clone();
-        Callback::from(move |e: MouseEvent| {
-            let target = e.target().unwrap();
-            let element = target.dyn_into::<web_sys::Element>().unwrap();
-            if element.tag_name() == "DIV" {
-                on_close_modal.emit(e);
-            }
-        })
-    };
 
-    let stop_propagation = Callback::from(|e: MouseEvent| {
-        e.stop_propagation();
-    });
 
     let on_tz_change = {
         let tz = time_zone.clone();
@@ -2958,88 +2843,94 @@ pub fn login() -> Html {
     };
 
     let mfa_code_modal = html! {
-            <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                    <div class="modal-container relative rounded-lg shadow">
-                        <div class="modal-inner-header">
-                            <h3 class="text-xl font-semibold item_container-text">
-    {&i18n_mfa_login}
-                            </h3>
-                            <button onclick={on_close_modal.clone()} class="modal-close-btn">
-                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                                </svg>
-                                <span class="sr-only">{&i18n.t("common.close_modal")}</span>
-                            </button>
-                        </div>
-                        <div class="p-4 md:p-5">
-                            <form class="space-y-4" action="#">
-                                <p class="text-m font-semibold item_container-text">
-    {&i18n.t("login.mfa_welcome")}
-                                </p>
-                                <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.enter_mfa_code")} />
-                                <button type="submit" onclick={on_mfa_submit} class="modal-button w-full">{&i18n.t("common.submit")}</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        };
+        <div class="lp-panel" key="mfa">
+            <CardHead
+                title={i18n_mfa_login.clone()}
+                subtitle={Some(AttrValue::from(i18n.t("login.mfa_subtitle")))}
+                on_back={Some(on_close_modal.clone())}
+            />
+            <form action="#">
+                <LoginField
+                    id="mfa_code"
+                    label={i18n.t("auth.enter_mfa_code")}
+                    icon="ph-shield-check"
+                    inputmode={Some(AttrValue::Static("numeric"))}
+                    autocomplete={Some(AttrValue::Static("one-time-code"))}
+                    autofocus=true
+                    oninput={on_mfa_change}
+                />
+                <PlayButton label={i18n.t("login.verify")} icon="ph-shield-check" onclick={Some(on_mfa_submit)} />
+            </form>
+        </div>
+    };
+
+    let busy = *submitting && *page_state == PageState::Default;
+    let on_form_submit = {
+        let on_submit = on_submit.clone();
+        Callback::from(move |e: SubmitEvent| {
+            e.prevent_default();
+            on_submit.emit(());
+        })
+    };
+
+    let main_panel = html! {
+        <div class="lp-panel" key="main">
+            <CardHead
+                title={i18n.t("login.change_server_title")}
+                subtitle={Some(AttrValue::from(i18n.t("login.change_server_subtitle")))}
+            />
+            <form onsubmit={on_form_submit}>
+                <LoginField
+                    id="server"
+                    kind="url"
+                    label={i18n.t("auth.server_name")}
+                    icon="ph-hard-drives"
+                    autocomplete={Some(AttrValue::Static("url"))}
+                    oninput={on_server_name_change}
+                />
+                <LoginField
+                    id="username"
+                    label={i18n.t("auth.username")}
+                    icon="ph-user"
+                    autocomplete={Some(AttrValue::Static("username"))}
+                    oninput={on_username_change}
+                />
+                <LoginField
+                    id="current-password"
+                    kind="password"
+                    label={i18n.t("auth.password")}
+                    icon="ph-lock-key"
+                    autocomplete={Some(AttrValue::Static("current-password"))}
+                    oninput={on_password_change}
+                />
+                <PlayButton label={i18n_login_button.clone()} busy={busy} />
+            </form>
+        </div>
+    };
+
+    let card_body = match *page_state {
+        PageState::MFAPrompt => mfa_code_modal,
+        _ => main_panel,
+    };
+
+    let corner = html! {
+        <button type="button" class="lp-ghost" onclick={on_different_server}>
+            <i class="ph ph-arrow-left" aria-hidden="true"></i>
+            <span>{ &i18n_connect_local_server }</span>
+        </button>
+    };
 
     html! {
-            <>
-            <div id="login-page" style={format!("background-image: url('{}'); background-repeat: no-repeat; background-attachment: fixed; background-size: cover;", *background_image_url)}>
-            {
-                match *page_state {
-                PageState::TimeZone => time_zone_setup_modal,
-                PageState::MFAPrompt => mfa_code_modal,
-                _ => html! {},
-                }
+        <>
+            <LoginShell tuning={busy} server={(!server_display.is_empty()).then(|| (*server_display).clone())} corner={corner}>
+                <div class="lp-card">{ card_body }</div>
+            </LoginShell>
+            if *page_state == PageState::TimeZone {
+                { time_zone_setup_modal }
             }
-            <div class="flex justify-center items-center h-screen">
-                <div class="login-card">
-                    <div class="flex justify-center items-center">
-                        <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
-                    </div>
-                    <h1 class="item_container-text text-xl font-bold mb-2 text-center">{ &i18n_pinepods }</h1>
-                    <p class="item_container-text text-center">{ &i18n_tagline }</p>
-                    <input
-                        type="text"
-                        placeholder={i18n.t("auth.server_name")}
-                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                        oninput={on_server_name_change}
-                        onkeypress={handle_key_press.clone()}
-                    />
-                    <input
-                        type="text"
-                        placeholder={i18n.t("auth.username")}
-                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                        oninput={on_username_change}
-                        onkeypress={handle_key_press.clone()}
-                    />
-                    <input
-                        type="password"
-                        placeholder={i18n.t("auth.password")}
-                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                        oninput={on_password_change}
-                        onkeypress={handle_key_press.clone()}
-                    />
-                    <button onclick={on_submit_click} class="modal-button w-full">
-                        { &i18n_login_button }
-                    </button>
-                </div>
-                <ToastNotification />
-
-                // Connect to Different Server button at bottom right
-                <div class="fixed bottom-4 right-4">
-                    <button onclick={on_different_server} class="change-server-btn">
-    {&i18n_connect_local_server}
-                    </button>
-                </div>
-            </div>
-            </div>
-            </>
-        }
+            <ToastNotification />
+        </>
+    }
 }
 
 #[function_component(LogOut)]

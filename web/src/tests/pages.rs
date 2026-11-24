@@ -365,6 +365,26 @@ async fn a_rejected_login_stays_on_the_page_and_says_so() {
     close(root, app);
 }
 
+#[wasm_bindgen_test]
+async fn forgot_password_opens_in_the_card_and_back_returns_to_sign_in() {
+    answer_api_with(json!({}));
+    sign_out();
+    let (root, app) = render(Page::Login).await;
+    let forgot: web_sys::HtmlElement =
+        root.query_selector(".lp-row .lp-link").unwrap().unwrap().dyn_into().unwrap();
+    forgot.click();
+    TimeoutFuture::new(50).await;
+    assert!(root.query_selector("input[type=email]").unwrap().is_some(), "an email field");
+    assert!(root.query_selector("input[type=password]").unwrap().is_none(), "the sign-in form is replaced");
+
+    let back: web_sys::HtmlElement =
+        root.query_selector(".lp-back").unwrap().unwrap().dyn_into().unwrap();
+    back.click();
+    TimeoutFuture::new(50).await;
+    assert!(root.query_selector("input[type=password]").unwrap().is_some(), "back on sign-in");
+    close(root, app);
+}
+
 // Helpers that need a DOM.
 
 #[wasm_bindgen_test]
