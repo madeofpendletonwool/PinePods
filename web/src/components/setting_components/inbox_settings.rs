@@ -2,7 +2,7 @@
 
 use crate::components::context::NotificationState;
 use crate::components::i18n::use_translation;
-use crate::components::labels::{creds, refresh_inbox_count, LabelManager};
+use crate::components::labels::{creds, refresh_inbox_count, use_signed_in, LabelManager};
 use crate::requests::inbox_req;
 use crate::requests::notify::{toast_error, toast_info};
 use wasm_bindgen_futures::spawn_local;
@@ -16,9 +16,10 @@ pub fn inbox_settings() -> Html {
     let (i18n, _) = use_translation();
     let days = use_state(|| None::<i32>);
 
+    let signed_in = use_signed_in();
     {
         let days = days.clone();
-        use_effect_with((), move |_| {
+        use_effect_with(signed_in, move |_| {
             if let Some((server, api_key, _)) = creds() {
                 spawn_local(async move {
                     if let Ok(d) = inbox_req::call_get_inbox_days(&server, &api_key).await {

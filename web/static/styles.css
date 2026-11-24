@@ -12328,16 +12328,17 @@ button.ep-modal-podcast:hover { text-decoration: underline; }
 .label-new { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .label-new input { flex: 1 1 160px; }
 .label-colors { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-.label-swatch {
+.label-colors .label-swatch {
     width: 20px;
     height: 20px;
+    flex-shrink: 0;
     border-radius: 50%;
-    background: var(--lbl);
+    background-color: var(--lbl);
     border: 2px solid transparent;
     cursor: pointer;
     padding: 0;
 }
-.label-swatch.is-selected { border-color: var(--text-color); box-shadow: 0 0 0 2px var(--container-background) inset; }
+.label-colors .label-swatch.is-selected { border-color: var(--text-color); box-shadow: 0 0 0 2px var(--container-background) inset; }
 .label-manager { display: flex; flex-direction: column; gap: 12px; padding: 4px 0; }
 .label-manager-list { display: flex; flex-direction: column; gap: 4px; }
 .label-manager-row {

@@ -36,7 +36,7 @@
     "delete": "Delete",
     "delete_confirm": "Delete the label \"{name}\"? It comes off every episode, and smart playlists stop filtering on it.",
     "description": "Your own tags for sorting episodes. Filter the inbox by them, or build smart playlists from them.",
-    "episode_count": "{count} episodes",
+    "episode_count": "Episodes: {count}",
     "label_episodes_count": "Label {count} episodes",
     "labels": "Labels",
     "labels_menu": "Labels…",

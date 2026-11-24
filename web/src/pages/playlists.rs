@@ -454,7 +454,8 @@ pub struct LabelSelectorProps {
 pub fn label_selector(props: &LabelSelectorProps) -> Html {
     let (i18n, _) = use_translation();
     let labels = yewdux::use_selector(|s: &crate::components::labels::LabelState| s.labels.clone());
-    use_effect_with((), |_| {
+    let signed_in = crate::components::labels::use_signed_in();
+    use_effect_with(signed_in, |_| {
         crate::components::labels::ensure_loaded();
         || ()
     });

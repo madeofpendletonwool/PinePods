@@ -3,7 +3,7 @@
 
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
-use crate::components::context::{EpisodeStatusState, NotificationState, PodcastFeedState};
+use crate::components::context::{AppState, EpisodeStatusState, NotificationState, PodcastFeedState};
 use crate::components::context_menu_button::PageType;
 use crate::components::episode_list_view::EpisodeListView;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
@@ -38,6 +38,11 @@ fn handled_ids(s: &EpisodeStatusState) -> HashSet<i32> {
 pub fn inbox() -> Html {
     let (i18n, _) = use_translation();
     let label_state = use_store_value::<LabelState>();
+    // Signed-in state can arrive after the first render on a fresh page load.
+    let signed_in = use_selector(|s: &AppState| {
+        s.auth_details.as_ref().and_then(|a| a.api_key.clone().map(|k| (a.server_name.clone(), k)))
+            .zip(s.user_details.as_ref().map(|u| u.UserID))
+    });
     let podcasts = use_selector(|s: &PodcastFeedState| s.podcast_feed_return_extra.clone());
     let handled = use_selector(|s: &EpisodeStatusState| handled_ids(s));
 
@@ -60,7 +65,7 @@ pub fn inbox() -> Html {
         let loading = loading.clone();
         let removed = removed.clone();
         let baseline = baseline.clone();
-        use_effect_with(((*query).clone(), *reload_nonce), move |(query, _)| {
+        use_effect_with(((*query).clone(), *reload_nonce, (*signed_in).clone()), move |(query, _, _)| {
             labels::ensure_loaded();
             if let Some((server, api_key, user_id)) = creds() {
                 if podcasts_missing() {

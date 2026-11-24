@@ -40,6 +40,16 @@ pub fn creds() -> Option<(String, String, i32)> {
     Some((auth.server_name.clone(), auth.api_key.clone()?, app.user_details.as_ref()?.UserID))
 }
 
+/// The signed-in `(server, user id)`, which can arrive after a page's first render on a fresh
+/// load; effects that fetch should depend on it.
+#[hook]
+pub fn use_signed_in() -> std::rc::Rc<Option<(String, i32)>> {
+    use_selector(|s: &AppState| {
+        let auth = s.auth_details.as_ref().filter(|a| a.api_key.is_some())?;
+        Some((auth.server_name.clone(), s.user_details.as_ref()?.UserID))
+    })
+}
+
 /// Load labels and assignments, unless they're already loaded for this user.
 pub fn ensure_loaded() {
     let Some((server, _, user_id)) = creds() else { return };
@@ -282,7 +292,7 @@ pub fn label_picker_modal() -> Html {
                                 })}
                             />
                             <ColorPicker value={(*new_color).clone()} onchange={let c = new_color.clone(); Callback::from(move |v: String| c.set(v))} />
-                            <button type="submit" class="settings-button" disabled={*busy || new_name.trim().is_empty()}>
+                            <button type="submit" class="btn btn-secondary" disabled={*busy || new_name.trim().is_empty()}>
                                 { i18n.t("labels.add") }
                             </button>
                         </form>
@@ -331,7 +341,8 @@ pub fn label_manager() -> Html {
     let new_name = use_state(String::new);
     let new_color = use_state(|| "blue".to_string());
 
-    use_effect_with((), |_| {
+    let signed_in = use_signed_in();
+    use_effect_with(signed_in, |_| {
         ensure_loaded();
         || ()
     });
@@ -413,7 +424,7 @@ pub fn label_manager() -> Html {
                                             editing_color.set(Some((id, name, c)));
                                         }
                                     })} />
-                                    <button type="submit" class="settings-button">{ i18n.t("labels.save") }</button>
+                                    <button type="submit" class="btn btn-secondary">{ i18n.t("labels.save") }</button>
                                     <button type="button" class="ico" onclick={Callback::from(move |_| editing_cancel.set(None))}>
                                         <i class="ph ph-x"></i>
                                     </button>
@@ -466,7 +477,7 @@ pub fn label_manager() -> Html {
                     })}
                 />
                 <ColorPicker value={(*new_color).clone()} onchange={let c = new_color.clone(); Callback::from(move |v: String| c.set(v))} />
-                <button type="submit" class="settings-button" disabled={new_name.trim().is_empty()}>{ i18n.t("labels.add") }</button>
+                <button type="submit" class="btn btn-secondary" disabled={new_name.trim().is_empty()}>{ i18n.t("labels.add") }</button>
             </form>
         </div>
     }
