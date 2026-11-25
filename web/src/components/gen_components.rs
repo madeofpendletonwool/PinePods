@@ -1013,7 +1013,17 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
         let is_youtube = props.is_youtube;
         Callback::from(move |_: MouseEvent| {
             let Some(window) = web_sys::window() else { return };
-            let origin = window.location().origin().unwrap_or_default();
+            // The desktop app's own origin isn't a link anyone else can open; use the server's.
+            let origin = if crate::desktop::is_desktop() {
+                Dispatch::<AppState>::global()
+                    .get()
+                    .auth_details
+                    .as_ref()
+                    .map(|a| a.server_name.trim_end_matches('/').to_string())
+                    .unwrap_or_default()
+            } else {
+                window.location().origin().unwrap_or_default()
+            };
             let link = if is_youtube {
                 format!("{}/episode?episode_id={}&youtube=true", origin, episode_id)
             } else {
