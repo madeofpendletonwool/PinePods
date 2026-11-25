@@ -17,6 +17,7 @@ use yew::prelude::*;
 use yewdux::prelude::*;
 
 const DOWNLOAD_EVENT: &str = "desktop://download";
+const TRAY_EVENT: &str = "desktop://tray";
 
 thread_local! {
     static IS_DESKTOP: Cell<Option<bool>> = const { Cell::new(None) };
@@ -176,6 +177,22 @@ pub async fn init(messages: DownloadMessages) {
         log(3, format!("desktop bridge ready: {count} download(s) on this computer"));
     }
     handler.forget();
+
+    // Play / Pause from the tray menu.
+    let tray = Closure::<dyn Fn(JsValue)>::new(move |event: JsValue| {
+        let action = js_sys::Reflect::get(&event, &JsValue::from_str("payload")).ok().and_then(|p| p.as_string());
+        if action.as_deref() == Some("play_pause") {
+            Dispatch::<crate::components::context::UIState>::global().reduce_mut(|s| {
+                if s.currently_playing.is_some() {
+                    s.toggle_playback();
+                }
+            });
+        }
+    });
+    if let Err(e) = tauri_listen(TRAY_EVENT, tray.as_ref().unchecked_ref()).await {
+        log_error(format!("could not follow the tray menu: {}", error_text(e)));
+    }
+    tray.forget();
 }
 
 fn on_progress(progress: Progress, messages: &DownloadMessages) {

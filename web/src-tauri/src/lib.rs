@@ -12,7 +12,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Builder, Manager, Runtime, State};
+use tauri::{AppHandle, Builder, Emitter, Manager, Runtime, State};
 
 pub struct Desktop {
     data_dir: PathBuf,
@@ -133,6 +133,9 @@ fn build_app<R: Runtime>(builder: Builder<R>) -> Builder<R> {
             let library = Library::open(&data_dir);
             let media = MediaServer::start(library.downloads_dir().to_path_buf())?;
             log::info!("Pinepods {} started; data in {}", env!("CARGO_PKG_VERSION"), data_dir.display());
+            // The tray needs the main thread, which unit tests don't run on.
+            #[cfg(not(test))]
+            build_tray(app)?;
             app.manage(Desktop {
                 data_dir,
                 library: Arc::new(Mutex::new(library)),
@@ -159,14 +162,57 @@ fn context<R: Runtime>() -> tauri::Context<R> {
     tauri::generate_context!()
 }
 
+/// The app sends these to the page as `desktop://tray` so it can control playback.
+const TRAY_EVENT: &str = "desktop://tray";
+
+fn show_main<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn build_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    use tauri::tray::TrayIconBuilder;
+
+    let show = MenuItem::with_id(app, "show", "Show Pinepods", true, None::<&str>)?;
+    let play = MenuItem::with_id(app, "play_pause", "Play / Pause", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Pinepods", true, None::<&str>)?;
+    let separator = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(app, &[&show, &play, &separator, &quit])?;
+    let mut tray = TrayIconBuilder::with_id("main")
+        .tooltip("Pinepods")
+        .menu(&menu)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => show_main(app),
+            "play_pause" => {
+                let _ = app.emit(TRAY_EVENT, "play_pause");
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(
-        tauri_plugin_log::Builder::new()
-            .level(log::LevelFilter::Info)
-            .max_file_size(2_000_000)
-            .build(),
-    );
+    let builder = tauri::Builder::default()
+        // First, so a second launch hands over to the running app before anything starts.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .max_file_size(2_000_000)
+                .build(),
+        );
     build_app(builder)
         .run(context())
         .expect("error while running tauri application");
@@ -201,9 +247,7 @@ mod ipc_tests {
         let dir = std::env::temp_dir().join(format!("pinepods-ipc-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::env::set_var("PINEPODS_DATA_DIR", &dir);
-        let mut context = super::context();
-        // The tray icon needs the main thread, which a test doesn't run on.
-        context.config_mut().app.tray_icon = None;
+        let context = super::context();
         let mut app = super::build_app(tauri::test::mock_builder()).build(context).unwrap();
         // One loop iteration runs the setup hook, which creates the app's state.
         #[allow(deprecated)]
