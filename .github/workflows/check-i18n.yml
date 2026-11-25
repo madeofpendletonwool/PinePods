@@ -30,20 +30,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up uv
+        uses: ./.github/actions/setup-uv
+        with:
+          enable-cache: false
+
       # ── PR mode: only flag strings added in this PR ──────────────────────
       - name: Check new hardcoded strings (PR diff)
         if: github.event_name == 'pull_request'
         run: |
           git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }}...HEAD -- 'web/src/**/*.rs' \
-            | python3 .github/scripts/check_i18n.py --diff
+            | uv run --no-project .github/scripts/check_i18n.py --diff
 
       # ── Manual full scan ─────────────────────────────────────────────────
       - name: Full scan for hardcoded strings
         if: >
           github.event_name == 'workflow_dispatch' &&
           inputs.mode == 'full'
-        run: python3 .github/scripts/check_i18n.py web/src/
+        run: uv run --no-project .github/scripts/check_i18n.py web/src/
 
       # ── Manual diff scan (workflow_dispatch targeting a branch) ──────────
       - name: Diff scan for hardcoded strings
@@ -53,7 +58,7 @@ jobs:
         run: |
           git fetch origin main
           git diff origin/main...HEAD -- 'web/src/**/*.rs' \
-            | python3 .github/scripts/check_i18n.py --diff
+            | uv run --no-project .github/scripts/check_i18n.py --diff
 
   check-i18n-coverage:
     name: Check i18n key coverage
@@ -65,20 +70,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up uv
+        uses: ./.github/actions/setup-uv
+        with:
+          enable-cache: false
+
       # ── PR mode: only fail on keys introduced by this PR ─────────────────
       - name: Check new key references have en.json entries (PR diff)
         if: github.event_name == 'pull_request'
         run: |
           git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }}...HEAD -- 'web/src/**/*.rs' \
-            | python3 .github/scripts/check_i18n_coverage.py --diff
+            | uv run --no-project .github/scripts/check_i18n_coverage.py --diff
 
       # ── Manual full scan ─────────────────────────────────────────────────
       - name: Full coverage scan (missing + orphaned keys)
         if: >
           github.event_name == 'workflow_dispatch' &&
           inputs.mode == 'full'
-        run: python3 .github/scripts/check_i18n_coverage.py web/src/
+        run: uv run --no-project .github/scripts/check_i18n_coverage.py web/src/
 
       # ── Manual diff scan ─────────────────────────────────────────────────
       - name: Diff coverage scan
@@ -88,7 +98,7 @@ jobs:
         run: |
           git fetch origin main
           git diff origin/main...HEAD -- 'web/src/**/*.rs' \
-            | python3 .github/scripts/check_i18n_coverage.py --diff
+            | uv run --no-project .github/scripts/check_i18n_coverage.py --diff
 
   check-hardcoded-strings-mobile:
     name: Check for hardcoded UI strings (mobile)
@@ -100,6 +110,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up uv
+        uses: ./.github/actions/setup-uv
+        with:
+          enable-cache: false
+
       # ARB integrity (blank values, unknown keys, placeholders) is covered by
       # mobile/test/l10n/l10n_test.dart in the Mobile Tests workflow.
       - name: Check new hardcoded strings (PR diff)
@@ -107,13 +122,13 @@ jobs:
         run: |
           git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }}...HEAD -- 'mobile/lib/**/*.dart' \
-            | python3 .github/scripts/check_i18n_dart.py --diff
+            | uv run --no-project .github/scripts/check_i18n_dart.py --diff
 
       - name: Full scan for hardcoded strings
         if: >
           github.event_name == 'workflow_dispatch' &&
           inputs.mode == 'full'
-        run: python3 .github/scripts/check_i18n_dart.py mobile/lib/ui
+        run: uv run --no-project .github/scripts/check_i18n_dart.py mobile/lib/ui
 
       - name: Diff scan for hardcoded strings
         if: >
@@ -122,4 +137,4 @@ jobs:
         run: |
           git fetch origin main
           git diff origin/main...HEAD -- 'mobile/lib/**/*.dart' \
-            | python3 .github/scripts/check_i18n_dart.py --diff
+            | uv run --no-project .github/scripts/check_i18n_dart.py --diff

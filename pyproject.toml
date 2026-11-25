@@ -1,0 +1,26 @@
+[project]
+name = "pinepods"
+version = "0.9.0"
+requires-python = ">=3.11"
+dependencies = [
+    "argon2-cffi>=25.1.0",
+    "cryptography>=50.0.2",
+    "psycopg[binary]>=3.3.6",
+]
+
+[project.optional-dependencies]
+mariadb = [
+    "mariadb>=1.1.14",
+]
+mysql = [
+    "mysql-connector-python>=26.10.0",
+]
+
+[dependency-groups]
+build = [
+    "pyinstaller>=6.22.3",
+]
+# The uv version CI installs (from uv.lock); the Dockerfiles' ghcr.io/astral-sh/uv tags match it.
+uv = [
+    "uv==0.13.6",
+]
