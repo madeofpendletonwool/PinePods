@@ -343,11 +343,42 @@ pub struct NowPlayingSnapshot {
     /// parameter). Empty means it didn't say: assume the original action set.
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// 0–100 when the device reported a volume (Music Assistant players).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume_level: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume_muted: Option<bool>,
+    /// Music Assistant player id when `device_type` is `music_assistant`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ma_player_id: Option<String>,
+    /// Other player ids grouped with this one, when the device is a Music Assistant group or sync leader.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_members: Option<Vec<String>>,
+    /// Sleep timer running on this Music Assistant speaker's queue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sleep_timer: Option<SleepTimer>,
+}
+
+/// When a Music Assistant speaker pauses by itself, as on mobile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum SleepTimer {
+    /// Pause at this Unix time (seconds).
+    Minutes { ends_at: i64 },
+    /// Pause when the current episode finishes, without starting the next.
+    EndOfEpisode,
+    /// Pause when this many more episodes have finished, the current one included.
+    Episodes { left: u32 },
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct NowPlayingDevicesResponse {
+    /// PinePods clients (web, mobile, Firewood, and anything else on the relay).
+    /// Music Assistant players are not in this list.
     pub devices: Vec<NowPlayingSnapshot>,
+    /// Music Assistant virtual devices. The MA-Speakers panel and the now-playing
+    /// bar read these. They are not other-devices targets.
+    pub ma_devices: Vec<NowPlayingSnapshot>,
 }
 
 // Saved episodes models

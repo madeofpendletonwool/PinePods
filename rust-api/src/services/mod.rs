@@ -5,6 +5,7 @@ pub mod audio_duration;
 pub mod audio_processing;
 pub mod auth;
 pub mod download_metadata;
+pub mod music_assistant;
 pub mod episode_aliases;
 pub mod feed_health;
 pub mod feed_metadata;

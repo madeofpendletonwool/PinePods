@@ -158,6 +158,7 @@ impl TestApp {
             task_spawner,
             websocket_manager: Arc::new(pinepods_api::handlers::websocket::WebSocketManager::new()),
             now_playing_manager: Arc::new(pinepods_api::handlers::nowplaying::NowPlayingManager::new()),
+            music_assistant: pinepods_api::services::music_assistant::MusicAssistantHub::new(),
             instance_id,
             import_progress_manager: Arc::new(pinepods_api::redis_manager::ImportProgressManager::new(
                 redis_client,

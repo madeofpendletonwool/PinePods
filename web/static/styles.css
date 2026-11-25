@@ -6419,6 +6419,59 @@ input:checked + .notification-toggle-slider:before {
 .rd-play-here:hover { background: color-mix(in srgb, var(--accent-color) 26%, transparent); }
 .rd-play-here i { font-size: 15px; }
 .rd-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+
+/* Music Assistant: settings card, speaker drawer and the speaker bar. */
+.ma-field { width: 100%; margin-top: 8px; }
+.ma-note { font-size: 12px; color: var(--text-secondary-color); margin-top: 6px; line-height: 1.4; }
+.ma-note.is-error { color: var(--error-color, #e11d48); }
+.ma-note.is-ok { color: var(--success-color); }
+.ma-check { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; }
+/* Speaker rows: the status sits under the name, so a long name cannot push it out of the drawer. */
+.ma-speaker-check { align-items: flex-start; min-width: 0; }
+.ma-speaker-check input { margin-top: 4px; flex-shrink: 0; }
+.ma-speaker-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ma-speaker-text .rd-name { max-width: 100%; }
+.ma-speaker-text .rd-state { padding-left: 24px; white-space: normal; }
+.ma-volume { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.ma-volume input[type="range"] { flex: 1; min-width: 80px; }
+.ma-volume-label { font-size: 11px; color: var(--text-secondary-color); min-width: 72px; }
+.ma-volume-level { font-size: 11px; font-variant-numeric: tabular-nums; width: 2ch; }
+.ma-seek { width: 100%; margin-top: 6px; }
+/* The speaker bar uses the local player's .player-bar / .player-fs layout. */
+.ma-now-kicker {
+  font-size: 11px; color: var(--text-secondary-color);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.player-btn.ma-sleep-btn { display: inline-flex; align-items: center; gap: 4px; width: auto; min-width: 36px; padding: 0 6px; }
+.ma-sleep-label { font-size: 12px; font-variant-numeric: tabular-nums; }
+.ma-sleep-choice {
+  display: block; width: 100%; text-align: left;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+}
+.ma-sleep-choice:hover { background: color-mix(in srgb, var(--accent-color) 8%, transparent); }
+.ma-sleep-choice.is-current { font-weight: 600; color: var(--accent-color); }
+.ma-now .player-fs-footer.ma-fs-footer {
+  flex-direction: column; align-items: stretch; gap: 4px;
+  width: 100%; max-width: 480px; margin: 0 auto;
+}
+.ma-fs-footer .ma-volume > .ma-volume-label {
+  flex: 0 0 96px; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ma-members { display: flex; flex-direction: column; gap: 2px; }
+.ma-member-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ma-chip {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 2px 4px 2px 8px; border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+  font-size: 12px;
+}
+.ma-chip .iconbtn { width: 22px; height: 22px; }
+.ma-add-member { margin-top: 6px; max-width: 220px; }
+.ma-group-bar { display: flex; justify-content: flex-end; padding: 12px 0 4px; }
+/* Above .nc-scrim (1300) and the Other devices drawer (1301), so the speaker list is not
+   under its own scrim. */
+.nc-panel.ma-picker { z-index: 1302; }
 .player-fs-topbar-right { display: flex; align-items: center; gap: 4px; }
 
 @keyframes spinner-rotate {

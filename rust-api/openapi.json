@@ -6935,6 +6935,228 @@
         ]
       }
     },
+    "/api/data/music_assistant/command": {
+      "post": {
+        "tags": [
+          "music_assistant"
+        ],
+        "summary": "Control a Music Assistant player",
+        "operationId": "music_assistant_command",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaCommandBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Command accepted by Music Assistant. warnings lists follow-up steps (seek) that did not apply. set_speed is ignored and is not a warning.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaCommandResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown action, missing args, or Music Assistant rejected the command"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Not authorized for this user"
+          },
+          "503": {
+            "description": "Music Assistant is not connected"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/music_assistant/players": {
+      "get": {
+        "tags": [
+          "music_assistant"
+        ],
+        "summary": "List Music Assistant players and groups",
+        "operationId": "list_music_assistant_players",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Players from the live session. Empty when disabled or not yet connected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaPlayersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Not authorized for this user"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/music_assistant/settings": {
+      "get": {
+        "tags": [
+          "music_assistant"
+        ],
+        "summary": "Get Music Assistant settings",
+        "operationId": "get_music_assistant_settings",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-user Music Assistant configuration. The token is never returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Not authorized for this user"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "music_assistant"
+        ],
+        "summary": "Save Music Assistant settings",
+        "operationId": "update_music_assistant_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaSettingsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved configuration (token redacted)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaSettingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid URL or missing fields required to enable"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Not authorized for this user"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/music_assistant/test": {
+      "post": {
+        "tags": [
+          "music_assistant"
+        ],
+        "summary": "Test a Music Assistant connection",
+        "operationId": "test_music_assistant",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaTestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Probe result. ok is false when MA rejected the token or the version is too old; the HTTP call itself succeeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaTestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Server URL or external base URL is not usable. Localhost external base URLs are rejected because Music Assistant cannot fetch them."
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Not authorized for this user"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/my_user_info/{user_id}": {
       "get": {
         "tags": [
@@ -7157,7 +7379,7 @@
         "tags": [
           "nowplaying"
         ],
-        "summary": "List the user's active devices and what each is currently playing. Backed by\nephemeral Valkey snapshots with a TTL, so a device that stops reporting drops\noff automatically. Powers the \"see / control my other devices\" UI for clients\nthat aren't holding a live socket.",
+        "summary": "List the user's active devices and what each is currently playing. Backed by\nephemeral Valkey snapshots with a TTL, so a device that stops reporting drops\noff automatically. `devices` powers the \"see / control my other devices\" UI.\nMusic Assistant players are returned in `ma_devices` instead, for the\nMA-Speakers panel and the now-playing bar.",
         "operationId": "now_playing_devices",
         "parameters": [
           {
@@ -17801,6 +18023,309 @@
           }
         }
       },
+      "MaCommandBody": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "player_id",
+          "action"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "player_id": {
+            "type": "string",
+            "description": "Music Assistant player id, or the relay device id `ma:{user_id}:{player_id}`."
+          },
+          "action": {
+            "type": "string",
+            "description": "`play`, `pause`, `stop`, `seek`, `skip_forward`, `skip_back`,\n`play_episode`, `volume_set`, `volume_mute`, `group`, `group_many`,\n`ungroup`, `set_members`, `group_volume`. `set_speed` is accepted and\nignored: Music Assistant is not asked to change tempo."
+          },
+          "args": {}
+        }
+      },
+      "MaCommandResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "detail",
+          "warnings"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "MaPlayerResponse": {
+        "type": "object",
+        "required": [
+          "player_id",
+          "device_id",
+          "name",
+          "kind",
+          "available",
+          "state",
+          "volume_muted",
+          "group_members",
+          "can_group_with",
+          "queue_id"
+        ],
+        "properties": {
+          "player_id": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string",
+            "description": "Now-playing device id (`ma:{user_id}:{player_id}`) for the existing relay."
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`player` or `group`."
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          },
+          "volume_level": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "volume_muted": {
+            "type": "boolean"
+          },
+          "group_members": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "synced_to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "can_group_with": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "queue_id": {
+            "type": "string",
+            "description": "Queue id to target. Equals `player_id` unless the player is grouped."
+          }
+        }
+      },
+      "MaPlayersResponse": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "connected",
+          "players"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "players": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MaPlayerResponse"
+            }
+          }
+        }
+      },
+      "MaSettingsBody": {
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Turn the bridge on. Requires a server URL, token, and external base URL\n(newly supplied or already stored)."
+          },
+          "server_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "external_base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Origin Music Assistant uses to fetch PinePods (`http://lan-host:port`). Not localhost."
+          },
+          "token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Long-lived Music Assistant token. Omit or send an empty string to keep the stored token."
+          },
+          "clear_token": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MaSettingsResponse": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "has_token",
+          "connected"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "server_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "external_base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_token": {
+            "type": "boolean"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "server_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "schema_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "warning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MaTestBody": {
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "server_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Overrides the stored URL for this probe only."
+          },
+          "token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Overrides the stored token for this probe only. Never written."
+          },
+          "external_base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When set, validated the same way as a saved external base URL.\nLoopback is rejected here so the settings form can surface it on Test\nwithout writing a row. Omitted means the probe does not check it."
+          }
+        }
+      },
+      "MaTestResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "detail",
+          "player_count"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "server_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "schema_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "player_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "warning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "ManualBackupRequest": {
         "type": "object"
       },
@@ -18105,14 +18630,23 @@
       "NowPlayingDevicesResponse": {
         "type": "object",
         "required": [
-          "devices"
+          "devices",
+          "ma_devices"
         ],
         "properties": {
           "devices": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/NowPlayingSnapshot"
-            }
+            },
+            "description": "PinePods clients (web, mobile, Firewood, and anything else on the relay).\nMusic Assistant players are not in this list."
+          },
+          "ma_devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NowPlayingSnapshot"
+            },
+            "description": "Music Assistant virtual devices. The MA-Speakers panel and the now-playing\nbar read these. They are not other-devices targets."
           }
         }
       },
@@ -18174,6 +18708,48 @@
               "type": "string"
             },
             "description": "Actions the device says it applies (from its `capabilities` connect\nparameter). Empty means it didn't say: assume the original action set."
+          },
+          "volume_level": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "0–100 when the device reported a volume (Music Assistant players)."
+          },
+          "volume_muted": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "ma_player_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Music Assistant player id when `device_type` is `music_assistant`."
+          },
+          "group_members": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Other player ids grouped with this one, when the device is a Music Assistant group or sync leader."
+          },
+          "sleep_timer": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SleepTimer",
+                "description": "Sleep timer running on this Music Assistant speaker's queue."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -21046,6 +21622,67 @@
           }
         }
       },
+      "SleepTimer": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Pause at this Unix time (seconds).",
+            "required": [
+              "ends_at",
+              "mode"
+            ],
+            "properties": {
+              "ends_at": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "minutes"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Pause when the current episode finishes, without starting the next.",
+            "required": [
+              "mode"
+            ],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "end_of_episode"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Pause when this many more episodes have finished, the current one included.",
+            "required": [
+              "left",
+              "mode"
+            ],
+            "properties": {
+              "left": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "episodes"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "When a Music Assistant speaker pauses by itself, as on mobile."
+      },
       "StoreStateRequest": {
         "type": "object",
         "required": [
@@ -22615,6 +23252,10 @@
     {
       "name": "settings",
       "description": "User and server settings"
+    },
+    {
+      "name": "music_assistant",
+      "description": "Music Assistant players as PinePods audio outputs"
     },
     {
       "name": "sync",

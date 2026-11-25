@@ -11,6 +11,7 @@ pub mod feed_problems;
 pub mod import_options;
 pub mod inbox_settings;
 pub mod mfa_settings;
+pub mod music_assistant;
 pub mod nextcloud_options;
 pub mod notifications;
 pub mod oidc;

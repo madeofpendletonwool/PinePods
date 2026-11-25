@@ -32,6 +32,7 @@ use utoipa::{Modify, OpenApi};
         (name = "playlists", description = "Smart and manual playlists"),
         (name = "inbox", description = "The inbox of new episodes not dealt with yet, and episode labels"),
         (name = "settings", description = "User and server settings"),
+        (name = "music_assistant", description = "Music Assistant players as PinePods audio outputs"),
         (name = "sync", description = "gpodder / Nextcloud synchronization"),
         (name = "tasks", description = "Background tasks and progress"),
         (name = "notifications", description = "Durable in-app notifications (Activity center)"),

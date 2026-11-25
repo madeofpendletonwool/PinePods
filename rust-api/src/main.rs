@@ -90,6 +90,7 @@ async fn main() -> AppResult<()> {
         task_spawner,
         websocket_manager,
         now_playing_manager,
+        music_assistant: services::music_assistant::MusicAssistantHub::new(),
         instance_id,
         import_progress_manager,
         notification_manager,
@@ -111,6 +112,7 @@ async fn main() -> AppResult<()> {
     // Degrades cleanly to in-process fan-out if the subscribe connection can't be
     // established (the default single-container deploy needs no bridge).
     handlers::nowplaying::spawn_nowplaying_bridge(app_state.clone());
+    services::music_assistant::spawn_supervisor(app_state.clone());
 
     // Bridge task-progress + notification events across API replicas via Valkey
     // pub/sub. Same best-effort pattern: re-injects remote events into the local

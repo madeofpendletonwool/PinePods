@@ -76,6 +76,7 @@ const PAGES: &[PageDef] = &[
         group: Group::Personal,
         sections: &[
             sec("playback", "ph-play-circle", "settings.playback_settings", Some("playback_settings.playback_preferences_description"), "speed volume skip forward back seek queue autoplay silence trim"),
+            sec("music_assistant", "ph-speaker-high", "music_assistant.title", Some("music_assistant.description"), "music assistant speaker home assistant cast remote output player target"),
             sec("auto_delete", "ph-trash", "settings.auto_delete_settings", Some("auto_delete_settings.description"), "downloads cleanup storage finished remove"),
         ],
     },
@@ -244,6 +245,7 @@ fn section_body(id: &str, themes_trigger: &UseStateHandle<u32>) -> Html {
         }
         "display" => html! { <start_page_options::StartPageOptions /> },
         "playback" => html! { <playback_settings::PlaybackSettings /> },
+        "music_assistant" => html! { <music_assistant::MusicAssistantSettings /> },
         "auto_delete" => html! { <auto_delete_settings::AutoDeleteSettings /> },
         "inbox" => html! { <inbox_settings::InboxSettings /> },
         "labels" => html! { <inbox_settings::LabelSettings /> },

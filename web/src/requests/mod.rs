@@ -5,6 +5,7 @@ pub(crate) mod inbox_req;
 pub(crate) mod login_requests;
 pub(crate) mod models;
 pub(crate) mod notify;
+pub(crate) mod music_assistant;
 pub(crate) mod now_playing;
 pub(crate) mod people_req;
 pub(crate) mod pod_req;
