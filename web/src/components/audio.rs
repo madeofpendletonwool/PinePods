@@ -842,11 +842,18 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 return;
                             }
 
+                            // Signed out (desktop offline listening): no queue to continue with.
+                            let (Some(queue_server), Some(queue_key), Some(queue_user)) =
+                                (server_name.clone(), api_key.clone(), user_id)
+                            else {
+                                processing_flag_for_reset.set(false);
+                                return;
+                            };
                             web_sys::console::log_1(&"Fetching queued episodes...".into());
                             let queued_episodes_result = call_get_queued_episodes(
-                                &server_name.clone().unwrap(),
-                                &api_key.clone().unwrap(),
-                                &user_id.clone().unwrap(),
+                                &queue_server,
+                                &queue_key,
+                                &queue_user,
                             )
                             .await;
                             match queued_episodes_result {
@@ -1012,6 +1019,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             let api_key = api_key.clone();
             let audio_dispatch = audio_dispatch.clone();
             let audio_state = audio_state.clone();
+            // Signed out (desktop offline listening): there's no queue to skip through.
+            if server_name.is_none() || api_key.is_none() || user_id.is_none() {
+                return;
+            }
             wasm_bindgen_futures::spawn_local(async move {
                 let episodes_result = call_get_queued_episodes(
                     &server_name.clone().unwrap(),

@@ -70,6 +70,24 @@ pub fn log_error(message: String) {
     log(5, message);
 }
 
+/// Log right away, without waiting for the async executor: used from the panic hook, after
+/// which no further tasks run.
+pub fn log_now(message: &str) {
+    if !is_desktop() {
+        return;
+    }
+    let Some(window) = web_sys::window() else { return };
+    let invoke = js_sys::Reflect::get(&window, &"__TAURI__".into())
+        .and_then(|t| js_sys::Reflect::get(&t, &"core".into()))
+        .and_then(|c| js_sys::Reflect::get(&c, &"invoke".into()));
+    if let Ok(invoke) = invoke.and_then(|f| f.dyn_into::<js_sys::Function>().map_err(JsValue::from)) {
+        let args = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&args, &"level".into(), &JsValue::from(5));
+        let _ = js_sys::Reflect::set(&args, &"message".into(), &JsValue::from_str(message));
+        let _ = invoke.call2(&JsValue::NULL, &"plugin:log|log".into(), &args);
+    }
+}
+
 fn log(level: u8, message: String) {
     if is_desktop() {
         wasm_bindgen_futures::spawn_local(async move {

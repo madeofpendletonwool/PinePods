@@ -228,6 +228,13 @@ fn main_component() -> Html {
 }
 
 fn main() {
+    // A panic stops the whole app (buttons stop responding); keep a record of it.
+    // Through Yew, which otherwise installs its own hook when it first renders.
+    yew::set_custom_panic_hook(Box::new(|info| {
+        let message = format!("panic: {info}");
+        web_sys::console::error_1(&message.clone().into());
+        desktop::log_now(&message);
+    }));
     wasm_bindgen_futures::spawn_local(async {
         crate::components::context::AppState::load_tauri_credentials().await;
         yew::Renderer::<Main>::new().render();

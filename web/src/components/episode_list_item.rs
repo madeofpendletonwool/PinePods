@@ -237,21 +237,22 @@ fn episode_list_item_body(props: &EpisodeListItemProps) -> Html {
         },
     );
 
+    // Empty when signed out, which the desktop app allows for listening to its downloads.
     let api_key = auth_details
         .as_ref()
         .as_ref()
-        .map(|ud| ud.api_key.clone().unwrap())
-        .unwrap();
+        .and_then(|ud| ud.api_key.clone())
+        .unwrap_or_default();
     let user_id = user_details
         .as_ref()
         .as_ref()
-        .map(|ud| ud.UserID.clone())
-        .unwrap();
+        .map(|ud| ud.UserID)
+        .unwrap_or_default();
     let server_name = auth_details
         .as_ref()
         .as_ref()
         .map(|ud| ud.server_name.clone())
-        .unwrap();
+        .unwrap_or_default();
 
     // Compute is_local inline instead of passing it via app_state
     let is_local = if podcast_added.unwrap_or(false) && props.episode.episodeid != 0 {

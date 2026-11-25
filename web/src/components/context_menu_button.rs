@@ -1192,7 +1192,13 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         }
     };
 
-    let action_buttons = match props.page_type {
+    // Signed out (desktop offline listening) only this computer's downloads can be managed;
+    // everything else needs the server.
+    let signed_in = user_id.is_some() && server_name.is_some();
+    let action_buttons = if !signed_in {
+        device_download_item.clone()
+    } else {
+        match props.page_type {
         PageType::Saved => html! {
             <>
                 { play_on_section.clone() }
@@ -1279,6 +1285,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { &i18n_mark_episode_incomplete } else { &i18n_mark_episode_complete } }</li>
             </>
         },
+        }
     };
 
     let block_row_activation = Callback::from(|e: MouseEvent| e.stop_propagation());
