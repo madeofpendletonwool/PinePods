@@ -41,10 +41,6 @@ pub fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
 #[function_component(Login)]
 pub fn login() -> Html {
     let (i18n, _) = use_translation();
-    // Desktop app: offer the downloads when there are any (they play without the server).
-    let has_local_downloads = use_selector(|s: &crate::components::context::EpisodeStatusState| {
-        s.downloaded_episodes.local_ids().next().is_some()
-    });
 
     // Pre-capture translation strings for use in closures and async blocks
     let i18n_error_checking_status = i18n.t("login.error_checking_status").to_string();
@@ -149,6 +145,10 @@ pub fn login() -> Html {
                 .trim_end_matches('/')
                 .to_string();
 
+            // The desktop app isn't served by a server; it signs in through ChangeServer.
+            if crate::desktop::is_desktop() {
+                return;
+            }
             match call_self_service_login_status(server_name).await {
                 Ok((status, admin_created)) => {
                     self_service_enabled.set(status);
@@ -180,6 +180,10 @@ pub fn login() -> Html {
                 .trim_end_matches('/')
                 .to_string();
 
+            // The desktop app isn't served by a server; it signs in through ChangeServer.
+            if crate::desktop::is_desktop() {
+                return;
+            }
             match call_get_public_oidc_providers(server_name).await {
                 Ok(response) => {
                     disable_std_login.set(response.disable_standard_login);
@@ -207,6 +211,10 @@ pub fn login() -> Html {
                 .expect("should have an origin")
                 .trim_end_matches('/')
                 .to_string();
+            // The desktop app isn't served by a server; it signs in through ChangeServer.
+            if crate::desktop::is_desktop() {
+                return;
+            }
             match call_get_available_languages(server_name).await {
                 Ok(response) => {
                     languages.set(response);
@@ -1954,18 +1962,10 @@ pub fn login() -> Html {
     };
 
     let corner = html! {
-        <>
-        if *has_local_downloads {
-            <button type="button" class="lp-ghost" onclick={Callback::from(|_: MouseEvent| crate::desktop::go_offline())}>
-                <i class="ph ph-wifi-slash" aria-hidden="true"></i>
-                <span>{ i18n.t("desktop.listen_offline") }</span>
-            </button>
-        }
         <button type="button" class="lp-ghost" onclick={on_different_server}>
             <i class="ph ph-arrows-left-right" aria-hidden="true"></i>
             <span>{ &i18n_connect_different_server }</span>
         </button>
-        </>
     };
 
     html! {
@@ -1980,9 +1980,14 @@ pub fn login() -> Html {
                 <div class="frame6"></div>
             </div>
         } else {
-            <LoginShell tuning={busy} server={server_host} corner={corner}>
-                <div class="lp-card">{ card_body }</div>
-            </LoginShell>
+            if crate::desktop::is_desktop() {
+                // No server behind this page in the desktop app: ask for one.
+                <ChangeServer />
+            } else {
+                <LoginShell tuning={busy} server={server_host} corner={corner}>
+                    <div class="lp-card">{ card_body }</div>
+                </LoginShell>
+            }
             if *page_state == PageState::TimeZone {
                 { time_zone_setup_modal }
             }
@@ -2038,6 +2043,10 @@ async fn finish_verified_login(
 #[function_component(ChangeServer)]
 pub fn login() -> Html {
     let (i18n, _) = use_translation();
+    // Desktop app: offer the downloads when there are any (they play without the server).
+    let has_local_downloads = use_selector(|s: &crate::components::context::EpisodeStatusState| {
+        s.downloaded_episodes.local_ids().next().is_some()
+    });
 
     // Pre-capture translation strings for use in closures and async blocks
     let i18n_error_checking_mfa = i18n.t("login.error_checking_mfa_status").to_string();
@@ -2931,11 +2940,23 @@ pub fn login() -> Html {
         _ => main_panel,
     };
 
-    let corner = html! {
-        <button type="button" class="lp-ghost" onclick={on_different_server}>
-            <i class="ph ph-arrow-left" aria-hidden="true"></i>
-            <span>{ &i18n_connect_local_server }</span>
-        </button>
+    // The desktop app has no "this server" to go back to; offer the downloads instead.
+    let corner = if crate::desktop::is_desktop() {
+        html! {
+            if *has_local_downloads {
+                <button type="button" class="lp-ghost" onclick={Callback::from(|_: MouseEvent| crate::desktop::go_offline())}>
+                    <i class="ph ph-wifi-slash" aria-hidden="true"></i>
+                    <span>{ i18n.t("desktop.listen_offline") }</span>
+                </button>
+            }
+        }
+    } else {
+        html! {
+            <button type="button" class="lp-ghost" onclick={on_different_server}>
+                <i class="ph ph-arrow-left" aria-hidden="true"></i>
+                <span>{ &i18n_connect_local_server }</span>
+            </button>
+        }
     };
 
     html! {
