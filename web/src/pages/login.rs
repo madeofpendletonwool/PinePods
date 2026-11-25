@@ -41,6 +41,10 @@ pub fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
 #[function_component(Login)]
 pub fn login() -> Html {
     let (i18n, _) = use_translation();
+    // Desktop app: offer the downloads when there are any (they play without the server).
+    let has_local_downloads = use_selector(|s: &crate::components::context::EpisodeStatusState| {
+        s.downloaded_episodes.local_ids().next().is_some()
+    });
 
     // Pre-capture translation strings for use in closures and async blocks
     let i18n_error_checking_status = i18n.t("login.error_checking_status").to_string();
@@ -407,10 +411,16 @@ pub fn login() -> Html {
                                                                                 }
                                                                             });
                                                                         }
-                                                                        Err(_) => {
+                                                                        Err(e) => {
                                                                             effect_loading
                                                                                 .set(false);
-                                                                            history.push("/");
+                                                                            // Desktop app with the server unreachable:
+                                                                            // play the downloads instead.
+                                                                            if !(crate::desktop::is_unreachable(&e)
+                                                                                && crate::desktop::offline_fallback().await)
+                                                                            {
+                                                                                history.push("/");
+                                                                            }
                                                                         }
                                                                     }
                                                                 },
@@ -1944,10 +1954,18 @@ pub fn login() -> Html {
     };
 
     let corner = html! {
+        <>
+        if *has_local_downloads {
+            <button type="button" class="lp-ghost" onclick={Callback::from(|_: MouseEvent| crate::desktop::go_offline())}>
+                <i class="ph ph-wifi-slash" aria-hidden="true"></i>
+                <span>{ i18n.t("desktop.listen_offline") }</span>
+            </button>
+        }
         <button type="button" class="lp-ghost" onclick={on_different_server}>
             <i class="ph ph-arrows-left-right" aria-hidden="true"></i>
             <span>{ &i18n_connect_different_server }</span>
         </button>
+        </>
     };
 
     html! {

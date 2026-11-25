@@ -278,20 +278,14 @@ pub fn resume_from(position: f64, duration: f64) -> f64 {
     position
 }
 
-/// The desktop app plays its downloads through a file server on this port.
+/// True when playing a file downloaded to this computer (desktop app).
 pub fn is_local_file(src: &str) -> bool {
-    !cfg!(feature = "server_build") && src.starts_with("http://127.0.0.1:3030")
+    crate::desktop::is_local_media(src)
 }
-
-/// Which app this is, recorded with the listening time for stats.
-#[cfg(feature = "server_build")]
-pub const CLIENT: &str = "web";
-#[cfg(not(feature = "server_build"))]
-pub const CLIENT: &str = "desktop";
 
 /// The request body for `updates`, sent at `now` (unix ms).
 pub fn request_body(updates: &[Update], now: f64) -> String {
-    serde_json::json!({ "sent_at": now as i64, "client": CLIENT, "updates": updates.iter().map(|u| {
+    serde_json::json!({ "sent_at": now as i64, "client": crate::desktop::client_name(), "updates": updates.iter().map(|u| {
         let mut v = serde_json::to_value(u).unwrap_or_default();
         v["at"] = serde_json::json!(u.at as i64);
         v

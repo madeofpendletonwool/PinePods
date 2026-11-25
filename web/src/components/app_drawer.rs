@@ -39,8 +39,6 @@ pub fn app_drawer() -> Html {
     // let (state, _dispatch) = use_store::<AppState>();
 
     // Capture i18n strings before they get moved
-    #[cfg(not(feature = "server_build"))]
-    let _i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
     let i18n_pinepods = i18n.t("app_drawer.pinepods").to_string();
     let i18n_home = i18n.t("navigation.home").to_string();
     let i18n_feed = i18n.t("app_drawer.feed").to_string();
@@ -50,7 +48,6 @@ pub fn app_drawer() -> Html {
     let i18n_playlists = i18n.t("navigation.playlists").to_string();
     let i18n_history = i18n.t("navigation.history").to_string();
     let i18n_server_downloads = i18n.t("app_drawer.server_downloads").to_string();
-    #[cfg(not(feature = "server_build"))]
     let i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
     let i18n_subscribed_people = i18n.t("app_drawer.subscribed_people").to_string();
     let i18n_discover = i18n.t("app_drawer.discover").to_string();
@@ -256,10 +253,11 @@ pub fn app_drawer() -> Html {
         }
     };
 
-    #[cfg(not(feature = "server_build"))]
-    let local_download_link = nav_item(Route::LocalDownloads, "ph-folder-open", &i18n_local_downloads);
-    #[cfg(feature = "server_build")]
-    let local_download_link = html! {};
+    let local_download_link = if crate::desktop::is_desktop() {
+        nav_item(Route::LocalDownloads, "ph-folder-open", &i18n_local_downloads)
+    } else {
+        html! {}
+    };
 
     html! {
         <div class="relative">

@@ -1,4 +1,5 @@
 mod components;
+mod desktop;
 mod pages;
 mod requests;
 
@@ -36,14 +37,8 @@ use crate::pages::youtube_layout::YouTubeLayout;
 use yew_router::history::BrowserHistory;
 use yew_router::history::History;
 
-#[cfg(feature = "server_build")]
+use pages::local_downloads::LocalDownloads;
 use pages::login::{ChangeServer, LogOut, Login};
-
-#[cfg(not(feature = "server_build"))]
-use {
-    pages::downloads_tauri::Downloads as LocalDownloads,
-    pages::login_tauri::{ChangeServer, LogOut, Login},
-};
 
 // Yew Imports
 use crate::components::context::AppState;
@@ -88,12 +83,7 @@ fn switch(route: Route) -> Html {
         Route::DiscoverHosts => html! { <Discover /> },
         Route::UserStats => html! { <UserStats /> },
         Route::YoutubeLayout => html! { <YouTubeLayout /> },
-        #[cfg(not(feature = "server_build"))]
         Route::LocalDownloads => html! { <LocalDownloads /> },
-        #[cfg(feature = "server_build")]
-        Route::LocalDownloads => {
-            html! { <div>{"Local downloads not available on the web version"}</div> } // i18n-ignore
-        }
     }
 }
 
@@ -168,14 +158,10 @@ fn language_manager() -> Html {
             let (auth_details, user_details) = (**auth_sel).clone();
 
             spawn_local(async move {
-                let server_name = web_sys::window()
-                    .and_then(|w| w.location().origin().ok())
-                    .unwrap_or_else(|| "".to_string());
-
                 if let (Some(auth_details), Some(user_details)) = (auth_details, user_details) {
                     if let Some(api_key) = &auth_details.api_key {
                         match crate::requests::setting_reqs::call_get_user_language(
-                            server_name,
+                            auth_details.server_name.clone(),
                             api_key.clone(),
                             user_details.UserID,
                         )
@@ -197,7 +183,12 @@ fn language_manager() -> Html {
                             }
                         }
                     }
-                } else {
+                } else if !crate::desktop::is_desktop() {
+                    // Signed out in a browser, the page is served by the server itself. The
+                    // desktop app has no server yet and keeps the language it last used.
+                    let server_name = web_sys::window()
+                        .and_then(|w| w.location().origin().ok())
+                        .unwrap_or_default();
                     if !server_name.is_empty() {
                         match call_get_server_default_language(server_name).await {
                             Ok(server_lang) => {
@@ -216,35 +207,13 @@ fn language_manager() -> Html {
         });
     }
 
-    // Desktop only: load the set of episodes downloaded to THIS device once on startup,
-    // so local-first playback works from any list (home, feed, search, playlists) and not
-    // just the pages that already fetch local downloads (Downloads/Saved/Feed/Queue).
-    #[cfg(not(feature = "server_build"))]
-    {
-        use_effect_with((), move |_| {
-            spawn_local(async move {
-                if let Ok(mut local_episodes) =
-                    crate::pages::downloads_tauri::fetch_local_episodes().await
-                {
-                    Dispatch::<crate::components::context::EpisodeStatusState>::global()
-                        .reduce_mut(move |s| {
-                            s.downloaded_episodes.clear_local();
-                            for ep in local_episodes.drain(..) {
-                                s.downloaded_episodes.push_local(ep);
-                            }
-                        });
-                }
-            });
-            || ()
-        });
-    }
-
     html! {
         <BrowserRouter>
             <NavigationHandler>
                 <Switch<Route> render={switch} />
             </NavigationHandler>
             <RestoreOverlay />
+            <DesktopBridge />
             <CollectionPickerModal />
             <LabelPickerModal />
         </BrowserRouter>
@@ -265,4 +234,21 @@ fn main() {
         // Follows the player for the whole visit and sends progress saved by an earlier one.
         crate::components::progress::start();
     });
+}
+
+/// Desktop app only: connect to the native side once the translations are available.
+#[function_component(DesktopBridge)]
+fn desktop_bridge() -> Html {
+    let (i18n, _) = use_translation();
+    let messages = desktop::DownloadMessages {
+        complete: i18n.t("desktop.download_complete").to_string(),
+        failed: i18n.t("desktop.download_failed").to_string(),
+    };
+    use_effect_with((), move |_| {
+        if desktop::is_desktop() {
+            spawn_local(desktop::init(messages));
+        }
+        || ()
+    });
+    html! {}
 }

@@ -1,7 +1,5 @@
 pub(crate) mod discover;
 pub(crate) mod downloads;
-#[cfg(not(feature = "server_build"))]
-pub(crate) mod downloads_tauri;
 pub(crate) mod episode;
 pub(crate) mod episode_layout;
 pub(crate) mod feed;
@@ -9,10 +7,8 @@ pub(crate) mod history;
 pub(crate) mod home;
 pub(crate) mod inbox;
 pub(crate) mod internal_error;
-#[cfg(feature = "server_build")]
+pub(crate) mod local_downloads;
 pub(crate) mod login;
-#[cfg(not(feature = "server_build"))]
-pub(crate) mod login_tauri;
 pub(crate) mod not_found;
 pub(crate) mod person;
 pub(crate) mod playlist_detail;

@@ -223,22 +223,6 @@ pub fn saved() -> Html {
                                     s.completed_episodes = completed_ids;
                                 });
 
-                                #[cfg(not(feature = "server_build"))]
-                                {
-                                    spawn_local(async move {
-                                        if let Ok(mut local_episodes) =
-                                            crate::pages::downloads_tauri::fetch_local_episodes().await
-                                        {
-                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(move |s| {
-                                                s.downloaded_episodes.clear_local();
-                                                for ep in local_episodes.drain(..) {
-                                                    s.downloaded_episodes.push_local(ep);
-                                                }
-                                            });
-                                        }
-                                    });
-                                }
-
                                 let new_offset = page.saved_episodes.len() as i64;
                                 total.set(page.total);
                                 offset.set(new_offset);

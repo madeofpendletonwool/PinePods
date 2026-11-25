@@ -266,9 +266,7 @@
     "close": "Close"
   },
   "context_menu_button": {
-    "delete_local_download": "Delete Local Download",
     "download_episode": "Download Episode",
-    "local_download": "Local Download",
     "mark_episode_complete": "Mark Episode Complete",
     "mark_episode_incomplete": "Mark Episode Incomplete",
     "queue_episode": "Queue Episode",
@@ -367,15 +365,6 @@
     "select": "Select",
     "confirm_delete_title": "Delete downloaded episodes",
     "confirm_delete_message": "You're about to delete {count} episode{plural}. This can't be undone."
-  },
-  "downloads_tauri": {
-    "downloaded_episodes_count": "episodes",
-    "failed_to_delete_episodes": "Failed to delete episodes",
-    "locally_downloaded_episodes": "Locally Downloaded Episodes",
-    "no_downloaded_episodes_description": "This is where local episode downloads will appear. To download an episode you can open the context menu on an episode and select Local Download. It will then download to your device locally and show up here!",
-    "select_multiple": "Select Multiple",
-    "successfully_deleted_episodes": "Successfully deleted episode(s)",
-    "switch_to_online_mode": "Switch to Online Mode (Sign In Required)"
   },
   "email_settings": {
     "auth_required": "Auth Required",
@@ -2085,5 +2074,26 @@
     "save_error": "Could not save yt-dlp settings",
     "update_started": "Updating yt-dlp — this takes a few seconds.",
     "update_error": "Could not update yt-dlp"
+  },
+  "desktop": {
+    "download_to_computer": "Download to this computer",
+    "delete_from_computer": "Delete from this computer",
+    "downloading": "Downloading",
+    "download_waiting": "Waiting to download",
+    "click_to_cancel": "Click to cancel",
+    "download_complete": "Episode downloaded to this computer",
+    "download_failed": "Download failed",
+    "download_deleted": "Deleted from this computer",
+    "deleted_count": "Deleted {count} episode(s) from this computer",
+    "delete_failed": "Could not delete the downloads",
+    "downloading_now": "Downloading",
+    "no_downloads": "No episodes on this computer",
+    "no_downloads_description": "Open an episode's menu and choose Download to this computer. Downloaded episodes play without the server, even when you're offline.",
+    "saved_in": "Saved in",
+    "go_online": "Sign in to your server",
+    "on_this_computer": "Downloaded to this computer",
+    "only_in_app": "Only in the desktop app",
+    "only_in_app_description": "Downloading episodes to your computer needs the Pinepods desktop app.",
+    "listen_offline": "Listen offline"
   }
 }
