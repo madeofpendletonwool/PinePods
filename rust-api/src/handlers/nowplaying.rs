@@ -40,19 +40,35 @@
 //!   and echoed back in the ack.
 //!
 //! ## Server → client
-//! - `{"type":"devices","devices":[NowPlayingSnapshot…]}` — the user's devices
-//!   (including the receiver; filter yourself out by `device_id`).
+//! - `{"type":"devices","devices":[NowPlayingSnapshot…],"ma_devices":[…]}` — the
+//!   user's PinePods clients in `devices` (including the receiver; filter yourself
+//!   out by `device_id`). Music Assistant players are only in `ma_devices`.
 //! - `{"type":"command","from_device_id":"…","action":"…","args":{…}}` — apply to
 //!   the local player; ignore unknown actions.
 //! - `{"type":"ack","ok":true,"detail":"relayed","cmd_id":"…","target_device_id":"…"}`
-//!   — `ok:false` means the target is offline. Delivery is not execution.
+//!   — `ok:false` means the target is offline or the command failed (`detail` says which).
+//!   A relay ack means the frame was delivered, not that the player finished it.
+//!   A Music Assistant player connected to this instance is the exception: the
+//!   command runs here and the ack is the real result, so the sender can wait.
 //!
 //! ## Actions (args)
-//! `play`, `pause`, `seek {position_sec}`, `skip_forward {seconds=30}`,
+//! `play`, `pause`, `stop`, `seek {position_sec}`, `skip_forward {seconds=30}`,
 //! `skip_back {seconds=15}`, `set_speed {speed}`,
 //! `play_episode {episode_id, is_youtube, position_sec?}` — start an episode on the
 //! target; with `position_sec` resume exactly there (handoff), otherwise from the
 //! server-stored listen position.
+//!
+//! Music Assistant virtual devices (`device_type` `music_assistant`) also apply `volume_set {volume_level}`,
+//! `volume_mute {muted}`, `group {target_player}`, `group_many {player_ids, target_player?}`,
+//! `ungroup`, `set_members {player_ids_to_add, player_ids_to_remove}`, and
+//! `group_volume {volume_level}`. Other clients ignore actions they don't list.
+//!
+//! ## Server-side virtual devices
+//! The connection registry is not only for browser sockets. A backend service can
+//! register a device id and receive the same relayed `command` frames. Music
+//! Assistant players are registered that way (`device_type` `music_assistant`).
+//! The MA-Speakers panel and the now-playing bar target them through `ma_devices`.
+//! They are not included in the `devices` list that powers Other devices.
 
 use axum::{
     extract::{
@@ -97,8 +113,9 @@ pub struct NowPlayingDevicesQuery {
 
 /// List the user's active devices and what each is currently playing. Backed by
 /// ephemeral Valkey snapshots with a TTL, so a device that stops reporting drops
-/// off automatically. Powers the "see / control my other devices" UI for clients
-/// that aren't holding a live socket.
+/// off automatically. `devices` powers the "see / control my other devices" UI.
+/// Music Assistant players are returned in `ma_devices` instead, for the
+/// MA-Speakers panel and the now-playing bar.
 #[utoipa::path(
     get,
     path = "/now_playing_devices",
@@ -125,12 +142,16 @@ pub async fn now_playing_devices(
         return Err(AppError::forbidden("You can only view your own devices!"));
     }
 
-    let devices = state
+    let all = state
         .redis_client
         .get_now_playing_devices(query.user_id)
         .await?;
+    let (devices, ma_devices) = partition_device_list(all);
 
-    Ok(Json(crate::models::NowPlayingDevicesResponse { devices }))
+    Ok(Json(crate::models::NowPlayingDevicesResponse {
+        devices,
+        ma_devices,
+    }))
 }
 
 // ============================ Connection registry ============================
@@ -180,6 +201,25 @@ impl NowPlayingManager {
         conn_id
     }
 
+    /// Register a server-side virtual device (no browser socket). Relayed commands
+    /// for `device_id` are delivered on `tx` as text frames of
+    /// `{"type":"command","from_device_id","action","args"}`. Returns the
+    /// connection id to pass to [`Self::unregister_virtual`].
+    pub async fn register_virtual(
+        &self,
+        user_id: i32,
+        device_id: String,
+        tx: mpsc::UnboundedSender<Message>,
+    ) -> u64 {
+        self.add(user_id, device_id, tx).await
+    }
+
+    /// Drop a virtual device registered under `conn_id`. A stale id (the device
+    /// was replaced) does not remove the newer registration.
+    pub async fn unregister_virtual(&self, user_id: i32, device_id: &str, conn_id: u64) -> bool {
+        self.remove(user_id, device_id, conn_id).await
+    }
+
     /// Unregister a socket. Only removes the entry if it still belongs to
     /// `conn_id`; returns whether it did (i.e. whether this socket was still the
     /// device's live connection and the device is now actually gone).
@@ -196,6 +236,15 @@ impl NowPlayingManager {
             }
         }
         owned
+    }
+
+    /// Whether this instance has a live socket or virtual device for `device_id`.
+    pub async fn has_device(&self, user_id: i32, device_id: &str) -> bool {
+        self.connections
+            .read()
+            .await
+            .get(&user_id)
+            .is_some_and(|devs| devs.contains_key(device_id))
     }
 
     /// Relay a message to one specific device. Returns true if a live connection
@@ -264,7 +313,12 @@ enum ClientMsg {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ServerMsg {
     /// The user's current set of active devices and their now-playing state.
-    Devices { devices: Vec<NowPlayingSnapshot> },
+    Devices {
+        /// PinePods clients. Music Assistant players are not included.
+        devices: Vec<NowPlayingSnapshot>,
+        /// Music Assistant virtual devices, for the MA-Speakers panel and bar.
+        ma_devices: Vec<NowPlayingSnapshot>,
+    },
     /// A command relayed from another device, to be applied on the local player.
     Command {
         from_device_id: String,
@@ -382,7 +436,7 @@ async fn handle_now_playing_socket(
         .get_now_playing_devices(user_id)
         .await
         .unwrap_or_default();
-    let _ = tx.send(to_ws(&ServerMsg::Devices { devices }));
+    let _ = tx.send(devices_frame(devices));
 
     // Liveness: any inbound frame (incl. pongs) bumps this; the pinger tears the
     // socket down if it goes quiet for too long.
@@ -459,6 +513,11 @@ async fn handle_now_playing_socket(
                                 speed,
                                 updated_at: 0, // stamped by upsert
                                 capabilities: reader_caps.clone(),
+                                volume_level: None,
+                                volume_muted: None,
+                                ma_player_id: None,
+                                group_members: None,
+                                sleep_timer: None,
                             };
                             let _ = reader_state
                                 .redis_client
@@ -497,47 +556,62 @@ async fn handle_now_playing_socket(
                             args,
                             cmd_id,
                         }) => {
-                            let relay = to_ws(&ServerMsg::Command {
-                                from_device_id: reader_device.clone(),
-                                action: action.clone(),
-                                args: args.clone(),
-                            });
-                            let delivered = reader_state
-                                .now_playing_manager
-                                .send_to_device(user_id, &target_device_id, relay)
-                                .await;
-                            let (ok, detail) = if delivered {
-                                (true, "relayed")
+                            // A Music Assistant player on this instance runs here, and the
+                            // ack is that result. Relaying into the virtual device as well
+                            // would play the episode twice.
+                            let (ok, detail) = if let Some(result) = dispatch_local_music_assistant(
+                                &reader_state,
+                                user_id,
+                                &target_device_id,
+                                &action,
+                                &args,
+                            )
+                            .await
+                            {
+                                result
                             } else {
-                                // Target isn't on this instance — fan the command out
-                                // over pub/sub so whichever replica holds it delivers.
-                                let other_instance = publish_command(
-                                    &reader_state,
-                                    user_id,
-                                    &target_device_id,
-                                    &reader_device,
-                                    &action,
-                                    &args,
-                                )
-                                .await;
-                                // Another replica merely *listening* doesn't mean it
-                                // holds the target: also require the target to still be
-                                // present (every live socket keeps a snapshot).
-                                let present = other_instance
-                                    && reader_state
-                                        .redis_client
-                                        .now_playing_exists(user_id, &target_device_id)
-                                        .await
-                                        .unwrap_or(false);
-                                if present {
-                                    (true, "relayed to another instance")
+                                let relay = to_ws(&ServerMsg::Command {
+                                    from_device_id: reader_device.clone(),
+                                    action: action.clone(),
+                                    args: args.clone(),
+                                });
+                                let delivered = reader_state
+                                    .now_playing_manager
+                                    .send_to_device(user_id, &target_device_id, relay)
+                                    .await;
+                                if delivered {
+                                    (true, "relayed".to_string())
                                 } else {
-                                    (false, "device offline")
+                                    // Target isn't on this instance — fan the command out
+                                    // over pub/sub so whichever replica holds it delivers.
+                                    let other_instance = publish_command(
+                                        &reader_state,
+                                        user_id,
+                                        &target_device_id,
+                                        &reader_device,
+                                        &action,
+                                        &args,
+                                    )
+                                    .await;
+                                    // Another replica merely *listening* doesn't mean it
+                                    // holds the target: also require the target to still be
+                                    // present (every live socket keeps a snapshot).
+                                    let present = other_instance
+                                        && reader_state
+                                            .redis_client
+                                            .now_playing_exists(user_id, &target_device_id)
+                                            .await
+                                            .unwrap_or(false);
+                                    if present {
+                                        (true, "relayed to another instance".to_string())
+                                    } else {
+                                        (false, "device offline".to_string())
+                                    }
                                 }
                             };
                             let _ = reader_tx.send(to_ws(&ServerMsg::Ack {
                                 ok,
-                                detail: detail.to_string(),
+                                detail,
                                 cmd_id,
                                 target_device_id,
                             }));
@@ -597,6 +671,49 @@ fn idle_snapshot(
         speed: 1.0,
         updated_at: 0,
         capabilities: capabilities.to_vec(),
+        volume_level: None,
+        volume_muted: None,
+        ma_player_id: None,
+        group_members: None,
+        sleep_timer: None,
+    }
+}
+
+/// Run a command against a Music Assistant player registered on this instance.
+///
+/// Returns `None` when the target is not a local virtual player, so the caller
+/// relays the frame instead. A `Some` result is the ack: success or the error
+/// text. The virtual device is not also sent the frame.
+async fn dispatch_local_music_assistant(
+    state: &AppState,
+    user_id: i32,
+    target_device_id: &str,
+    action: &str,
+    args: &Value,
+) -> Option<(bool, String)> {
+    crate::services::music_assistant::player_id_from_device(user_id, target_device_id)?;
+    if !state
+        .now_playing_manager
+        .has_device(user_id, target_device_id)
+        .await
+    {
+        return None;
+    }
+    match crate::services::music_assistant::dispatch(state, user_id, target_device_id, action, args)
+        .await
+    {
+        Ok(outcome) => {
+            let detail = if outcome.warnings.is_empty() {
+                outcome.detail
+            } else {
+                format!("{} ({})", outcome.detail, outcome.warnings.join("; "))
+            };
+            Some((true, detail))
+        }
+        Err(e) => {
+            tracing::warn!("music assistant {action} for {target_device_id} failed: {e}");
+            Some((false, e.to_string()))
+        }
     }
 }
 
@@ -610,8 +727,34 @@ async fn broadcast_devices(state: &AppState, user_id: i32, origin_device: &str) 
         .unwrap_or_default();
     state
         .now_playing_manager
-        .broadcast_user_except(user_id, origin_device, to_ws(&ServerMsg::Devices { devices }))
+        .broadcast_user_except(user_id, origin_device, devices_frame(devices))
         .await;
+}
+
+/// `devices` is the other-devices list. Music Assistant virtual devices stay on
+/// the relay (commands and the speaker panel need their snapshots) but travel
+/// in `ma_devices` so a client that lists `devices` does not show speakers there.
+fn partition_device_list(
+    devices: Vec<NowPlayingSnapshot>,
+) -> (Vec<NowPlayingSnapshot>, Vec<NowPlayingSnapshot>) {
+    let mut others = Vec::new();
+    let mut ma = Vec::new();
+    for device in devices {
+        if device.device_type.eq_ignore_ascii_case("music_assistant") {
+            ma.push(device);
+        } else {
+            others.push(device);
+        }
+    }
+    (others, ma)
+}
+
+fn devices_frame(devices: Vec<NowPlayingSnapshot>) -> Message {
+    let (devices, ma_devices) = partition_device_list(devices);
+    to_ws(&ServerMsg::Devices {
+        devices,
+        ma_devices,
+    })
 }
 
 // ======================= Multi-replica pub/sub bridge =======================
@@ -671,7 +814,7 @@ async fn publish_bridge(state: &AppState, msg: &NpBridgeMsg) -> i64 {
 
 /// Broadcast the fresh device list to this instance's other sockets AND fan the
 /// change out to the other replicas so their sockets update too.
-async fn notify_devices_changed(state: &AppState, user_id: i32, origin_device: &str) {
+pub(crate) async fn notify_devices_changed(state: &AppState, user_id: i32, origin_device: &str) {
     broadcast_devices(state, user_id, origin_device).await;
     let msg = NpBridgeMsg::DevicesChanged {
         user_id,
@@ -776,6 +919,7 @@ async fn run_nowplaying_bridge(state: &AppState) -> crate::error::AppResult<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::NowPlayingSnapshot;
 
     fn txt(s: &str) -> Message {
         Message::Text(s.to_string().into())
@@ -849,5 +993,67 @@ mod tests {
         // The owning connection's teardown does remove it.
         assert!(mgr.remove(1, "D", new_conn).await);
         assert!(!mgr.send_to_device(1, "D", txt("cmd")).await);
+    }
+
+    fn snap(device_id: &str, device_type: &str) -> NowPlayingSnapshot {
+        NowPlayingSnapshot {
+            device_id: device_id.to_string(),
+            device_name: device_id.to_string(),
+            device_type: device_type.to_string(),
+            episode_id: 0,
+            is_youtube: false,
+            title: String::new(),
+            artwork_url: String::new(),
+            position_sec: 0.0,
+            duration_sec: 0.0,
+            playing: false,
+            speed: 1.0,
+            updated_at: 0,
+            capabilities: Vec::new(),
+            volume_level: None,
+            volume_muted: None,
+            ma_player_id: None,
+            group_members: None,
+            sleep_timer: None,
+        }
+    }
+
+    #[test]
+    fn music_assistant_players_leave_the_other_devices_list() {
+        let (devices, ma_devices) = partition_device_list(vec![
+            snap("web-1", "Web"),
+            snap("ma:1:kitchen", "music_assistant"),
+            snap("phone", "iOS"),
+            snap("ma:1:living", "Music_Assistant"),
+        ]);
+        assert_eq!(
+            devices
+                .iter()
+                .map(|d| d.device_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["web-1", "phone"]
+        );
+        assert_eq!(
+            ma_devices
+                .iter()
+                .map(|d| d.device_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ma:1:kitchen", "ma:1:living"]
+        );
+        let frame: serde_json::Value = serde_json::from_str(
+            &serde_json::to_string(&ServerMsg::Devices {
+                devices,
+                ma_devices,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(frame["type"], "devices");
+        assert!(frame["devices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|d| d["device_type"] != "music_assistant"));
+        assert_eq!(frame["ma_devices"].as_array().unwrap().len(), 2);
     }
 }

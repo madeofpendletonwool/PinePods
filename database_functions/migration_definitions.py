@@ -8917,3 +8917,56 @@ def migration_116_gpodder_session_app_password(conn, db_type: str) -> None:
         logger.info("Migration 116 completed")
     finally:
         cursor.close()
+
+
+@register_migration("119", "music_assistant_settings", "MusicAssistant: per-user Music Assistant server URL, encrypted token and the PinePods URL it fetches episodes from", requires=["003"], sqlite=True)
+def migration_119_music_assistant_settings(conn, db_type: str) -> None:
+    """Opt-in Music Assistant output. No row means the feature is off for that user. The API
+    encrypts the long-lived token with the same Fernet key as other secrets before it writes
+    TokenEncrypted."""
+    logger.info("Starting migration 119: Music Assistant settings")
+    cursor = conn.cursor()
+    try:
+        if db_type == "postgresql":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS "MusicAssistant" (
+                    userid INT PRIMARY KEY REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                    serverurl TEXT,
+                    tokenencrypted TEXT,
+                    externalbaseurl TEXT,
+                    updatedat TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        elif db_type == "sqlite":
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS "MusicAssistant" (
+                    userid INTEGER PRIMARY KEY REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    enabled BOOLEAN NOT NULL DEFAULT 0,
+                    serverurl TEXT,
+                    tokenencrypted TEXT,
+                    externalbaseurl TEXT,
+                    updatedat TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS MusicAssistant (
+                    UserID INT PRIMARY KEY,
+                    Enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                    ServerUrl TEXT,
+                    TokenEncrypted TEXT,
+                    ExternalBaseUrl TEXT,
+                    UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+                """
+            )
+        logger.info("Migration 119 completed")
+    finally:
+        cursor.close()

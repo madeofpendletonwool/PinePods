@@ -53,6 +53,31 @@ pub struct NowPlayingDevice {
     /// connect parameter, so it handles `LEGACY_ACTIONS`.
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// 0–100 when the device reported a volume (Music Assistant).
+    #[serde(default)]
+    pub volume_level: Option<f64>,
+    #[serde(default)]
+    pub volume_muted: Option<bool>,
+    /// Raw Music Assistant player id when this row is an MA device.
+    #[serde(default)]
+    pub ma_player_id: Option<String>,
+    /// Other player ids grouped with this one.
+    #[serde(default)]
+    pub group_members: Option<Vec<String>>,
+    /// Sleep timer running on this Music Assistant speaker.
+    #[serde(default)]
+    pub sleep_timer: Option<SleepTimer>,
+}
+
+/// Mirror of the server's `SleepTimer`.
+#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum SleepTimer {
+    /// Pauses at this Unix time (seconds).
+    Minutes { ends_at: i64 },
+    EndOfEpisode,
+    /// Episodes still to finish, the current one included.
+    Episodes { left: u32 },
 }
 
 /// What every client applied before devices could list their actions.
@@ -93,11 +118,15 @@ pub struct PendingRemotePlay {
     pub resume_pos_sec: Option<f64>,
 }
 
-/// Reactive store for the remote-control UI. `devices` excludes this device.
+/// Reactive store for the remote-control UI. `devices` excludes this device
+/// and every Music Assistant player. Speakers live in `ma_devices`.
 #[derive(Default, Clone, PartialEq, Store)]
 pub struct NowPlayingState {
     pub self_device_id: String,
     pub devices: Vec<NowPlayingDevice>,
+    /// Music Assistant players from `ma_devices`, plus any the server still
+    /// placed in `devices`. The speaker panel and now-playing bar read this.
+    pub ma_devices: Vec<NowPlayingDevice>,
     pub connected: bool,
     /// Set when an episode should start on this device (local "Play here" or an
     /// inbound command); the audio component observes this, plays, and clears it.
@@ -112,6 +141,8 @@ pub struct NowPlayingState {
 enum ServerMsg {
     Devices {
         devices: Vec<NowPlayingDevice>,
+        #[serde(default)]
+        ma_devices: Vec<NowPlayingDevice>,
     },
     Command {
         #[allow(dead_code)]
@@ -122,7 +153,6 @@ enum ServerMsg {
     },
     Ack {
         ok: bool,
-        #[allow(dead_code)]
         detail: String,
         #[serde(default)]
         cmd_id: Option<String>,
@@ -285,11 +315,13 @@ pub fn connect_now_playing_ws(server_name: String, user_id: i32, api_key: String
                         }
                     }
 
-                    // Disconnected — clear state, then fall through to reconnect.
+                    // Disconnected. Mark the socket down, but keep the last device
+                    // list. The next `devices` frame replaces it. Clearing here
+                    // unmounts the Music Assistant now-playing bar for the whole
+                    // reconnect gap even though the speakers have not gone away.
                     NP_TX.with(|c| *c.borrow_mut() = None);
                     Dispatch::<NowPlayingState>::global().reduce_mut(|s| {
                         s.connected = false;
-                        s.devices.clear();
                     });
 
                     // Another tab (e.g. a duplicated one) took over our id: take a
@@ -388,8 +420,8 @@ pub fn play_on_device(target_device_id: &str, episode_id: i32, is_youtube: bool)
 }
 
 /// "Send to ▸": hand off what this tab is playing to another device at our live
-/// position — the push mirror of "Play here". The local player pauses once the
-/// server acks delivery. Returns false when nothing is playing here.
+/// position — the push mirror of "Play here". The local player pauses only after
+/// the server acks success. Returns false when nothing is playing here.
 pub fn send_playback_to(target_device_id: &str) -> bool {
     let state = Dispatch::<UIState>::global().get();
     let Some(cp) = state.currently_playing.as_ref() else {
@@ -428,21 +460,37 @@ fn take_handoff(cmd_id: &Option<String>) -> bool {
 
 fn handle_inbound(text: &str) {
     match serde_json::from_str::<ServerMsg>(text) {
-        Ok(ServerMsg::Devices { devices }) => {
+        Ok(ServerMsg::Devices {
+            devices,
+            ma_devices,
+        }) => {
             Dispatch::<NowPlayingState>::global().reduce_mut(|s| {
                 let self_id = s.self_device_id.clone();
-                s.devices = devices
-                    .into_iter()
-                    .filter(|d| d.device_id != self_id)
-                    .collect();
+                let mut speakers = ma_devices;
+                speakers.retain(|d| d.device_id != self_id);
+                let mut others = Vec::new();
+                for device in devices {
+                    if device.device_id == self_id {
+                        continue;
+                    }
+                    if crate::requests::music_assistant::is_music_assistant(&device.device_type) {
+                        if speakers.iter().all(|d| d.device_id != device.device_id) {
+                            speakers.push(device);
+                        }
+                    } else {
+                        others.push(device);
+                    }
+                }
+                s.devices = others;
+                s.ma_devices = speakers;
             });
         }
         Ok(ServerMsg::Command { action, args, .. }) => apply_command(&action, &args),
         Ok(ServerMsg::Ack {
             ok: false,
+            detail,
             cmd_id,
             target_device_id,
-            ..
         }) => {
             // A failed handoff leaves local playback running.
             take_handoff(&cmd_id);
@@ -454,10 +502,13 @@ fn handle_inbound(text: &str) {
                 .map(|d| d.device_name.clone())
                 .filter(|n| !n.is_empty())
                 .unwrap_or_else(|| "That device".to_string());
-            toast_error(
-                &Dispatch::<NotificationState>::global(),
-                format!("{} is offline — command not delivered", name),
-            );
+            let offline = format!("{name} is offline — command not delivered");
+            let message = if detail.trim().is_empty() || detail == "device offline" {
+                offline
+            } else {
+                detail
+            };
+            toast_error(&Dispatch::<NotificationState>::global(), message);
         }
         Ok(ServerMsg::Ack {
             ok: true, cmd_id, ..
@@ -533,6 +584,36 @@ fn apply_command(action: &str, args: &Value) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NowPlayingDevice;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    fn music_assistant_snapshot_fields_and_capabilities() {
+        let raw = r#"{
+            "device_id":"ma:1:kitchen",
+            "device_type":"music_assistant",
+            "volume_level":20,
+            "volume_muted":false,
+            "ma_player_id":"kitchen",
+            "group_members":["living"],
+            "capabilities":["play","pause","volume_set","group_volume"]
+        }"#;
+        let device: NowPlayingDevice = serde_json::from_str(raw).unwrap();
+        assert_eq!(device.volume_level, Some(20.0));
+        assert_eq!(device.volume_muted, Some(false));
+        assert_eq!(device.ma_player_id.as_deref(), Some("kitchen"));
+        assert_eq!(
+            device.group_members.as_deref(),
+            Some(["living".to_string()].as_slice())
+        );
+        assert!(device.supports("volume_set"));
+        assert!(!device.supports("seek"));
     }
 }
 

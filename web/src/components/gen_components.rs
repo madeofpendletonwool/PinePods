@@ -677,6 +677,7 @@ pub fn search_bar() -> Html {
                 }
             </div>
             <RemoteDevicesPanel />
+            <crate::components::music_assistant::MusicAssistantHost />
             <ToastNotification />
         </div>
     }

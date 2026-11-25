@@ -8,18 +8,24 @@
 // is mounted once regardless of layout, so narrow screens still receive beams and
 // the full-screen player can open the drawer via `NowPlayingState::panel_open`.
 
+use gloo_timers::callback::Interval;
 use serde_json::json;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
 
 use crate::components::audio::on_play_click;
+use crate::components::context::NotificationState;
 use crate::components::context::{AppState, UIState};
+use crate::requests::music_assistant::send_to_speaker_allowed;
+use crate::components::music_assistant::{device_is_ma, now_unix, SeekSlider, VolumeControl};
+use crate::requests::music_assistant::{
+    displayed_position, include_in_other_devices, MusicAssistantState,
+};
+use crate::requests::notify::toast_info;
 use crate::requests::now_playing::{
     send_command, send_playback_to, NowPlayingDevice, NowPlayingState, PendingRemotePlay,
 };
-use crate::requests::notify::toast_info;
-use crate::components::context::NotificationState;
 use crate::requests::pod_req::{call_get_episode_metadata, EpisodeRequest};
 use crate::components::i18n::use_translation;
 
@@ -44,6 +50,7 @@ pub fn device_icon(device_type: &str) -> &'static str {
         "web" => "ph ph-browser",
         "ios" | "android" | "mobile" => "ph ph-device-mobile",
         "firewood" => "ph ph-terminal-window",
+        "music_assistant" => "ph ph-speaker-high",
         _ => "ph ph-monitor",
     }
 }
@@ -65,7 +72,11 @@ pub fn remote_devices() -> Html {
         e.stop_propagation();
         np_dispatch.reduce_mut(|s| s.panel_open = !s.panel_open);
     });
-    let device_count = np_state.devices.len();
+    let device_count = np_state
+        .devices
+        .iter()
+        .filter(|d| include_in_other_devices(&d.device_type))
+        .count();
     html! {
         <div class="remote-devices">
             <button
@@ -106,6 +117,24 @@ pub fn remote_devices_panel() -> Html {
     let i18n_other_devices = i18n.t("remote_devices.other_devices").to_string();
     let i18n_no_other_devices = i18n.t("remote_devices.no_other_devices").to_string();
     let i18n_no_devices_description = i18n.t("remote_devices.no_devices_description").to_string();
+    let i18n_speakers = i18n.t("music_assistant.speakers").to_string();
+    let i18n_volume = i18n.t("music_assistant.volume").to_string();
+    let i18n_group_volume = i18n.t("music_assistant.group_volume").to_string();
+    let i18n_stop = i18n.t("music_assistant.stop").to_string();
+    let i18n_seek = i18n.t("music_assistant.seek").to_string();
+    let i18n_skip_back = i18n.t("music_assistant.skip_back").to_string();
+    let i18n_skip_fwd = i18n.t("music_assistant.skip_forward").to_string();
+    let ma_enabled = use_selector(|s: &MusicAssistantState| s.enabled);
+    let open_speakers = {
+        let np_dispatch = np_dispatch.clone();
+        Callback::from(move |_: MouseEvent| {
+            np_dispatch.reduce_mut(|s| s.panel_open = false);
+            Dispatch::<MusicAssistantState>::global().reduce_mut(|s| {
+                s.pending_episode = None;
+                s.picker_open = true;
+            });
+        })
+    };
 
     // Observe "Play here" / inbound remote-play requests and start playback on THIS
     // device. This lives here (not in AudioPlayer) because AudioPlayer only mounts
@@ -176,6 +205,36 @@ pub fn remote_devices_panel() -> Html {
         });
     }
 
+    let other_devices: Vec<&NowPlayingDevice> = np_state
+        .devices
+        .iter()
+        .filter(|d| include_in_other_devices(&d.device_type))
+        .collect();
+    let ma_devices: Vec<&NowPlayingDevice> = np_state
+        .ma_devices
+        .iter()
+        .filter(|d| d.episode_id != 0)
+        .collect();
+    let ma_playing = ma_devices.iter().any(|d| d.playing);
+    let tick = use_state(|| 0u32);
+    {
+        let tick = tick.clone();
+        use_effect_with((open, ma_playing), move |(open, playing)| {
+            let iv = if *open && *playing {
+                let tick = tick.clone();
+                Some(Interval::new(1_000, move || {
+                    let next = *tick + 1;
+                    tick.set(next);
+                }))
+            } else {
+                None
+            };
+            move || drop(iv)
+        });
+    }
+    let _ = *tick;
+    let now = now_unix();
+
     let close = {
         let np_dispatch = np_dispatch.clone();
         Callback::from(move |_: MouseEvent| np_dispatch.reduce_mut(|s| s.panel_open = false))
@@ -190,6 +249,12 @@ pub fn remote_devices_panel() -> Html {
         let i18n_play_here = i18n_play_here.clone();
         let i18n_send_here = i18n_send_here.clone();
         let i18n_sent_to = i18n_sent_to.clone();
+        let i18n_volume = i18n_volume.clone();
+        let i18n_group_volume = i18n_group_volume.clone();
+        let i18n_stop = i18n_stop.clone();
+        let i18n_seek = i18n_seek.clone();
+        let i18n_skip_back = i18n_skip_back.clone();
+        let i18n_skip_fwd = i18n_skip_fwd.clone();
         let notif_dispatch = notif_dispatch.clone();
         move |device: &NowPlayingDevice| -> Html {
             let id = device.device_id.clone();
@@ -201,7 +266,13 @@ pub fn remote_devices_panel() -> Html {
             let can_skip_back = device.supports("skip_back");
             let can_skip_fwd = device.supports("skip_forward");
             let can_play_pause = device.supports(if is_playing { "pause" } else { "play" });
-            let can_send_here = local_playing && device.supports("play_episode");
+            // Offline playback is a file only this browser can reach.
+            let can_send_here = device.supports("play_episode")
+                && if device_is_ma(&device.device_type) {
+                    send_to_speaker_allowed(local_playing, ui_state.offline == Some(true))
+                } else {
+                    local_playing
+                };
             let source_pauses = device.supports("pause");
 
             let on_play_pause = {
@@ -217,17 +288,31 @@ pub fn remote_devices_panel() -> Html {
                     send_command(&id, "skip_back", json!({ "seconds": 15 }));
                 })
             };
+            // A speaker skips 15 seconds both ways, as its own bar does.
+            let ma = device_is_ma(&device.device_type);
+            let fwd_seconds = if ma { 15 } else { 30 };
             let on_fwd = {
                 let id = id.clone();
                 Callback::from(move |_: MouseEvent| {
-                    send_command(&id, "skip_forward", json!({ "seconds": 30 }));
+                    send_command(&id, "skip_forward", json!({ "seconds": fwd_seconds }));
                 })
+            };
+            let shown = if ma {
+                displayed_position(
+                    device.position_sec,
+                    device.playing,
+                    1.0,
+                    device.updated_at,
+                    now,
+                )
+            } else {
+                device.position_sec
             };
             let on_play_here = {
                 let np_dispatch = np_dispatch.clone();
                 let episode_id = device.episode_id;
                 let is_youtube = device.is_youtube;
-                let position_sec = device.position_sec;
+                let position_sec = shown;
                 let source_id = id.clone();
                 let source_playing = is_playing;
                 Callback::from(move |_: MouseEvent| {
@@ -270,11 +355,15 @@ pub fn remote_devices_panel() -> Html {
                 device.title.clone()
             };
             let progress = if device.duration_sec > 0.0 {
-                format!("{} / {}", fmt_time(device.position_sec), fmt_time(device.duration_sec))
+                format!("{} / {}", fmt_time(shown), fmt_time(device.duration_sec))
             } else {
-                fmt_time(device.position_sec)
+                fmt_time(shown)
             };
-
+            let grouped = device
+                .group_members
+                .as_ref()
+                .map(|members| !members.is_empty())
+                .unwrap_or(false);
             html! {
                 <div class="rd-row">
                     <div class="rd-row-top">
@@ -296,7 +385,7 @@ pub fn remote_devices_panel() -> Html {
                         // search <form> (an empty-query search ate the click).
                         if !is_idle {
                         if can_skip_back {
-                        <button type="button" class="iconbtn" title="Skip back 15s" onclick={on_back}>
+                        <button type="button" class="iconbtn" title={if ma { i18n_skip_back.clone() } else { "Skip back 15s".to_string() }} onclick={on_back}>
                             <i class="ph ph-skip-back"></i>
                         </button>
                         }
@@ -306,8 +395,18 @@ pub fn remote_devices_panel() -> Html {
                         </button>
                         }
                         if can_skip_fwd {
-                        <button type="button" class="iconbtn" title="Skip forward 30s" onclick={on_fwd}>
+                        <button type="button" class="iconbtn" title={if ma { i18n_skip_fwd.clone() } else { "Skip forward 30s".to_string() }} onclick={on_fwd}>
                             <i class="ph ph-skip-forward"></i>
+                        </button>
+                        }
+                        if device_is_ma(&device.device_type) && device.supports("stop") {
+                        <button type="button" class="iconbtn" title={i18n_stop.clone()} onclick={{
+                            let id = id.clone();
+                            Callback::from(move |_: MouseEvent| {
+                                send_command(&id, "stop", json!({}));
+                            })
+                        }}>
+                            <i class="ph ph-stop"></i>
                         </button>
                         }
                         }
@@ -325,6 +424,35 @@ pub fn remote_devices_panel() -> Html {
                         </div>
                     </div>
                     }
+                    if ma && !is_idle && device.duration_sec > 0.0 && device.supports("seek") {
+                        <SeekSlider
+                            device_id={id.clone()}
+                            shown={shown}
+                            duration={device.duration_sec}
+                            label={i18n_seek.clone()}
+                        />
+                    }
+                    if ma {
+                        if let Some(level) = device.volume_level {
+                            if grouped && device.supports("group_volume") {
+                                <VolumeControl
+                                    device_id={id.clone()}
+                                    level={level}
+                                    muted={device.volume_muted.unwrap_or(false)}
+                                    group={true}
+                                    label={i18n_group_volume.clone()}
+                                />
+                            } else if device.supports("volume_set") {
+                                <VolumeControl
+                                    device_id={id.clone()}
+                                    level={level}
+                                    muted={device.volume_muted.unwrap_or(false)}
+                                    group={false}
+                                    label={i18n_volume.clone()}
+                                />
+                            }
+                        }
+                    }
                 </div>
             }
         }
@@ -339,20 +467,26 @@ pub fn remote_devices_panel() -> Html {
                  data-density="compact" onclick={stop}>
                 <div class="nc-header">
                     <h3 class="nc-h-title">{ &i18n_other_devices }</h3>
+                    if *ma_enabled {
+                        <button type="button" class="rd-play-here" onclick={open_speakers}>
+                            <i class="ph ph-speaker-high mr-1"></i>{ &i18n_speakers }
+                        </button>
+                    }
                     <div class="nc-h-spacer"></div>
                     <button type="button" class="nc-h-btn" title="Close" onclick={close.clone()}>
                         <i class="ph ph-arrow-line-right"></i>
                     </button>
                 </div>
                 <div class="nc-body">
-                    if np_state.devices.is_empty() {
+                    if other_devices.is_empty() && ma_devices.is_empty() {
                         <div class="nc-empty">
                             <span class="nc-empty-ico"><i class="ph ph-broadcast"></i></span>
                             <div class="nc-empty-t">{ &i18n_no_other_devices }</div>
                             <div class="nc-empty-s">{ &i18n_no_devices_description }</div>
                         </div>
                     } else {
-                        { for np_state.devices.iter().map(|d| render_device(d)) }
+                        { for ma_devices.iter().copied().map(|device| render_device(device)) }
+                        { for other_devices.iter().copied().map(|device| render_device(device)) }
                     }
                 </div>
             </div>

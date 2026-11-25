@@ -246,6 +246,7 @@ fn language_manager() -> Html {
             </NavigationHandler>
             <RestoreOverlay />
             <CollectionPickerModal />
+            <crate::components::music_assistant::PlaybackFocusTracker />
             <LabelPickerModal />
         </BrowserRouter>
     }

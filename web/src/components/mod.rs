@@ -1,5 +1,6 @@
 // In components/mod.rs
 pub(crate) mod audio_player_bar;
+pub(crate) mod chapter_list;
 pub(crate) mod app_drawer;
 pub(crate) mod context_menu_button;
 pub(crate) mod collection_picker_modal;
@@ -17,6 +18,7 @@ pub mod login_shell;
 pub mod misc_func;
 pub(crate) mod navigation;
 pub(crate) mod notification_center;
+pub(crate) mod music_assistant;
 pub(crate) mod remote_devices;
 pub(crate) mod oauth_callback;
 pub(crate) mod restore_overlay;

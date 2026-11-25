@@ -52,6 +52,8 @@ pub struct AppState {
     pub task_spawner: Arc<TaskSpawner>,
     pub websocket_manager: Arc<WebSocketManager>,
     pub now_playing_manager: Arc<handlers::nowplaying::NowPlayingManager>,
+    /// Per-user Music Assistant sessions. Idle until a user enables the feature.
+    pub music_assistant: services::music_assistant::MusicAssistantHub,
     /// Unique id for this API process, used by the now-playing pub/sub bridge to
     /// ignore the messages it published itself (it already handled them locally).
     pub instance_id: Arc<str>,
@@ -240,6 +242,13 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::podcasts::queue_episode))
         .routes(routes!(handlers::podcasts::queue_episode_to_top))
         .routes(routes!(handlers::nowplaying::now_playing_devices))
+        .routes(routes!(
+            handlers::music_assistant::get_music_assistant_settings,
+            handlers::music_assistant::update_music_assistant_settings
+        ))
+        .routes(routes!(handlers::music_assistant::test_music_assistant))
+        .routes(routes!(handlers::music_assistant::list_music_assistant_players))
+        .routes(routes!(handlers::music_assistant::music_assistant_command))
         .routes(routes!(handlers::podcasts::remove_queued_episode))
         .routes(routes!(handlers::podcasts::get_queued_episodes))
         .routes(routes!(handlers::podcasts::reorder_queue))

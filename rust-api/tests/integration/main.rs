@@ -23,6 +23,7 @@ mod in_app_notifications;
 mod inbox;
 mod task_list;
 mod library;
+mod music_assistant;
 mod listening_report;
 mod local_media;
 mod mobile_contract;

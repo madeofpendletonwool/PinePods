@@ -1,13 +1,34 @@
 use crate::components::audio::AudioPlayer;
 use crate::components::context::UIState;
+use crate::components::music_assistant::MaNowPlayingBar;
+use crate::requests::music_assistant::{
+    show_ma_now_playing, MusicAssistantState, PlaybackCandidate,
+};
+use crate::requests::now_playing::NowPlayingState;
 use yew::{function_component, html, Html};
 use yewdux::prelude::*;
 
 /// Isolated AudioPlayer wrapper — owns the UIState subscription so that
 /// audio state changes never cause parent page components to re-render.
+/// While this browser is not playing, the bar follows a Music Assistant
+/// speaker when `show_ma_now_playing` says so (see `PlaybackFocus`).
 #[function_component(AudioPlayerBar)]
 pub fn audio_player_bar() -> Html {
     let (audio_state, _) = use_store::<UIState>();
+    let (ma, _) = use_store::<MusicAssistantState>();
+    let (np, _) = use_store::<NowPlayingState>();
+    let candidates: Vec<PlaybackCandidate> =
+        np.ma_devices.iter().map(PlaybackCandidate::from).collect();
+    let local_playing = audio_state.audio_playing == Some(true);
+    if show_ma_now_playing(
+        ma.enabled,
+        local_playing,
+        audio_state.currently_playing.is_some(),
+        &candidates,
+        &ma.focus,
+    ) {
+        return html! { <MaNowPlayingBar /> };
+    }
     if let Some(audio_props) = &audio_state.currently_playing {
         html! {
             <AudioPlayer

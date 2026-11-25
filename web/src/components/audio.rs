@@ -1,8 +1,8 @@
 use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigationState, EpisodeStatusState, PodcastFeedState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::context::NotificationState;
+use crate::components::chapter_list::ChapterList;
 use crate::components::gen_components::{EpisodeModal, FallbackImage};
-use crate::components::gen_funcs::format_time_rm_hour;
 use crate::components::people::{PeopleLayout, PeopleStrip};
 use crate::components::player_ui::{ProgressLine, SeekBar, SpeedControl, VolumeControl};
 use crate::requests::people_req::call_get_episode_people;
@@ -82,10 +82,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     );
 
     // Capture i18n strings before they get moved
-    let i18n_chapters = i18n.t("audio.chapters").to_string();
-    let i18n_close_modal = i18n.t("common.close_modal").to_string();
-    let i18n_no_audio_playing = i18n.t("audio.no_audio_playing").to_string();
-    let i18n_no_chapters_available = i18n.t("audio.no_chapters_available").to_string();
     let _i18n_shownotes = i18n.t("audio.shownotes").to_string();
     let _i18n_shownotes_unavailable = i18n.t("audio.shownotes_unavailable").to_string();
     let i18n_now_playing = i18n.t("audio.now_playing").to_string();
@@ -463,6 +459,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         {
                             return;
                         }
+                    }
+                    // Space and the arrow keys go to the speaker bar while a
+                    // Music Assistant speaker is the active target, so they
+                    // must not play or seek the local media element.
+                    if bar_follows_speaker() && matches!(event.key().as_str(), " " | "ArrowLeft" | "ArrowRight") {
+                        return;
                     }
                     use crate::components::player_ui::{seek_by, toggle_play};
                     match event.key().as_str() {
@@ -1114,125 +1116,19 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             page_state.set(PageState::Shown);
         })
     };
-    let stop_propagation = Callback::from(|e: MouseEvent| {
-        e.stop_propagation();
-    });
-    let audio_dispatch = _audio_dispatch.clone();
-    let chapter_select_modal = html! {
-        <div id="chapter-select-modal" tabindex="-1" aria-hidden="true"
-            class="chapter-select-modal fixed top-0 right-0 left-0 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25"
-            onclick={on_close_modal.clone()}>  // Add this onclick handler
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow"
-                onclick={stop_propagation.clone()}>  // Add this to prevent clicks inside the modal from closing it
-                <div class="modal-container relative rounded-lg shadow">
-                    // Header remains the same
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                        <h3 class="text-xl font-semibold">{&i18n_chapters}</h3>
-                        <button onclick={on_close_modal.clone()}
-                            class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center">
-                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                            </svg>
-                            <span class="sr-only">{&i18n_close_modal}</span>
-                        </button>
-                    </div>
-
-                    // Updated chapters list
-                    <div class="p-4 md:p-5 max-h-[70vh] overflow-y-auto">
-                        { if let Some(chapters) = &audio_state.episode_chapters {
-                            if let Some(audio_props) = &audio_state.currently_playing {
-                                chapters.iter().enumerate().map(|(index, chapter)| {
-                                    let start_time = chapter.startTime.unwrap_or_default() as f64;
-                                    let end_time = if index < chapters.len() - 1 {
-                                        chapters[index + 1].startTime.unwrap_or_default() as f64
-                                    } else {
-                                        audio_props.duration_sec
-                                    };
-                                    let chapter_duration = end_time - start_time;
-
-                                    // Calculate if this is the current chapter
-                                    let is_current_chapter = audio_state.current_time_seconds >= start_time
-                                        && audio_state.current_time_seconds < end_time;
-
-                                    // Calculate progress for this chapter
-                                    let chapter_progress = if is_current_chapter {
-                                        ((audio_state.current_time_seconds - start_time) / chapter_duration * 100.0)
-                                            .clamp(0.0, 100.0)
-                                    } else if audio_state.current_time_seconds >= end_time {
-                                        100.0
-                                    } else {
-                                        0.0
-                                    };
-
-                                    let formatted_start = format_time_rm_hour(start_time as i32);
-                                    let click_start_time = start_time;
-                                    let on_chapter_click = on_chapter_click.clone();
-                                    let on_chapter_click_button = on_chapter_click.clone();
-
-                                    let click_handler = {
-                                        let dispatch = audio_dispatch.clone();
-                                        Callback::from(move |_| {
-                                            if is_current_chapter {
-                                                dispatch.reduce_mut(UIState::toggle_playback);
-                                            } else {
-                                                on_chapter_click.emit(click_start_time as i32);
-                                            }
-                                        })
-                                    };
-                                    let button_click_handler = {
-                                        let dispatch = audio_dispatch.clone();
-                                        Callback::from(move |e: MouseEvent| {
-                                            e.stop_propagation();
-                                            if is_current_chapter {
-                                                dispatch.reduce_mut(UIState::toggle_playback);
-                                            } else {
-                                                on_chapter_click_button.emit(click_start_time as i32);
-                                            }
-                                        })
-                                    };
-
-                                    html! {
-                                        <div
-                                            class={classes!(
-                                                "chapter-item",
-                                                is_current_chapter.then(|| "current-chapter")
-                                            )}
-                                            onclick={click_handler}
-                                        >
-                                            <button
-                                                class="chapter-play-button"
-                                                onclick={button_click_handler}
-                                            >
-                                                if is_current_chapter && audio_state.audio_playing.unwrap_or(false) {
-                                                    <i class="ph ph-pause text-xl"></i>
-                                                } else {
-                                                    <i class="ph ph-play text-xl"></i>
-                                                }
-                                            </button>
-                                            <div class="chapter-info">
-                                                <span class="chapter-title">{ &chapter.title }</span>
-                                                <span class="chapter-time">{ formatted_start }</span>
-                                                // Progress bar
-                                                <div class="chapter-progress-container">
-                                                    <div
-                                                        class="chapter-progress-bar"
-                                                        style={format!("width: {}%", chapter_progress)}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    }
-                                }).collect::<Html>()
-                            } else {
-                                html! { <div class="text-center p-4">{&i18n_no_audio_playing}</div> }
-                            }
-                        } else {
-                            html! { <div class="text-center p-4">{&i18n_no_chapters_available}</div> }
-                        }}
-                    </div>
-                </div>
-            </div>
-        </div>
+    let chapter_select_modal = {
+        let audio_dispatch = _audio_dispatch.clone();
+        html! {
+            <ChapterList
+                chapters={Rc::new(audio_state.episode_chapters.clone().unwrap_or_default())}
+                position={audio_state.current_time_seconds}
+                duration={audio_state.currently_playing.as_ref().map(|p| p.duration_sec).unwrap_or(0.0)}
+                playing={audio_state.audio_playing.unwrap_or(false)}
+                on_seek={on_chapter_click.reform(|start: f64| start as i32)}
+                on_toggle={Callback::from(move |_: ()| audio_dispatch.reduce_mut(UIState::toggle_playback))}
+                on_close={on_close_modal}
+            />
+        }
     };
 
     let audio_state = _audio_dispatch.get();
@@ -1665,6 +1561,24 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     } else {
         html! {}
     }
+}
+
+/// Whether the bottom bar is following a Music Assistant speaker. Keydown
+/// listeners from earlier player mounts stay registered (the effect's
+/// cleanup forgets them), so they check this before touching local media.
+fn bar_follows_speaker() -> bool {
+    let ma = Dispatch::<crate::requests::music_assistant::MusicAssistantState>::global().get();
+    let np = Dispatch::<crate::requests::now_playing::NowPlayingState>::global().get();
+    let ui = Dispatch::<UIState>::global().get();
+    let devices: Vec<crate::requests::music_assistant::PlaybackCandidate> =
+        np.ma_devices.iter().map(Into::into).collect();
+    crate::requests::music_assistant::show_ma_now_playing(
+        ma.enabled,
+        ui.audio_playing == Some(true),
+        ui.currently_playing.is_some(),
+        &devices,
+        &ma.focus,
+    )
 }
 
 pub fn on_play_pause(
