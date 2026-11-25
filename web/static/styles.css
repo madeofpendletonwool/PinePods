@@ -4751,9 +4751,6 @@ button.item-container-action-button.item-container-action-button {
     border-width: 1px;
 }
 
-.tab-base {
-    @apply px-6 py-3 font-medium transition-all relative;
-}
 
 .tab-hightlight-colors {
     color: var(--text-color);
@@ -4765,13 +4762,9 @@ button.item-container-action-button.item-container-action-button {
     background-color: var(--secondary-background);
 }
 
-.tab-active {
-    @apply text-accent-color;
-}
 
 .tab-active::after {
     content: "";
-    @apply absolute bottom-0 left-0 w-full h-0.5 bg-accent-color;
 }
 
 /* Specific targeting for first and last accordion item */
@@ -4809,21 +4802,9 @@ button.item-container-action-button.item-container-action-button {
 }
 
 /* Accordion styling */
-.accordion-container {
-    @apply border-0; /* Remove default borders */
-}
 
-.accordion-button {
-    @apply w-full px-6 py-4 flex items-center justify-between transition-colors hover:bg-opacity-5 hover:bg-white;
-}
 
-.accordion-content {
-    @apply px-6 py-4 bg-opacity-5 bg-black;
-}
 
-.accordion-arrow {
-    @apply w-5 h-5 transition-transform duration-200 text-accent-color;
-}
 
 /* Remove the hover circle and replace with subtle background */
 .accordion-button:hover::before {
@@ -4831,18 +4812,9 @@ button.item-container-action-button.item-container-action-button {
 }
 
 /* Setting box container */
-.setting-box {
-    @apply bg-transparent border-0 shadow-none;
-}
 
 /* First and last items */
-.accordion-container:first-child .accordion-button {
-    @apply rounded-t-xl;
-}
 
-.accordion-container:last-child .accordion-button {
-    @apply rounded-b-xl;
-}
 
 .hosts-arrow {
     margin-bottom: 0.2rem;
@@ -4873,9 +4845,6 @@ button.item-container-action-button.item-container-action-button {
     /* Ensure it's visible above the button background but below text/icons */
 }
 
-.accordion-button {
-    @apply w-full px-6 py-4 flex items-center justify-between transition-colors hover:bg-opacity-5 hover:bg-white;
-}
 
 /* Styles for the select dropdown */
 .theme-select-dropdown {

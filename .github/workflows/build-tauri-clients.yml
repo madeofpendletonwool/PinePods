@@ -95,15 +95,10 @@ jobs:
         run: |
           rustup target add wasm32-unknown-unknown
 
-      - name: Install Trunk (macOS)
-        if: matrix.os == 'macos-latest'
+      # Same trunk as the dockerfile: newer trunk pulls a different Tailwind and changes the CSS.
+      - name: Install Trunk
         run: |
-          brew install trunk
-
-      - name: Install Trunk (Linux/Windows)
-        if: matrix.os != 'macos-latest'
-        run: |
-          cargo binstall trunk -y
+          cargo binstall trunk@0.21.14 -y
 
       - name: Install Tauri
         run: |
