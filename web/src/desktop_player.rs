@@ -277,8 +277,12 @@ pub fn mini_player() -> Html {
     }
 }
 
-/// Root of the mini player window.
-#[function_component(MiniPlayerApp)]
-pub fn mini_player_app() -> Html {
-    html! { <MiniPlayer /> }
+/// Root of the mini player window: the player, in the app's language.
+#[function_component(MiniPlayerRoot)]
+pub fn mini_player_root() -> Html {
+    html! {
+        <crate::components::i18n::TranslationProvider translations={crate::components::i18n::all_translations()} default_language="en">
+            <MiniPlayer />
+        </crate::components::i18n::TranslationProvider>
+    }
 }

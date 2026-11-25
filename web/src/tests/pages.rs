@@ -482,3 +482,17 @@ fn images_can_be_stripped_from_descriptions() {
     let clean = strip_images_from_html(r#"<p>Before<img src="x.png">After</p>"#);
     assert_eq!(clean, "<p>BeforeAfter</p>");
 }
+
+/// The mini player window mounts its own root (no app shell around it), so it must bring its
+/// own translations.
+#[wasm_bindgen_test]
+async fn mini_player_window_renders_on_its_own() {
+    let document = web_sys::window().unwrap().document().unwrap();
+    let root = document.create_element("div").unwrap();
+    document.body().unwrap().append_child(&root).unwrap();
+    let app = yew::Renderer::<crate::desktop_player::MiniPlayerRoot>::with_root(root.clone()).render();
+    TimeoutFuture::new(100).await;
+    assert_shows(&text(&root), "Nothing playing");
+    app.destroy();
+    root.remove();
+}
