@@ -579,7 +579,7 @@ pub async fn fetch_active_tasks(
 
     match Request::get(&url)
         .header("Content-Type", "application/json")
-        .header("X-Api-Key", &api_key)
+        .header("Api-Key", &api_key)
         .send()
         .await
     {
