@@ -138,8 +138,22 @@ struct DesktopInfo {
 
 #[derive(Deserialize)]
 struct DownloadList {
-    episodes: Vec<Episode>,
+    episodes: Vec<serde_json::Value>,
     active: Vec<Progress>,
+}
+
+/// Parse each record on its own, so one bad record doesn't hide the rest.
+fn parse_episodes(values: Vec<serde_json::Value>) -> Vec<Episode> {
+    values
+        .into_iter()
+        .filter_map(|v| match serde_json::from_value::<Episode>(v) {
+            Ok(ep) => Some(ep),
+            Err(e) => {
+                log_error(format!("skipped a downloaded episode that couldn't be read: {e}"));
+                None
+            }
+        })
+        .collect()
 }
 
 /// Messages shown when a download ends, translated by the caller.
@@ -238,7 +252,7 @@ pub async fn refresh() {
         Ok(list) => {
             Dispatch::<EpisodeStatusState>::global().reduce_mut(move |s| {
                 s.downloaded_episodes.clear_local();
-                for ep in list.episodes {
+                for ep in parse_episodes(list.episodes) {
                     s.downloaded_episodes.push_local(ep);
                 }
             });

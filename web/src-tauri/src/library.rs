@@ -206,10 +206,13 @@ impl Library {
             let artwork_file = (old_art.is_file()
                 && fs::rename(&old_art, self.downloads_dir.join(format!("{id}-art.jpg"))).is_ok())
             .then(|| format!("{id}-art.jpg"));
-            // 0.7 stored these under different names.
-            for (old_key, new_key) in [("is_queued", "queued"), ("is_saved", "saved")] {
-                if let Some(v) = episode.get(old_key).cloned() {
-                    episode[new_key] = v;
+            // 0.7 stored these under different names; keep one name each (the app reads both
+            // names into the same field and rejects a record that has both).
+            if let Some(obj) = episode.as_object_mut() {
+                for (old_key, new_key) in [("is_queued", "queued"), ("is_saved", "saved")] {
+                    if let Some(v) = obj.remove(old_key) {
+                        obj.insert(new_key.to_string(), v);
+                    }
                 }
             }
             let size = fs::metadata(self.downloads_dir.join(&file)).map(|m| m.len()).unwrap_or(0);
@@ -336,6 +339,7 @@ mod tests {
         assert_eq!(ep.file, "9.mp3");
         assert_eq!(ep.artwork_file.as_deref(), Some("9-art.jpg"));
         assert_eq!(ep.episode["saved"], json!(true));
+        assert!(ep.episode.get("is_saved").is_none());
         assert!(dir.join("downloads/9.mp3").exists());
         assert!(dir.join("local_episodes.json.migrated").exists());
         assert_eq!(Library::open(&dir).episodes().len(), 1);
