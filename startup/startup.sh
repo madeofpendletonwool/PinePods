@@ -163,21 +163,6 @@ fi
 mkdir -p /opt/pinepods/local-media  # User-mounted media library; app writes artwork here
 mkdir -p /var/log/pinepods  # Make sure log directory exists
 
-# Seed the persistent, self-updating yt-dlp binary (#793). yt-dlp updates itself at runtime
-# (yt-dlp --update-to), so it must live on a persistent, user-writable path rather than the
-# root-owned image layer. Seed from the baked-in binary on first boot; later boots keep whatever
-# the self-updater has fetched. Chown to the runtime user so --update-to can replace it in place,
-# even on existing installs where the one-time recursive perms migration already ran.
-YTDLP_BIN_DIR=$(dirname "$YTDLP_PATH")
-mkdir -p "$YTDLP_BIN_DIR"
-if [ ! -x "$YTDLP_PATH" ] && [ -x /usr/local/bin/yt-dlp ]; then
-    echo "Seeding managed yt-dlp binary from image..."
-    cp /usr/local/bin/yt-dlp "$YTDLP_PATH" && chmod +x "$YTDLP_PATH"
-fi
-if [ -n "${PUID}" ] && [ -n "${PGID}" ]; then
-    chown -R "${PUID}:${PGID}" "$YTDLP_BIN_DIR" 2>/dev/null || true
-fi
-
 # Database Setup
 echo "Using $DB_TYPE database"
 # Use compiled database setup binary (no Python dependency)
@@ -280,13 +265,17 @@ if [[ -n "$PUID" && -n "$PGID" ]]; then
         fi
     fi
 
+    # Repair managed binaries created by earlier versions on local volumes, including
+    # custom YTDLP_PATH locations. NFS may deny root access; the runtime user seeds
+    # the binary below, after dropping privileges, without requiring a chown.
+    mkdir -p "$(dirname "$YTDLP_PATH")" 2>/dev/null || true
+    chown -R "${PUID}:${PGID}" "$(dirname "$YTDLP_PATH")" 2>/dev/null || true
+
     echo "Starting services as ${PUID}:${PGID} with Horust..."
-    echo "PinePods startup complete, running Horust in foreground..."
-    exec su-exec "${PUID}:${PGID}" horust --services-path /etc/horust/services/
+    exec su-exec "${PUID}:${PGID}" bash /pinepods/startup/start-services.sh
 else
     echo "PUID/PGID not set — running as root (legacy mode)."
     echo "Starting services with Horust..."
-    echo "PinePods startup complete, running Horust in foreground..."
-    exec horust --services-path /etc/horust/services/
+    exec bash /pinepods/startup/start-services.sh
 fi
 
