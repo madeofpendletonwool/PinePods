@@ -33,6 +33,26 @@ pub fn import_options() -> Html {
     let total_podcasts = use_state(|| 0);
     let current_podcast = use_state(String::default);
 
+    // An OPML file dropped on the desktop app's window.
+    let dropped_opml = use_selector(|s: &crate::desktop::DesktopState| s.opml.clone());
+    {
+        let import_pods = import_pods.clone();
+        let show_verification = show_verification.clone();
+        use_effect_with((*dropped_opml).clone(), move |opml| {
+            if let Some(text) = opml {
+                Dispatch::<crate::desktop::DesktopState>::global().reduce_mut(|s| s.opml = None);
+                import_pods.set(
+                    parse_opml(text)
+                        .into_iter()
+                        .map(|(title, xml_url)| PodcastToImport { title, xml_url, selected: true })
+                        .collect(),
+                );
+                show_verification.set(true);
+            }
+            || ()
+        });
+    }
+
     // Capture all i18n strings at function start to avoid borrow checker issues
     let i18n_import_tip = i18n.t("import_options.import_tip").to_string();
     let i18n_choose_file = i18n.t("import_options.choose_file").to_string();

@@ -19,7 +19,9 @@
         "height": 1000,
         "resizable": true,
         "title": "Pinepods",
-        "width": 1200
+        "width": 1200,
+        "label": "main",
+        "visible": false
       }
     ]
   },
@@ -67,9 +69,18 @@
     "deep-link": {
       "desktop": {
         "schemes": [
-          "pinepods"
+          "pinepods",
+          "pinepods-subscribe",
+          "podcast",
+          "itpc"
         ]
       }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVDRDNENDlDMjVBRDNGNkEKUldScVA2MGxuTlRUN0xiVDVUOEgyRGFlSFJ5SXVNZ0J6eE44czdCdjhSYmtjcDdSTEVsOTVxdEQK",
+      "endpoints": [
+        "https://github.com/madeofpendletonwool/PinePods/releases/latest/download/latest.json"
+      ]
     }
   }
 }

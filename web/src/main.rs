@@ -1,5 +1,7 @@
 mod components;
 mod desktop;
+mod desktop_background;
+mod desktop_player;
 mod pages;
 mod requests;
 
@@ -237,6 +239,11 @@ fn main() {
     }));
     wasm_bindgen_futures::spawn_local(async {
         crate::components::context::AppState::load_tauri_credentials().await;
+        // The desktop app's mini player window: a remote for the player in the main window.
+        if desktop::is_mini_window() {
+            yew::Renderer::<desktop_player::MiniPlayerApp>::new().render();
+            return;
+        }
         yew::Renderer::<Main>::new().render();
         // Follows the player for the whole visit and sends progress saved by an earlier one.
         crate::components::progress::start();
@@ -257,5 +264,29 @@ fn desktop_bridge() -> Html {
         }
         || ()
     });
-    html! {}
+    let texts = desktop::NativeTexts {
+        show: i18n.t("desktop.tray_show").to_string(),
+        play: i18n.t("desktop.play").to_string(),
+        pause: i18n.t("desktop.pause").to_string(),
+        back: i18n.t("desktop.back_15").to_string(),
+        forward: i18n.t("desktop.forward_15").to_string(),
+        mini_player: i18n.t("desktop.mini_player").to_string(),
+        quit: i18n.t("desktop.tray_quit").to_string(),
+        still_running: i18n.t("desktop.still_running").to_string(),
+        still_running_body: i18n.t("desktop.still_running_body").to_string(),
+    };
+    use_effect_with(texts, |texts| {
+        if desktop::is_desktop() {
+            desktop::set_native_texts(texts.clone());
+        }
+        || ()
+    });
+    html! {
+        if desktop::is_desktop() {
+            <>
+                <desktop_player::PlayerBridge />
+                <desktop_background::Background />
+            </>
+        }
+    }
 }

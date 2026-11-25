@@ -13215,3 +13215,57 @@ button.ep-modal-podcast:hover { text-decoration: underline; }
     .dsc-slide, .dsc-slide-art, .dsc-slide-body { transition: none; }
     .dsc-slide.is-active .dsc-slide-backdrop, .dsc-dot.is-active span, .dsc-spotlight.is-skeleton, .dsc-ep.is-skeleton .dsc-ep-art { animation: none; }
 }
+
+/* Desktop app: mini player window */
+.mini-player {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    height: 100vh;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    background: var(--container-background);
+    color: var(--text-color);
+    overflow-y: auto;
+    user-select: none;
+}
+.mini-player-empty { align-items: center; justify-content: center; flex-direction: row; color: var(--text-secondary-color); }
+.mini-player-empty i { font-size: 22px; }
+.mini-player-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mini-player-art { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+.mini-player-text { flex: 1; min-width: 0; }
+.mini-player-title, .mini-player-podcast { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-player-title { font-weight: 600; font-size: 14px; }
+.mini-player-podcast { font-size: 12px; color: var(--text-secondary-color); opacity: .8; }
+.mini-player-controls { display: flex; align-items: center; gap: 4px; }
+.mini-player-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 999px;
+    background: transparent; color: var(--text-color); font-size: 18px; cursor: pointer;
+}
+.mini-player-btn:hover { background: var(--secondary-background); }
+.mini-player-play { width: 40px; height: 40px; background: var(--hover-color); color: #fff; font-size: 20px; }
+.mini-player-play:hover { background: var(--hover-color); filter: brightness(1.1); }
+.mini-player-seek { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary-color); font-variant-numeric: tabular-nums; }
+.mini-player-seek input { flex: 1; accent-color: var(--hover-color); }
+.mini-player-queue { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--secondary-background); padding-top: 8px; }
+.mini-player-queue-head { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-secondary-color); opacity: .7; margin-bottom: 2px; }
+.mini-player-queue-item {
+    display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px;
+    background: transparent; color: var(--text-color); font-size: 12px; text-align: left; cursor: pointer;
+}
+.mini-player-queue-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-player-queue-item:hover { background: var(--secondary-background); }
+
+/* Desktop app: update available */
+.desktop-update {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 60;
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 999px;
+    background: var(--container-background); color: var(--text-color);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, .3); font-size: 13px;
+}
+.desktop-update i { font-size: 18px; color: var(--hover-color); }
+.desktop-update button { border-radius: 999px; padding: 4px 12px; font-size: 12px; cursor: pointer; }
+.desktop-update-install { background: var(--hover-color); color: #fff; }
+.desktop-update-install:disabled { opacity: .7; cursor: default; }
+.desktop-update-later { background: transparent; color: var(--text-secondary-color); }

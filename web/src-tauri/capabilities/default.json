@@ -1,9 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The app's own pages: Tauri core APIs (events for download progress) and writing to the log. Remote pages get nothing.",
+  "description": "The app's own pages (the main window and the mini player): Tauri core APIs (events for downloads, links and the player) and writing to the log. Remote pages get nothing.",
   "windows": [
-    "main"
+    "main",
+    "mini"
   ],
   "permissions": [
     "core:default",

@@ -93,6 +93,7 @@ impl Harness {
             podcast: None,
             media_url,
             artwork_url,
+            automatic: true,
         };
         assert!(self.downloads.start(self.app.handle().clone(), self.library.clone(), request).unwrap());
     }
@@ -137,6 +138,7 @@ fn downloads_rename_and_index() {
     let rec = &lib.episodes()[0];
     assert_eq!(rec.file, "1.m4a");
     assert_eq!(rec.artwork_file.as_deref(), Some("1-art.png"));
+    assert!(rec.automatic, "the automatic flag is kept");
     assert_eq!(std::fs::metadata(h.dir.join("downloads/1.m4a")).unwrap().len(), AUDIO_LEN as u64);
     assert!(!h.dir.join("downloads/1.part").exists());
     assert!(h.downloads.active().is_empty());
@@ -165,6 +167,7 @@ fn cancel_stops_and_cleans_up() {
         podcast: None,
         media_url: format!("{origin}/slow"),
         artwork_url: None,
+        automatic: false,
     };
     assert!(!h.downloads.start(h.app.handle().clone(), h.library.clone(), again).unwrap());
     let deadline = Instant::now() + Duration::from_secs(10);
