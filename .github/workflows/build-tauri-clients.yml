@@ -143,12 +143,20 @@ jobs:
           RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"" trunk build --features server_build
           cd src-tauri
           cat tauri.conf.json
-          cargo tauri build
+          # Signed update bundles for the in-app updater, when the signing key is configured.
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            cargo tauri build --config tauri.updater.conf.json
+          else
+            cargo tauri build
+          fi
           pwd
           ls
           ls -la target/release/bundle
         shell: bash
         if: ${{ matrix.os != 'windows-latest' }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Build | Compile (Windows)
         run: |
@@ -156,10 +164,28 @@ jobs:
           powershell -ExecutionPolicy Bypass -File .\build.ps1
           cd src-tauri
           Get-Content tauri.conf.json
-          cargo tauri build
+          if ($env:TAURI_SIGNING_PRIVATE_KEY) {
+            cargo tauri build --config tauri.updater.conf.json
+          } else {
+            cargo tauri build
+          }
           ls target/release/bundle
         shell: pwsh
         if: ${{ matrix.os == 'windows-latest' }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # The macOS update bundle gets a versioned name so release assets don't collide.
+      - name: Name the macOS update bundle
+        if: ${{ matrix.os == 'macOS-latest' }}
+        run: |
+          cd web/src-tauri/target/release/bundle/macos
+          if [ -f Pinepods.app.tar.gz ]; then
+            mv Pinepods.app.tar.gz "Pinepods_${IMAGE_TAG}_aarch64.app.tar.gz"
+            mv Pinepods.app.tar.gz.sig "Pinepods_${IMAGE_TAG}_aarch64.app.tar.gz.sig"
+          fi
+        shell: bash
 
       # Ubuntu (x86_64) builds
       - name: Archive builds (Ubuntu)
@@ -190,6 +216,8 @@ jobs:
           name: macos-arm64-builds
           path: |
             ./web/src-tauri/target/release/bundle/dmg/${{ env.ARTIFACT_NAME1 }}
+            ./web/src-tauri/target/release/bundle/macos/Pinepods_${{ env.IMAGE_TAG }}_aarch64.app.tar.gz
+            ./web/src-tauri/target/release/bundle/macos/Pinepods_${{ env.IMAGE_TAG }}_aarch64.app.tar.gz.sig
             ./web/src-tauri/target/release/bundle/macos/${{ env.ARTIFACT_NAME2 }}
         if: ${{ matrix.os == 'macOS-latest' }}
 
@@ -211,6 +239,7 @@ jobs:
           files: |
             ./web/src-tauri/target/release/bundle/deb/${{ env.ARTIFACT_NAME1 }}
             ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}
+            ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}.sig
             ./web/src-tauri/target/release/bundle/rpm/${{ env.ARTIFACT_NAME3 }}
 
       - name: Upload release assets (Linux ARM64)
@@ -222,6 +251,7 @@ jobs:
           files: |
             ./web/src-tauri/target/release/bundle/deb/${{ env.ARTIFACT_NAME1 }}
             ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}
+            ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}.sig
             ./web/src-tauri/target/release/bundle/rpm/${{ env.ARTIFACT_NAME3 }}
 
       - name: Upload release assets (macOS)
@@ -241,7 +271,34 @@ jobs:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
             ./web/src-tauri/target/release/bundle/nsis/${{ env.ARTIFACT_NAME1 }}
+            ./web/src-tauri/target/release/bundle/nsis/${{ env.ARTIFACT_NAME1 }}.sig
             ./web/src-tauri/target/release/bundle/msi/${{ env.ARTIFACT_NAME2 }}
+            ./web/src-tauri/target/release/bundle/msi/${{ env.ARTIFACT_NAME2 }}.sig
+
+  # The in-app updater reads latest.json from the latest release.
+  updater-manifest:
+    name: Updater manifest
+    needs: compile
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Write latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          mkdir sigs
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.sig' --dir sigs || true
+          if [ -z "$(ls sigs)" ]; then
+            echo "No update signatures (TAURI_SIGNING_PRIVATE_KEY not set); skipping latest.json"
+            exit 0
+          fi
+          python3 .github/scripts/updater_manifest.py "$TAG" "$GITHUB_REPOSITORY" sigs > latest.json
+          cat latest.json
+          gh release upload "$TAG" latest.json --repo "$GITHUB_REPOSITORY" --clobber
 
   # release:
   #   needs: compile
