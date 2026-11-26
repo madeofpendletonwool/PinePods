@@ -99,6 +99,18 @@ const PAGES: &[PageDef] = &[
         ],
     },
     PageDef {
+        id: "desktop",
+        icon: "ph-desktop",
+        title: "settings.page_desktop",
+        group: Group::Personal,
+        sections: &[
+            sec("desktop_window", "ph-app-window", "desktop.window_settings", Some("desktop.window_settings_desc"), "tray close minimize background startup login launch boot mini player"),
+            sec("desktop_downloads", "ph-download-simple", "desktop.download_settings", Some("desktop.download_settings_desc"), "downloads offline automatic delete played finished storage computer"),
+            sec("desktop_notifications", "ph-bell", "desktop.notification_settings", Some("desktop.notification_settings_desc"), "notifications alerts new episodes downloads"),
+            sec("desktop_updates", "ph-arrow-circle-up", "desktop.update_settings", None, "update upgrade version release"),
+        ],
+    },
+    PageDef {
         id: "podcasts",
         icon: "ph-rss-simple",
         title: "settings.page_podcasts",
@@ -205,6 +217,8 @@ fn page_visible(page: &PageDef, is_admin: bool, ai_available: bool) -> bool {
         (Group::Server, _) => is_admin,
         // Users only see AI when an admin has it on and the AI container is connected.
         (_, "ai") => is_admin || ai_available,
+        // Settings of the desktop app itself.
+        (_, "desktop") => crate::desktop::is_desktop(),
         _ => true,
     }
 }
@@ -248,6 +262,9 @@ fn section_body(id: &str, themes_trigger: &UseStateHandle<u32>) -> Html {
         "inbox" => html! { <inbox_settings::InboxSettings /> },
         "labels" => html! { <inbox_settings::LabelSettings /> },
         "notifications" => html! { <notifications::NotificationOptions /> },
+        "desktop_window" | "desktop_downloads" | "desktop_notifications" | "desktop_updates" => {
+            html! { <desktop_settings::DesktopSettings section={id.to_string()} /> }
+        }
         "custom_feed" => html! { <custom_feed::CustomFeed /> },
         "local_podcast" => html! { <local_podcast::LocalPodcast /> },
         "feed_problems" => html! { <feed_problems::FeedProblemsSection /> },

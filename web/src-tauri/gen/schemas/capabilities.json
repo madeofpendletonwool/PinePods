@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"The app's own pages: Tauri core APIs (events for download progress) and writing to the log. Remote pages get nothing.","local":true,"windows":["main"],"permissions":["core:default","log:default"]}}
+{"default":{"identifier":"default","description":"The app's own pages (the main window and the mini player): Tauri core APIs (events for downloads, links and the player) and writing to the log. Remote pages get nothing.","local":true,"windows":["main","mini"],"permissions":["core:default","log:default"]}}

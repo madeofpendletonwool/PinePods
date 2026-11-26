@@ -26,6 +26,9 @@ pub struct DownloadedEpisode {
     pub downloaded_at: i64,
     /// The episode as the app sent it, returned as-is so new fields need no change here.
     pub episode: Value,
+    /// Downloaded by automatic downloads, which may also delete it.
+    #[serde(default)]
+    pub automatic: bool,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -224,6 +227,7 @@ impl Library {
                 size,
                 downloaded_at: 0,
                 episode,
+                automatic: false,
             });
         }
         let old_podcasts = self.data_dir.join("local_podcasts.json");
@@ -278,6 +282,7 @@ mod tests {
             size: 5,
             downloaded_at: 1,
             episode: json!({ "episodeid": id, "podcastid": 7 }),
+            automatic: false,
         }
     }
 

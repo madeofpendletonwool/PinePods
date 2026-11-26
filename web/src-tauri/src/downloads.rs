@@ -30,6 +30,9 @@ pub struct DownloadRequest {
     pub media_url: String,
     #[serde(default)]
     pub artwork_url: Option<String>,
+    /// Started by automatic downloads rather than by the listener.
+    #[serde(default)]
+    pub automatic: bool,
 }
 
 #[derive(Serialize, Clone, Copy, PartialEq, Debug)]
@@ -217,6 +220,7 @@ impl Downloads {
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0),
             episode: request.episode.clone(),
+            automatic: request.automatic,
         };
         library.lock().unwrap().upsert(record, request.podcast.clone());
         Ok(())

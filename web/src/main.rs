@@ -1,5 +1,7 @@
 mod components;
 mod desktop;
+mod desktop_background;
+mod desktop_player;
 mod pages;
 mod requests;
 
@@ -45,7 +47,6 @@ use crate::components::context::AppState;
 use crate::components::i18n::use_translation;
 use crate::components::i18n::TranslationProvider;
 use requests::setting_reqs::call_get_server_default_language;
-use std::collections::HashMap;
 use wasm_bindgen_futures::spawn_local;
 use web_sys;
 use yew::prelude::*;
@@ -90,48 +91,7 @@ fn switch(route: Route) -> Html {
 #[function_component(LanguageHandler)]
 fn language_handler() -> Html {
     // Set up translations with all available language files
-    let translations = HashMap::from([
-        ("en", include_str!("translations/en.json")), // Keep English first for fallback
-        ("ar", include_str!("translations/ar.json")),
-        ("be", include_str!("translations/be.json")),
-        ("bg", include_str!("translations/bg.json")),
-        ("bn", include_str!("translations/bn.json")),
-        ("ca", include_str!("translations/ca.json")),
-        ("cs", include_str!("translations/cs.json")),
-        ("da", include_str!("translations/da.json")),
-        ("de", include_str!("translations/de.json")),
-        ("es", include_str!("translations/es.json")),
-        ("et", include_str!("translations/et.json")),
-        ("eu", include_str!("translations/eu.json")),
-        ("fa", include_str!("translations/fa.json")),
-        ("fi", include_str!("translations/fi.json")),
-        ("fr", include_str!("translations/fr.json")),
-        ("gu", include_str!("translations/gu.json")),
-        ("he", include_str!("translations/he.json")),
-        ("hi", include_str!("translations/hi.json")),
-        ("hr", include_str!("translations/hr.json")),
-        ("hu", include_str!("translations/hu.json")),
-        ("it", include_str!("translations/it.json")),
-        ("ja", include_str!("translations/ja.json")),
-        ("ko", include_str!("translations/ko.json")),
-        ("lt", include_str!("translations/lt.json")),
-        ("nb", include_str!("translations/nb.json")),
-        ("nl", include_str!("translations/nl.json")),
-        ("pl", include_str!("translations/pl.json")),
-        ("pt", include_str!("translations/pt.json")),
-        ("pt-BR", include_str!("translations/pt-BR.json")),
-        ("ro", include_str!("translations/ro.json")),
-        ("ru", include_str!("translations/ru.json")),
-        ("sk", include_str!("translations/sk.json")),
-        ("sl", include_str!("translations/sl.json")),
-        ("sv", include_str!("translations/sv.json")),
-        ("tr", include_str!("translations/tr.json")),
-        ("uk", include_str!("translations/uk.json")),
-        ("vi", include_str!("translations/vi.json")),
-        ("zh-Hans", include_str!("translations/zh-Hans.json")),
-        ("zh-Hant", include_str!("translations/zh-Hant.json")),
-        ("test", include_str!("translations/test.json")),
-    ]);
+    let translations = crate::components::i18n::all_translations();
 
     html! {
         <TranslationProvider translations={translations} default_language="en">
@@ -237,6 +197,11 @@ fn main() {
     }));
     wasm_bindgen_futures::spawn_local(async {
         crate::components::context::AppState::load_tauri_credentials().await;
+        // The desktop app's mini player window: a remote for the player in the main window.
+        if desktop::is_mini_window() {
+            yew::Renderer::<desktop_player::MiniPlayerRoot>::new().render();
+            return;
+        }
         yew::Renderer::<Main>::new().render();
         // Follows the player for the whole visit and sends progress saved by an earlier one.
         crate::components::progress::start();
@@ -257,5 +222,29 @@ fn desktop_bridge() -> Html {
         }
         || ()
     });
-    html! {}
+    let texts = desktop::NativeTexts {
+        show: i18n.t("desktop.tray_show").to_string(),
+        play: i18n.t("desktop.play").to_string(),
+        pause: i18n.t("desktop.pause").to_string(),
+        back: i18n.t("desktop.back_15").to_string(),
+        forward: i18n.t("desktop.forward_15").to_string(),
+        mini_player: i18n.t("desktop.mini_player").to_string(),
+        quit: i18n.t("desktop.tray_quit").to_string(),
+        still_running: i18n.t("desktop.still_running").to_string(),
+        still_running_body: i18n.t("desktop.still_running_body").to_string(),
+    };
+    use_effect_with(texts, |texts| {
+        if desktop::is_desktop() {
+            desktop::set_native_texts(texts.clone());
+        }
+        || ()
+    });
+    html! {
+        if desktop::is_desktop() {
+            <>
+                <desktop_player::PlayerBridge />
+                <desktop_background::Background />
+            </>
+        }
+    }
 }
