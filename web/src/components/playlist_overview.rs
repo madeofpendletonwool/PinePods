@@ -34,7 +34,7 @@ fn minutes_label(mins: i32) -> String {
 }
 
 /// The playlist's rules as short chips: (icon, text).
-fn rule_chips(playlist: &Playlist, page: Option<&PlaylistFeedPage>, i18n: &i18nrs::I18n) -> Vec<(&'static str, String)> {
+fn rule_chips(playlist: &Playlist, page: Option<&PlaylistFeedPage>, i18n: &crate::components::i18n::I18n) -> Vec<(&'static str, String)> {
     let info = page.map(|p| &p.playlist_info);
     let mut chips = Vec::new();
 

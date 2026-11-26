@@ -1,20 +1,100 @@
 //! Translation context shared by every component.
 //!
-//! Replaces `i18nrs::yew::{I18nProvider, use_translation}`, whose context held the `I18n`
-//! by value: each `use_translation()` call cloned (and later dropped) the parsed
-//! translations for every language, on every render of every component. That was most of
-//! the cost of rendering an episode card. Here the `I18n` sits behind an `Rc`, so the hook
-//! is a pointer copy. The API (`let (i18n, set_language) = use_translation()`, `i18n.t(..)`)
-//! is unchanged.
+//! English is built in, as the fallback for missing keys. Other languages are fetched from
+//! `/static/translations/<lang>.json` when chosen, so the app doesn't carry every language.
+//! The context holds the translations behind an `Rc`, so `use_translation()` is a pointer
+//! copy. The API (`let (i18n, set_language) = use_translation()`, `i18n.t(..)`) is unchanged.
 
-use i18nrs::{I18n, I18nConfig, StorageType};
+use serde_json::Value;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::rc::Rc;
 use yew::prelude::*;
 
-/// Where the chosen language is remembered (the same key i18nrs used).
+/// Where the chosen language is remembered.
 const STORAGE_KEY: &str = "i18nrs";
+
+const ENGLISH: &str = include_str!("../translations/en.json");
+
+thread_local! {
+    static ENGLISH_STRINGS: Rc<Value> =
+        Rc::new(serde_json::from_str(ENGLISH).expect("en.json is valid JSON"));
+    /// Languages fetched this visit.
+    static LOADED: RefCell<HashMap<String, Rc<Value>>> = RefCell::new(HashMap::new());
+}
+
+/// The strings for one language, with English underneath.
+#[derive(Clone)]
+pub struct I18n {
+    language: String,
+    strings: Rc<Value>,
+    english: Rc<Value>,
+}
+
+impl I18n {
+    fn english() -> Self {
+        let english = ENGLISH_STRINGS.with(Rc::clone);
+        I18n { language: "en".to_string(), strings: english.clone(), english }
+    }
+
+    /// The loaded strings for `language`, if it is English or has been fetched.
+    fn loaded(language: &str) -> Option<Self> {
+        if language == "en" {
+            return Some(Self::english());
+        }
+        let strings = LOADED.with(|l| l.borrow().get(language).cloned())?;
+        Some(I18n { language: language.to_string(), strings, english: ENGLISH_STRINGS.with(Rc::clone) })
+    }
+
+    pub fn get_current_language(&self) -> &str {
+        &self.language
+    }
+
+    /// The text for a dotted key such as `"settings.title"`, falling back to English.
+    pub fn t(&self, key: &str) -> String {
+        let lookup = |json: &Value| {
+            key.split('.')
+                .try_fold(json, |current, part| current.get(part))
+                .filter(|v| !matches!(v, Value::String(s) if s.is_empty()))
+                .map(|v| match v {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                })
+        };
+        lookup(&self.strings)
+            .or_else(|| lookup(&self.english))
+            .unwrap_or_else(|| format!("Key '{key}' not found for language '{}'", self.language))
+    }
+}
+
+/// Fetches and keeps a language's strings, unless already loaded.
+async fn load(language: &str) -> Result<(), String> {
+    if I18n::loaded(language).is_some() {
+        return Ok(());
+    }
+    // Language codes come from the server; keep them to a file name.
+    if language.is_empty() || !language.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(format!("invalid language '{language}'"));
+    }
+    let url = format!("/static/translations/{language}.json");
+    let response = gloo_net::http::Request::get(&url).send().await.map_err(|e| e.to_string())?;
+    if !response.ok() {
+        return Err(format!("{url}: HTTP {}", response.status()));
+    }
+    let strings: Value = response.json().await.map_err(|e| e.to_string())?;
+    LOADED.with(|l| l.borrow_mut().insert(language.to_string(), Rc::new(strings)));
+    Ok(())
+}
+
+/// Loads the remembered language before the first render, so it doesn't open in English.
+pub async fn preload() {
+    if let Some(language) = stored_language() {
+        if let Err(err) = load(&language).await {
+            web_sys::console::log_1(&format!("i18n error: {err}").into());
+        }
+    }
+}
 
 /// A cheap handle to the shared translations. Derefs to [`I18n`].
 #[derive(Clone)]
@@ -35,9 +115,6 @@ impl Deref for Translations {
 
 #[derive(Properties, PartialEq)]
 pub struct TranslationProviderProps {
-    pub translations: HashMap<&'static str, &'static str>,
-    #[prop_or("en".to_string())]
-    pub default_language: String,
     pub children: Html,
 }
 
@@ -51,51 +128,56 @@ fn set_text_direction(language: &str) {
     }
 }
 
+fn local_storage() -> Option<web_sys::Storage> {
+    web_sys::window().and_then(|w| w.local_storage().ok().flatten())
+}
+
 fn stored_language() -> Option<String> {
-    web_sys::window()
-        .and_then(|w| w.local_storage().ok().flatten())
-        .and_then(|s| s.get_item(STORAGE_KEY).ok().flatten())
+    local_storage().and_then(|s| s.get_item(STORAGE_KEY).ok().flatten())
 }
 
 #[function_component(TranslationProvider)]
 pub fn translation_provider(props: &TranslationProviderProps) -> Html {
-    // Parsed once; re-renders of the provider don't re-parse every language file.
     let ctx = use_state(|| {
-        let mut i18n = I18n::new(
-            I18nConfig { translations: props.translations.clone() },
-            props.translations.clone(),
-            props.default_language.clone(),
-        )
-        .unwrap_or_else(|err| panic!("Failed to initialize I18n: {err}"));
-        let language = stored_language().unwrap_or_else(|| props.default_language.clone());
-        if let Err(err) = i18n.set_translation_language(&language, &StorageType::LocalStorage, STORAGE_KEY) {
-            web_sys::console::log_1(&format!("i18n error: {err}").into());
-        }
-        set_text_direction(i18n.get_current_language());
+        let i18n = stored_language()
+            .and_then(|language| I18n::loaded(&language))
+            .unwrap_or_else(I18n::english);
+        set_text_direction(&i18n.language);
         Translations(Rc::new(i18n))
     });
 
-    // The live value, read by the callback: callers keep the callback across renders (and
-    // async gaps), so whatever it captured may be out of date.
-    let live = use_mut_ref(|| (*ctx).clone());
+    // The language last asked for, read by the callback: callers keep the callback across
+    // renders (and async gaps), and a slow fetch must not undo a later choice.
+    let wanted = use_mut_ref(|| ctx.language.clone());
     let set_language = {
         let ctx = ctx.clone();
-        let live = live.clone();
         use_callback((), move |language: String, _| {
-            let current = live.borrow().clone();
-            if current.get_current_language() == language {
+            if *wanted.borrow() == language {
                 return;
             }
-            let mut i18n = (*current.0).clone();
-            match i18n.set_translation_language(&language, &StorageType::LocalStorage, STORAGE_KEY) {
-                Ok(()) => {
-                    set_text_direction(&language);
-                    let next = Translations(Rc::new(i18n));
-                    *live.borrow_mut() = next.clone();
-                    ctx.set(next);
+            *wanted.borrow_mut() = language.clone();
+            let ctx = ctx.clone();
+            let wanted = wanted.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Err(err) = load(&language).await {
+                    web_sys::console::log_1(&format!("i18n error: {err}").into());
+                    // Let a later request for the same language try again.
+                    if *wanted.borrow() == language {
+                        wanted.borrow_mut().clear();
+                    }
+                    return;
                 }
-                Err(err) => web_sys::console::log_1(&format!("i18n error: {err}").into()),
-            }
+                if *wanted.borrow() != language {
+                    return;
+                }
+                if let Some(i18n) = I18n::loaded(&language) {
+                    if let Some(storage) = local_storage() {
+                        let _ = storage.set_item(STORAGE_KEY, &language);
+                    }
+                    set_text_direction(&language);
+                    ctx.set(Translations(Rc::new(i18n)));
+                }
+            });
         })
     };
 

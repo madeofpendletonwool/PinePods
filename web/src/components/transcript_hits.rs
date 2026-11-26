@@ -247,7 +247,7 @@ fn render_hit(
     query: &str,
     expanded: &UseStateHandle<HashSet<i32>>,
     history: &BrowserHistory,
-    i18n: &i18nrs::I18n,
+    i18n: &crate::components::i18n::I18n,
 ) -> Html {
     let ep = &hit.episode;
     let id = ep.episodeid;
