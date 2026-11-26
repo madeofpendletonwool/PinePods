@@ -5,7 +5,7 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:provider/provider.dart';
 
-/// Whether podcasts the user subscribes to start with "Add new episodes to queue" on (#648).
+/// Whether podcasts the user subscribes to start with "Auto-add new episodes to queue" on (#648).
 /// Stored on the server, so it applies to every client.
 class AutoQueueDefaultSetting extends StatefulWidget {
   const AutoQueueDefaultSetting({super.key});
