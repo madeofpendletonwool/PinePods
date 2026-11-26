@@ -237,34 +237,26 @@ fn episode_list_item_body(props: &EpisodeListItemProps) -> Html {
         },
     );
 
+    // Empty when signed out, which the desktop app allows for listening to its downloads.
     let api_key = auth_details
         .as_ref()
         .as_ref()
-        .map(|ud| ud.api_key.clone().unwrap())
-        .unwrap();
+        .and_then(|ud| ud.api_key.clone())
+        .unwrap_or_default();
     let user_id = user_details
         .as_ref()
         .as_ref()
-        .map(|ud| ud.UserID.clone())
-        .unwrap();
+        .map(|ud| ud.UserID)
+        .unwrap_or_default();
     let server_name = auth_details
         .as_ref()
         .as_ref()
         .map(|ud| ud.server_name.clone())
-        .unwrap();
+        .unwrap_or_default();
 
     // Compute is_local inline instead of passing it via app_state
     let is_local = if podcast_added.unwrap_or(false) && props.episode.episodeid != 0 {
-        is_downloaded_server || {
-            #[cfg(not(feature = "server_build"))]
-            {
-                is_downloaded_local
-            }
-            #[cfg(feature = "server_build")]
-            {
-                false
-            }
-        }
+        is_downloaded_server || is_downloaded_local
     } else {
         false
     };
@@ -512,7 +504,7 @@ fn episode_list_item_body(props: &EpisodeListItemProps) -> Html {
     */
     let browser_history = BrowserHistory::new();
     let on_shownotes_click = {
-        let is_local_for_shownotes = is_downloaded_local;
+        let is_local_for_shownotes = is_downloaded_server;
         let src = if props.episode.episodeurl.contains("youtube.com") {
             format!(
                 "{}/api/data/stream/{}?api_key={}&user_id={}&type=youtube",
@@ -785,8 +777,11 @@ fn episode_list_item_body(props: &EpisodeListItemProps) -> Html {
                             if is_queued {
                                 <i class="ph ph-queue" title={i18n.t("episode_list_item.queued").to_string()}></i>
                             }
-                            if is_downloaded_server || is_downloaded_local {
+                            if is_downloaded_server {
                                 <i class="ph ph-download-simple" title={i18n.t("episode_list_item.downloaded").to_string()}></i>
+                            }
+                            if is_downloaded_local {
+                                <i class="ph ph-laptop" title={i18n.t("desktop.on_this_computer").to_string()}></i>
                             }
                         </span>
                         <LabelChips episode_id={props.episode.episodeid} is_youtube={props.episode.is_youtube} editable={true} />

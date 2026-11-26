@@ -354,7 +354,7 @@ mod progress {
     fn the_request_carries_both_clock_readings_as_whole_milliseconds() {
         let body: serde_json::Value = serde_json::from_str(&request_body(&[update(1, 12.5, T0 - 4000.0, 3.0)], T0 + 0.7)).unwrap();
         assert_eq!(body["sent_at"], 1_700_000_000_000i64);
-        assert_eq!(body["client"], crate::components::progress::CLIENT);
+        assert_eq!(body["client"], crate::desktop::client_name());
         assert_eq!(body["updates"][0]["at"], 1_699_999_996_000i64);
         assert_eq!(body["updates"][0]["position"], 12.5);
         assert_eq!(body["updates"][0]["listened"], 3.0);

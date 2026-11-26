@@ -1,13 +1,10 @@
 use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigationState, EpisodeStatusState, PodcastFeedState, UIState};
-#[cfg(not(feature = "server_build"))]
 use crate::components::context::NotificationState;
 use crate::components::gen_components::{EpisodeModal, FallbackImage};
 use crate::components::gen_funcs::format_time_rm_hour;
 use crate::components::people::{PeopleLayout, PeopleStrip};
 use crate::components::player_ui::{ProgressLine, SeekBar, SpeedControl, VolumeControl};
 use crate::requests::people_req::call_get_episode_people;
-#[cfg(not(feature = "server_build"))]
-use crate::pages::downloads_tauri::start_local_file_server;
 use crate::requests::episode::Episode;
 use crate::requests::setting_reqs::call_get_default_volume;
 use crate::requests::pod_req::call_get_episode_id;
@@ -26,8 +23,6 @@ use crate::requests::pod_req::{
 use gloo_timers::callback::Interval;
 use crate::components::i18n::use_translation;
 use std::cell::Cell;
-#[cfg(not(feature = "server_build"))]
-use std::path::Path;
 use std::rc::Rc;
 use std::string::String;
 use wasm_bindgen::closure::Closure;
@@ -847,11 +842,18 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 return;
                             }
 
+                            // Signed out (desktop offline listening): no queue to continue with.
+                            let (Some(queue_server), Some(queue_key), Some(queue_user)) =
+                                (server_name.clone(), api_key.clone(), user_id)
+                            else {
+                                processing_flag_for_reset.set(false);
+                                return;
+                            };
                             web_sys::console::log_1(&"Fetching queued episodes...".into());
                             let queued_episodes_result = call_get_queued_episodes(
-                                &server_name.clone().unwrap(),
-                                &api_key.clone().unwrap(),
-                                &user_id.clone().unwrap(),
+                                &queue_server,
+                                &queue_key,
+                                &queue_user,
                             )
                             .await;
                             match queued_episodes_result {
@@ -1017,6 +1019,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             let api_key = api_key.clone();
             let audio_dispatch = audio_dispatch.clone();
             let audio_state = audio_state.clone();
+            // Signed out (desktop offline listening): there's no queue to skip through.
+            if server_name.is_none() || api_key.is_none() || user_id.is_none() {
+                return;
+            }
             wasm_bindgen_futures::spawn_local(async move {
                 let episodes_result = call_get_queued_episodes(
                     &server_name.clone().unwrap(),
@@ -1682,18 +1688,9 @@ pub fn on_play_pause(
         ep_status
             .downloaded_episodes
             .is_server_download(episode.episodeid)
-            || {
-                #[cfg(not(feature = "server_build"))]
-                {
-                    ep_status
-                        .downloaded_episodes
-                        .is_local_download(episode.episodeid)
-                }
-                #[cfg(feature = "server_build")]
-                {
-                    false
-                }
-            }
+            || ep_status
+                .downloaded_episodes
+                .is_local_download(episode.episodeid)
     } else {
         false
     };
@@ -1778,24 +1775,10 @@ fn play_episode(
     Callback::from(move |_e: MouseEvent| {
         // Local-first: on desktop, if this episode is downloaded to the device, play the
         // on-device file instead of streaming. (No-op on the hosted web/server build.)
-        #[cfg(not(feature = "server_build"))]
-        {
-            let status = Dispatch::<EpisodeStatusState>::global().get();
-            let downloads = &status.downloaded_episodes;
-            if downloads.is_local_download(episode.episodeid) {
-                if let Some(local_ep) = downloads
-                    .episodes()
-                    .find(|ep| ep.episodeid == episode.episodeid && ep.downloadedlocation.is_some())
-                {
-                    on_play_click_offline(
-                        local_ep.clone(),
-                        audio_dispatch.clone(),
-                        Dispatch::<AppState>::global(),
-                    )
-                    .emit(_e.clone());
-                    return;
-                }
-            }
+        if let Some(local_ep) = crate::desktop::local_copy(episode.episodeid) {
+            on_play_click_offline(local_ep, audio_dispatch.clone(), Dispatch::<AppState>::global())
+                .emit(_e.clone());
+            return;
         }
 
         let api_key = api_key.clone();
@@ -2206,7 +2189,7 @@ fn play_episode(
     })
 }
 
-#[cfg(not(feature = "server_build"))]
+#[allow(dead_code)]
 pub fn on_play_pause_offline(
     episode_info: Episode,
     audio_dispatch: Dispatch<UIState>,
@@ -2236,7 +2219,6 @@ pub fn on_play_pause_offline(
     })
 }
 
-#[cfg(not(feature = "server_build"))]
 pub fn on_play_click_offline(
     episode: Episode,
     audio_dispatch: Dispatch<UIState>,
@@ -2275,13 +2257,10 @@ pub fn on_play_click_offline(
 
         let episode = episode.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            match start_local_file_server(&file_path).await {
-                Ok(server_url) => {
-                    let file_name = Path::new(&file_path)
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .unwrap_or("");
-                    let src = format!("{}/{}", server_url, file_name);
+            // `downloadedlocation` is the file's address on the desktop app's media server.
+            {
+                {
+                    let src = file_path.clone();
 
                     // NEW: Analyze duration before playing
                     let src_for_analysis = src.clone();
@@ -2408,11 +2387,6 @@ pub fn on_play_click_offline(
                         }
                         audio_state.audio_playing = Some(true);
                     });
-                }
-                Err(e) => {
-                    web_sys::console::log_1(
-                        &format!("Error starting local file server: {:?}", e).into(),
-                    );
                 }
             }
         });

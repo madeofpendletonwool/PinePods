@@ -1,11 +1,6 @@
 use crate::components::context::{AppState, CollectionModalState, ContextMenuState, EpisodeStatusState, NotificationState};
 use crate::components::context::current_playing_anchor;
-#[cfg(not(feature = "server_build"))]
-use crate::components::context::UIState;
-#[cfg(not(feature = "server_build"))]
-use crate::pages::downloads_tauri::{
-    download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
-};
+use crate::desktop::DeviceDownloadItem;
 use crate::requests::episode::Episode;
 
 use crate::components::gen_funcs::format_error_message;
@@ -22,10 +17,6 @@ use crate::requests::pod_req::{
     QueuePodcastRequest, QueuedEpisodesResponse, SavePodcastRequest,
 };
 use std::collections::HashSet;
-#[cfg(not(feature = "server_build"))]
-use crate::requests::pod_req::{
-    call_get_episode_metadata, call_get_podcast_details, EpisodeRequest,
-};
 use gloo_events::{EventListener, EventListenerOptions};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
@@ -128,10 +119,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let (i18n, _) = use_translation();
     let i18n_remove_downloaded_episode = i18n.t("context_menu_button.remove_downloaded_episode").to_string();
     let i18n_download_episode = i18n.t("context_menu_button.download_episode").to_string();
-    #[cfg(not(feature = "server_build"))]
-    let i18n_delete_local_download = i18n.t("context_menu_button.delete_local_download").to_string();
-    #[cfg(not(feature = "server_build"))]
-    let i18n_local_download = i18n.t("context_menu_button.local_download").to_string();
     let i18n_remove_from_queue = i18n.t("context_menu_button.remove_from_queue").to_string();
     let i18n_queue_episode = i18n.t("context_menu_button.queue_episode").to_string();
     let i18n_add_to_top = i18n.t("context_menu_button.add_to_top_of_queue").to_string();
@@ -189,10 +176,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     });
     let is_downloaded_sel = use_selector(move |state: &EpisodeStatusState| {
         state.downloaded_episodes.is_server_download(check_episode_id)
-    });
-    #[cfg(not(feature = "server_build"))]
-    let is_locally_downloaded_sel = use_selector(move |state: &EpisodeStatusState| {
-        state.downloaded_episodes.is_local_download(check_episode_id)
     });
     let is_completed_sel = use_selector(move |state: &EpisodeStatusState| {
         state.completed_episodes.contains(&check_episode_id)
@@ -758,8 +741,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     let is_downloaded = *is_downloaded_sel;
 
-    #[cfg(not(feature = "server_build"))]
-    let is_locally_downloaded = *is_locally_downloaded_sel;
 
     let on_toggle_download = {
         let on_download = on_server_download_episode.clone();
@@ -773,171 +754,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         })
     };
 
-    #[cfg(not(feature = "server_build"))]
-    let on_local_episode_download = {
-        let episode = props.episode.clone();
-        let server_name_copy = server_name.clone();
-        let api_key_copy = api_key.clone();
-        let user_id_copy = user_id.clone();
-
-        Callback::from(move |_| {
-            let episode_id = episode.episodeid;
-            let request = EpisodeRequest {
-                episode_id,
-                user_id: user_id_copy.unwrap(),
-                person_episode: false,
-                is_youtube: episode.is_youtube,
-            };
-            let server_name = server_name_copy.clone().unwrap();
-            let ep_api_key = api_key_copy.clone().flatten();
-            let api_key = api_key_copy.clone().flatten();
-
-            let episode = episode.clone();
-            let future = async move {
-                match call_get_episode_metadata(&server_name, ep_api_key, &request).await {
-                    Ok(episode_info) => {
-                        let audio_url = episode_info.episodeurl.clone();
-                        let artwork_url = episode_info.episodeartwork.clone();
-                        let podcast_id = episode_info.podcastid.clone();
-                        let filename = format!("episode_{}.mp3", episode_id);
-                        let artwork_filename = format!("artwork_{}.jpg", episode_id);
-                        Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
-                            state.downloaded_episodes.push_local(episode);
-                        });
-                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                            state.info_message = Some(format!("Episode download queued!"));
-                        });
-                        // Download audio
-                        match download_file(audio_url, filename.clone()).await {
-                            Ok(_) => {}
-                            Err(e) => {
-                                let formatted_error = format_error_message(&format!("{:?}", e));
-                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                    state.error_message = Some(format!(
-                                        "Failed to download episode audio: {}",
-                                        formatted_error.clone()
-                                    ))
-                                });
-                                web_sys::console::log_1(&format!("audio fail: {:?}", e).into());
-                            }
-                        }
-
-                        // Download artwork
-                        if let Err(e) = download_file(artwork_url, artwork_filename.clone()).await {
-                            let formatted_error = format_error_message(&format!("{:?}", e));
-                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                state.error_message = Some(format!(
-                                    "Failed to download episode artwork: {}",
-                                    formatted_error.clone()
-                                ))
-                            });
-                            web_sys::console::log_1(&format!("art fail: {:?}", e).into());
-                        }
-
-                        // Update local JSON database
-                        if let Err(e) = update_local_database(episode_info.clone()).await {
-                            let formatted_error = format_error_message(&format!("{:?}", e));
-                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                state.error_message = Some(format!(
-                                    "Failed to update local database: {}",
-                                    formatted_error.clone()
-                                ))
-                            });
-                            web_sys::console::log_1(
-                                &format!("Unable to parse Podcasts: {:?}", e).into(),
-                            );
-                        }
-
-                        // Fetch and update local podcast metadata
-                        match call_get_podcast_details(
-                            &server_name,
-                            &api_key.unwrap(),
-                            user_id_copy.unwrap(),
-                            podcast_id,
-                        )
-                        .await
-                        {
-                            Ok(podcast_details) => {
-                                if let Err(e) = update_podcast_database(podcast_details).await {
-                                    let formatted_error =
-                                        format_error_message(&format!("{:?}", e));
-                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                        state.error_message = Some(format!(
-                                            "Failed to update podcast database: {}",
-                                            formatted_error
-                                        ))
-                                    });
-                                }
-                            }
-                            Err(e) => {
-                                let formatted_error = format_error_message(&e.to_string());
-                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                    state.error_message = Some(format!(
-                                        "Failed to fetch podcast metadata: {:?}",
-                                        formatted_error
-                                    ))
-                                });
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        let formatted_error = format_error_message(&e.to_string());
-                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                            state.error_message = Some(format!("s {:?}", formatted_error))
-                        });
-                    }
-                }
-            };
-
-            wasm_bindgen_futures::spawn_local(future);
-        })
-    };
-
-    #[cfg(not(feature = "server_build"))]
-    let on_remove_locally_downloaded_episode = {
-        let episode = props.episode.clone();
-
-        Callback::from(move |_: MouseEvent| {
-            let ui_state = Dispatch::<UIState>::global();
-            let episode_id = episode.episodeid;
-
-            let future = async move {
-                let filename = format!("episode_{}.mp3", episode_id);
-
-                match remove_episode_from_local_db(episode_id).await {
-                    Ok(_) => {
-                        Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
-                            state.downloaded_episodes.remove_local(episode_id);
-                        });
-                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                            state.info_message =
-                                Some(format!("Local episode {} deleted!", filename));
-                        });
-
-                        // Update local_download_increment in ui_state
-                        ui_state.reduce_mut(|state| {
-                            if let Some(increment) = state.local_download_increment.as_mut() {
-                                *increment += 1;
-                            } else {
-                                state.local_download_increment = Some(1);
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        let formatted_error = format_error_message(&format!("{:?}", e));
-                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                            state.error_message = Some(format!(
-                                "Failed to download episode audio: {}",
-                                formatted_error
-                            ))
-                        });
-                    }
-                }
-            };
-
-            wasm_bindgen_futures::spawn_local(future);
-        })
-    };
 
     let uncomplete_api_key = api_key.clone();
     let uncomplete_server_name = server_name.clone();
@@ -1110,38 +926,19 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         }
     };
 
-    #[cfg(feature = "server_build")]
-    let download_button = html! {
-        <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
-            { if is_downloaded { &i18n_remove_downloaded_episode } else { &i18n_download_episode } }
-        </li>
+    let device_download_item = html! {
+        <DeviceDownloadItem episode={props.episode.clone()} on_done={close_dropdown.clone()} />
     };
 
-    #[cfg(not(feature = "server_build"))]
     let download_button = html! {
         <>
             <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
                 { if is_downloaded { &i18n_remove_downloaded_episode } else { &i18n_download_episode } }
             </li>
-            {
-                if is_locally_downloaded {
-                    html! {
-                        <li class="dropdown-option" onclick={wrap_action(on_remove_locally_downloaded_episode.clone())}>
-                            { &i18n_delete_local_download }
-                        </li>
-                    }
-                } else {
-                    html! {
-                        <li class="dropdown-option" onclick={wrap_action(on_local_episode_download.clone())}>
-                            { &i18n_local_download }
-                        </li>
-                    }
-                }
-            }
+            { device_download_item.clone() }
         </>
     };
 
-    #[cfg(not(feature = "server_build"))]
     let local_download_options = html! {
         <>
             { queue_item.clone() }
@@ -1151,27 +948,10 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
                 { if is_downloaded { &i18n_remove_downloaded_episode } else { &i18n_download_episode } }
             </li>
-            {
-                if is_locally_downloaded {
-                    html! {
-                        <li class="dropdown-option" onclick={wrap_action(on_remove_locally_downloaded_episode.clone())}>
-                            { &i18n_delete_local_download }
-                        </li>
-                    }
-                } else {
-                    html! {
-                        <li class="dropdown-option" onclick={wrap_action(on_local_episode_download.clone())}>
-                            { &i18n_local_download }
-                        </li>
-                    }
-                }
-            }
+            { device_download_item.clone() }
             <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { &i18n_mark_episode_incomplete } else { &i18n_mark_episode_complete } }</li>
         </>
     };
-
-    #[cfg(feature = "server_build")]
-    let local_download_options = html! {};
 
     // ---- Add to Collection (modal or submenu) ----
     // Modal mode opens the single global picker overlay via its store.
@@ -1412,7 +1192,13 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         }
     };
 
-    let action_buttons = match props.page_type {
+    // Signed out (desktop offline listening) only this computer's downloads can be managed;
+    // everything else needs the server.
+    let signed_in = user_id.is_some() && server_name.is_some();
+    let action_buttons = if !signed_in {
+        device_download_item.clone()
+    } else {
+        match props.page_type {
         PageType::Saved => html! {
             <>
                 { play_on_section.clone() }
@@ -1499,6 +1285,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { &i18n_mark_episode_incomplete } else { &i18n_mark_episode_complete } }</li>
             </>
         },
+        }
     };
 
     let block_row_activation = Callback::from(|e: MouseEvent| e.stop_propagation());

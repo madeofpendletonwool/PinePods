@@ -170,23 +170,6 @@ pub fn feed() -> Html {
                                     &CachedFeed { episodes: page.episodes.clone(), total: page.total },
                                 );
 
-                                #[cfg(not(feature = "server_build"))]
-                                {
-                                    wasm_bindgen_futures::spawn_local(async move {
-                                        if let Ok(mut local_episodes) =
-                                            crate::pages::downloads_tauri::fetch_local_episodes()
-                                                .await
-                                        {
-                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
-                                                state.downloaded_episodes.clear_local();
-                                                for ep in local_episodes.drain(..) {
-                                                    state.downloaded_episodes.push_local(ep);
-                                                }
-                                            });
-                                        }
-                                    });
-                                }
-
                                 let new_offset = page.episodes.len() as i64;
                                 total.set(page.total);
                                 offset.set(new_offset);

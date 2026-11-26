@@ -37,11 +37,4 @@ pub(crate) mod i18n;
 pub mod gen_funcs;
 pub mod home_cards;
 pub mod playlist_overview;
-// #[cfg(feature = "server_build")]
-// pub(crate) mod login;
 pub mod setting_components;
-
-//#[cfg(not(feature = "server_build"))]
-//pub mod downloads_tauri;
-// #[cfg(not(feature = "server_build"))]
-// pub mod login_tauri;

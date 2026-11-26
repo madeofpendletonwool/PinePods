@@ -103,6 +103,7 @@ wasm-bindgen-test = "0.3.80"
 
 [features]
 default = []
+# No effect: the browser and desktop apps are one build now. Kept so existing build commands work.
 server_build = []
 # Tests that mount pages, for `wasm-pack test --headless --chrome`.
 browser_tests = []

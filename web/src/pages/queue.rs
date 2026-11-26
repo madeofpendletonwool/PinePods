@@ -149,24 +149,6 @@ pub fn queue() -> Html {
                                     state.completed_episodes = completed_episode_ids;
                                 });
 
-                                // Fetch local episode IDs for Tauri mode
-                                #[cfg(not(feature = "server_build"))]
-                                {
-                                    wasm_bindgen_futures::spawn_local(async move {
-                                        if let Ok(mut local_episodes) =
-                                            crate::pages::downloads_tauri::fetch_local_episodes()
-                                                .await
-                                        {
-                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
-                                                state.downloaded_episodes.clear_local();
-                                                for ep in local_episodes.drain(..) {
-                                                    state.downloaded_episodes.push_local(ep);
-                                                }
-                                            });
-                                        }
-                                    });
-                                }
-
                                 loading_ep.set(false);
                                 // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
                             }

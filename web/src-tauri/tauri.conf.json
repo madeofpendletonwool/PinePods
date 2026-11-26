@@ -9,10 +9,6 @@
   "productName": "Pinepods",
   "version": "0.9.2",
   "app": {
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true
-    },
     "withGlobalTauri": true,
     "security": {
       "csp": null

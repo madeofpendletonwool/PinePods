@@ -55,7 +55,6 @@ fn use_episode_controls(episode: &Episode) -> EpisodeControls {
     });
     let (server_name, api_key, user_id) = (*auth).clone();
 
-    let downloaded_local = if cfg!(feature = "server_build") { false } else { downloaded_local };
     let is_local = podcast_added && episode_id != 0 && (downloaded_server || downloaded_local);
 
     let on_play_pause = {
@@ -96,7 +95,7 @@ fn use_episode_controls(episode: &Episode) -> EpisodeControls {
                 "{}/api/data/stream/{}?api_key={}&user_id={}&type=youtube",
                 server_name, episode.episodeid, api_key, user_id
             )
-        } else if downloaded_local || episode.downloaded || episode.episodeurl.starts_with("local://") {
+        } else if downloaded_server || episode.downloaded || episode.episodeurl.starts_with("local://") {
             format!(
                 "{}/api/data/stream/{}?api_key={}&user_id={}",
                 server_name, episode.episodeid, api_key, user_id
