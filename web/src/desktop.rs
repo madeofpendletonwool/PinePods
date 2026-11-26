@@ -18,6 +18,10 @@ use yewdux::prelude::*;
 
 const DOWNLOAD_EVENT: &str = "desktop://download";
 const TRAY_EVENT: &str = "desktop://tray";
+const SIGN_IN_EVENT: &str = "desktop://sign-in";
+
+/// Where the server sends the browser after an OIDC sign-in started in the desktop app.
+pub const SIGN_IN_LINK: &str = "pinepods://auth/callback";
 
 thread_local! {
     static IS_DESKTOP: Cell<Option<bool>> = const { Cell::new(None) };
@@ -225,6 +229,76 @@ pub async fn init(messages: DownloadMessages) {
         log_error(format!("could not follow the tray menu: {}", error_text(e)));
     }
     tray.forget();
+
+    // The browser coming back from an OIDC sign-in.
+    let sign_in = Closure::<dyn Fn(JsValue)>::new(move |event: JsValue| {
+        let link = js_sys::Reflect::get(&event, &JsValue::from_str("payload")).ok().and_then(|p| p.as_string());
+        if let Some(link) = link {
+            Dispatch::<BrowserSignIn>::global().reduce_mut(move |s| s.returned = Some(link));
+        }
+    });
+    if let Err(e) = tauri_listen(SIGN_IN_EVENT, sign_in.as_ref().unchecked_ref()).await {
+        log_error(format!("could not follow sign-in links: {}", error_text(e)));
+    }
+    sign_in.forget();
+}
+
+/// An OIDC sign-in waiting in the system browser.
+#[derive(Clone, PartialEq, Debug)]
+pub struct PendingSignIn {
+    pub server: String,
+    pub state: String,
+}
+
+/// OIDC sign-in through the system browser: the one started here, and the link that came back.
+#[derive(Default, Clone, PartialEq, Store)]
+pub struct BrowserSignIn {
+    pub pending: Option<PendingSignIn>,
+    pub returned: Option<String>,
+}
+
+/// What a returned sign-in link means.
+#[derive(Debug, PartialEq)]
+pub enum SignInResult {
+    SignedIn { server: String, api_key: String },
+    /// The server's error code, e.g. `no_access`.
+    Failed(String),
+    /// The link doesn't belong to the sign-in started here.
+    Mismatch,
+    /// No sign-in was started; the link is ignored.
+    NotStarted,
+}
+
+/// Check a returned link against the sign-in started here. The server's error links carry no
+/// state, so they are accepted while a sign-in is waiting.
+pub fn read_sign_in_link(link: &str, pending: Option<&PendingSignIn>) -> SignInResult {
+    let Some(pending) = pending else { return SignInResult::NotStarted };
+    let query = link.split_once('?').map(|(_, q)| q).unwrap_or_default();
+    let param = |name: &str| {
+        url::form_urlencoded::parse(query.as_bytes())
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.into_owned())
+            .filter(|v| !v.is_empty())
+    };
+    if let Some(code) = param("error") {
+        return SignInResult::Failed(code);
+    }
+    match (param("api_key"), param("state")) {
+        (Some(api_key), Some(state)) if state == pending.state => {
+            SignInResult::SignedIn { server: pending.server.clone(), api_key }
+        }
+        _ => SignInResult::Mismatch,
+    }
+}
+
+#[derive(Serialize)]
+struct UrlArgs {
+    url: String,
+}
+
+/// Open a provider's sign-in page in the system browser.
+pub async fn open_in_browser(url: String) -> Result<(), String> {
+    invoke::<()>("open_sign_in", UrlArgs { url }).await
 }
 
 fn on_progress(progress: Progress, messages: &DownloadMessages) {

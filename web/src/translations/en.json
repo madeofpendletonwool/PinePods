@@ -2094,6 +2094,11 @@
     "on_this_computer": "Downloaded to this computer",
     "only_in_app": "Only in the desktop app",
     "only_in_app_description": "Downloading episodes to your computer needs the Pinepods desktop app.",
-    "listen_offline": "Listen offline"
+    "listen_offline": "Listen offline",
+    "sign_in_waiting_title": "Finish signing in in your browser",
+    "sign_in_waiting_subtitle": "Sign in on the page that opened in your browser. Pinepods carries on here once you're done.",
+    "sign_in_cancel": "Cancel sign-in",
+    "sign_in_browser_failed": "Could not open your browser",
+    "sign_in_mismatch": "That sign-in wasn't started from this app. Try signing in again."
   }
 }

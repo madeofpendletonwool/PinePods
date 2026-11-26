@@ -62,5 +62,14 @@
       "digestAlgorithm": "sha256",
       "timestampUrl": ""
     }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "pinepods"
+        ]
+      }
+    }
   }
 }

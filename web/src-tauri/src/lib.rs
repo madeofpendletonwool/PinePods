@@ -93,6 +93,48 @@ fn delete_downloads(desktop: State<'_, Desktop>, episode_ids: Vec<i32>) -> Vec<i
     desktop.library.lock().unwrap().remove(&episode_ids)
 }
 
+/// Open an OIDC provider's sign-in page in the system browser: providers refuse embedded
+/// webviews. Only web addresses are opened.
+#[tauri::command]
+fn open_sign_in<R: Runtime>(app: AppHandle<R>, url: String) -> Result<(), String> {
+    let parsed = url::Url::parse(&url).map_err(|e| e.to_string())?;
+    if !matches!(parsed.scheme(), "https" | "http") {
+        return Err(format!("not a web address: {}", parsed.scheme()));
+    }
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().open_url(parsed.as_str(), None::<&str>).map_err(|e| e.to_string())
+}
+
+/// The server sends the browser back to the app with this link after an OIDC sign-in.
+const SIGN_IN_EVENT: &str = "desktop://sign-in";
+
+/// True for the sign-in link the server sends: `pinepods://auth/callback?...`.
+fn is_sign_in_link(url: &url::Url) -> bool {
+    url.scheme() == "pinepods" && url.host_str() == Some("auth") && url.path() == "/callback"
+}
+
+/// Hand sign-in links to the page and bring the window forward. A second launch (Windows,
+/// Linux) reaches here through the single-instance plugin.
+#[cfg_attr(test, allow(dead_code))]
+fn follow_sign_in_links<R: Runtime>(app: &tauri::App<R>) {
+    use tauri_plugin_deep_link::DeepLinkExt;
+    // Installers register the scheme; an AppImage or a dev build registers itself here.
+    #[cfg(any(windows, target_os = "linux"))]
+    if cfg!(windows) || app.env().appimage.is_some() {
+        if let Err(e) = app.deep_link().register_all() {
+            log::warn!("could not register the pinepods:// link handler: {e}");
+        }
+    }
+    let handle = app.handle().clone();
+    app.deep_link().on_open_url(move |event| {
+        for url in event.urls().into_iter().filter(is_sign_in_link) {
+            log::info!("received the sign-in link");
+            let _ = handle.emit(SIGN_IN_EVENT, url.to_string());
+            show_main(&handle);
+        }
+    });
+}
+
 #[tauri::command]
 fn store_credentials(desktop: State<'_, Desktop>, key: String, value: String) -> Result<(), String> {
     credentials::store(&desktop.data_dir, &key, &value)
@@ -135,7 +177,10 @@ fn build_app<R: Runtime>(builder: Builder<R>) -> Builder<R> {
             log::info!("Pinepods {} started; data in {}", env!("CARGO_PKG_VERSION"), data_dir.display());
             // The tray needs the main thread, which unit tests don't run on.
             #[cfg(not(test))]
-            build_tray(app)?;
+            {
+                build_tray(app)?;
+                follow_sign_in_links(app);
+            }
             app.manage(Desktop {
                 data_dir,
                 library: Arc::new(Mutex::new(library)),
@@ -150,6 +195,7 @@ fn build_app<R: Runtime>(builder: Builder<R>) -> Builder<R> {
             download_episode,
             cancel_download,
             delete_downloads,
+            open_sign_in,
             store_credentials,
             get_credentials,
             remove_credentials,
@@ -205,7 +251,10 @@ fn build_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
 pub fn run() {
     let builder = tauri::Builder::default()
         // First, so a second launch hands over to the running app before anything starts.
+        // With its deep-link feature it also forwards a sign-in link the second launch was given.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -269,5 +318,20 @@ mod ipc_tests {
         assert!(call(&webview, "get_credentials", json!({ "key": "../../etc/passwd" })).is_err());
         call(&webview, "clear_all_credentials", json!({})).unwrap();
         assert!(call(&webview, "get_credentials", json!({ "key": "userState" })).is_err());
+
+        // Only web pages open in the browser.
+        for url in ["file:///etc/passwd", "javascript:alert(1)", "pinepods://auth/callback", "not a url"] {
+            assert!(call(&webview, "open_sign_in", json!({ "url": url })).is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn only_the_sign_in_link_is_followed() {
+        let link = |s: &str| super::is_sign_in_link(&s.parse().unwrap());
+        assert!(link("pinepods://auth/callback?api_key=k&state=s"));
+        assert!(link("pinepods://auth/callback?error=no_access"));
+        assert!(!link("pinepods://auth/callbackevil?api_key=k"));
+        assert!(!link("pinepods://other/callback?api_key=k"));
+        assert!(!link("https://auth/callback?api_key=k"));
     }
 }

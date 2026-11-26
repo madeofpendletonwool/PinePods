@@ -75,7 +75,6 @@ pub fn login() -> Html {
     let i18n_date_format = i18n.t("login.date_format").to_string();
     let i18n_save_preferences = i18n.t("login.save_preferences").to_string();
     let i18n_mfa_login = i18n.t("login.mfa_login").to_string();
-    let i18n_or_continue_with = i18n.t("login.or_continue_with").to_string();
     let i18n_connect_different_server = i18n.t("login.connect_different_server").to_string();
     let _i18n_connect_local_server = i18n.t("login.connect_local_server").to_string();
     let i18n_admin_created_success = i18n.t("login.admin_created_success").to_string();
@@ -1791,122 +1790,50 @@ pub fn login() -> Html {
     let busy = *submitting && *page_state == PageState::Default;
     let server_host = window().and_then(|w| w.location().host().ok());
 
-    let oidc_block = if oidc_providers.is_empty() {
-        html! {}
-    } else {
-        html! {
-            <>
-                // The divider separates the OIDC buttons from the standard login form,
-                // so skip it when that form is hidden.
-                if !*disable_standard_login {
-                    <div class="lp-divider">{ &i18n_or_continue_with }</div>
-                }
-                <div class="lp-oidc">
-                    {
-                        oidc_providers.iter().map(|provider| {
-                                                    let button_style = format!(
-                                                        "background-color: {}; color: {}",
-                                                        provider.button_color, provider.button_text_color
-                                                    );
-                                                    let button_text_style = format!(
-                                                        "color: {}",
-                                                        provider.button_text_color
-                                                    );
-
-                                                    html! {
-                                                        <button
-                                                            class="lp-oidc-button" type="button"
-                                                            style={button_style}
-                                                            onclick={
-                                                                let auth_url = provider.authorization_url.clone();
-                                                                let i18n_oidc_login_failed = i18n_oidc_login_failed.clone();
-                                                                let client_id = provider.client_id.clone();
-                                                                let scope = provider.scope.clone();
-                                                                // let server_name = server_name.clone();
-                                                                let window = web_sys::window().expect("no global `window` exists");
-                                                                let location = window.location();
-                                                                let server_name = location
-                                                                    .origin()
-                                                                    .expect("should have an origin")
-                                                                    .trim_end_matches('/')
-                                                                    .to_string();
-
-                                                                Callback::from(move |_| {
-                                                                    let window = web_sys::window().unwrap();
-                                                                    let crypto = window.crypto().unwrap();
-                                                                    let mut random_bytes = [0u8; 16];
-                                                                    crypto.get_random_values_with_u8_array(&mut random_bytes).unwrap();
-                                                                    let state = random_bytes.iter()
-                                                                        .map(|b| format!("{:02x}", b))
-                                                                        .collect::<String>();
-
-                                                                    // Remembered here so the callback only finishes a login this browser started.
-                                                                    if let Ok(Some(storage)) = window.session_storage() {
-                                                                        let _ = storage.set_item(crate::components::oauth_callback::OIDC_STATE_KEY, &state);
-                                                                    }
-
-                                                                    // Generate PKCE (S256); always sent so PKCE-enforcing IdPs accept the flow
-                                                                    let mut verifier_bytes = [0u8; 32];
-                                                                    crypto.get_random_values_with_u8_array(&mut verifier_bytes).unwrap();
-                                                                    let code_verifier = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(verifier_bytes);
-                                                                    let code_challenge = login_requests::pkce_code_challenge_s256(&code_verifier);
-
-                                                                    let auth_url_clone = auth_url.clone();
-                                                                    let client_id_clone = client_id.clone();
-                                                                    let scope_clone = scope.clone();
-                                                                    let state_clone = state.clone();
-                                                                    let server_name_clone = server_name.clone();
-                                                                    let i18n_oidc_login_failed = i18n_oidc_login_failed.clone();
-
-                                                                    wasm_bindgen_futures::spawn_local(async move {
-                                                                        let origin = window.location().origin().unwrap();
-                                                                        let redirect_uri = format!("{}/api/auth/callback", origin);
-                                                                        match call_store_oidc_state(
-                                                                            server_name_clone,
-                                                                            state_clone.clone(),
-                                                                            client_id_clone.clone(),
-                                                                            Some(origin.clone()),
-                                                                            Some(code_verifier.clone()),
-                                                                            Some(redirect_uri.clone()),
-                                                                        ).await {
-                                                                            Ok(_) => {
-                                                                                let separator = if auth_url_clone.contains('?') { '&' } else { '?' };
-                                                                                let auth_url = format!(
-                                                                                    "{}{}client_id={}&redirect_uri={}&scope={}&response_type=code&state={}&code_challenge={}&code_challenge_method=S256",
-                                                                                    auth_url_clone,
-                                                                                    separator,
-                                                                                    urlencoding::encode(&client_id_clone),
-                                                                                    urlencoding::encode(&redirect_uri),
-                                                                                    urlencoding::encode(&scope_clone),
-                                                                                    state_clone,
-                                                                                    code_challenge
-                                                                                );
-                                                                                window.location().set_href(&auth_url).unwrap();
-                                                                            },
-                                                                            Err(e) => {
-                                                                                web_sys::console::log_1(&format!("Failed to store state: {:?}", e).into());
-                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                                                                    state.error_message = Some(format!("{}: {}", i18n_oidc_login_failed, e));
-                                                                                });
-                                                                            }
-                                                                        }
-                                                                    });
-                                                                })
-                                                            }
-                                                        >
-                                                            if let Some(icon) = &provider.icon_svg {
-                                                                <div class="lp-oidc-icon">
-                                                                    {Html::from_html_unchecked(AttrValue::from(icon.clone()))}
-                                                                </div>
-                                                            }
-                                                            <span style={button_text_style}>{&provider.button_text}</span>
-                                                        </button>
-                                                    }
-                                                }).collect::<Html>()
+    let on_oidc = {
+        let i18n_oidc_login_failed = i18n_oidc_login_failed.clone();
+        Callback::from(move |provider: login_requests::OIDCProvider| {
+            let window = web_sys::window().expect("no global `window` exists");
+            let origin = window.location().origin().expect("should have an origin");
+            let server_name = origin.trim_end_matches('/').to_string();
+            let (state, code_verifier, code_challenge) = oidc_secrets();
+            // Remembered here so the callback only finishes a login this browser started.
+            if let Ok(Some(storage)) = window.session_storage() {
+                let _ = storage.set_item(crate::components::oauth_callback::OIDC_STATE_KEY, &state);
+            }
+            let i18n_oidc_login_failed = i18n_oidc_login_failed.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let redirect_uri = format!("{}/api/auth/callback", origin);
+                match call_store_oidc_state(
+                    server_name,
+                    state.clone(),
+                    provider.client_id.clone(),
+                    Some(origin.clone()),
+                    Some(code_verifier),
+                    Some(redirect_uri.clone()),
+                ).await {
+                    Ok(_) => {
+                        let auth_url = oidc_authorization_url(&provider, &redirect_uri, &state, &code_challenge);
+                        window.location().set_href(&auth_url).unwrap();
                     }
-                </div>
-            </>
-        }
+                    Err(e) => {
+                        web_sys::console::log_1(&format!("Failed to store state: {:?}", e).into());
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                            state.error_message = Some(format!("{}: {}", i18n_oidc_login_failed, e));
+                        });
+                    }
+                }
+            });
+        })
+    };
+    // The divider separates the OIDC buttons from the standard login form, so skip it when
+    // that form is hidden.
+    let oidc_block = html! {
+        <OidcButtons
+            providers={(*oidc_providers).clone()}
+            divider={!*disable_standard_login}
+            onclick={on_oidc}
+        />
     };
 
     let main_panel = html! {
@@ -1998,6 +1925,86 @@ pub fn login() -> Html {
     }
 }
 
+/// A fresh OIDC `state`, and a PKCE verifier with its S256 challenge (always sent, so
+/// PKCE-enforcing providers accept the flow).
+fn oidc_secrets() -> (String, String, String) {
+    let crypto = web_sys::window().unwrap().crypto().unwrap();
+    let mut state_bytes = [0u8; 16];
+    crypto.get_random_values_with_u8_array(&mut state_bytes).unwrap();
+    let state = state_bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+    let mut verifier_bytes = [0u8; 32];
+    crypto.get_random_values_with_u8_array(&mut verifier_bytes).unwrap();
+    let code_verifier = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(verifier_bytes);
+    let code_challenge = login_requests::pkce_code_challenge_s256(&code_verifier);
+    (state, code_verifier, code_challenge)
+}
+
+/// The provider's sign-in page for this login.
+fn oidc_authorization_url(
+    provider: &login_requests::OIDCProvider,
+    redirect_uri: &str,
+    state: &str,
+    code_challenge: &str,
+) -> String {
+    let separator = if provider.authorization_url.contains('?') { '&' } else { '?' };
+    format!(
+        "{}{}client_id={}&redirect_uri={}&scope={}&response_type=code&state={}&code_challenge={}&code_challenge_method=S256",
+        provider.authorization_url,
+        separator,
+        urlencoding::encode(&provider.client_id),
+        urlencoding::encode(redirect_uri),
+        urlencoding::encode(&provider.scope),
+        state,
+        code_challenge
+    )
+}
+
+#[derive(Properties, PartialEq)]
+struct OidcButtonsProps {
+    providers: Vec<login_requests::OIDCProvider>,
+    divider: bool,
+    onclick: Callback<login_requests::OIDCProvider>,
+}
+
+/// A sign-in button for each OIDC provider the server offers.
+#[function_component(OidcButtons)]
+fn oidc_buttons(props: &OidcButtonsProps) -> Html {
+    let (i18n, _) = use_translation();
+    if props.providers.is_empty() {
+        return html! {};
+    }
+    html! {
+        <>
+            if props.divider {
+                <div class="lp-divider">{ i18n.t("login.or_continue_with") }</div>
+            }
+            <div class="lp-oidc">
+                { for props.providers.iter().map(|provider| {
+                    let button_style = format!(
+                        "background-color: {}; color: {}",
+                        provider.button_color, provider.button_text_color
+                    );
+                    let button_text_style = format!("color: {}", provider.button_text_color);
+                    let onclick = {
+                        let provider = provider.clone();
+                        props.onclick.reform(move |_: MouseEvent| provider.clone())
+                    };
+                    html! {
+                        <button class="lp-oidc-button" type="button" style={button_style} {onclick}>
+                            if let Some(icon) = &provider.icon_svg {
+                                <div class="lp-oidc-icon">
+                                    {Html::from_html_unchecked(AttrValue::from(icon.clone()))}
+                                </div>
+                            }
+                            <span style={button_text_style}>{&provider.button_text}</span>
+                        </button>
+                    }
+                }) }
+            </div>
+        </>
+    }
+}
+
 // Store a login that passed its second factor, load the user's theme and time settings, then
 // go to their start page.
 async fn finish_verified_login(
@@ -2038,6 +2045,34 @@ async fn finish_verified_login(
     }
     let start_page = call_get_startpage(&server_name, &api_key, &user_id).await.unwrap_or_default();
     BrowserHistory::new().push(if start_page.is_empty() { "/home" } else { start_page.as_str() });
+}
+
+/// The account behind the API key an OIDC sign-in returned, and whether its first-login
+/// setup is done.
+async fn load_oidc_login(
+    server: &str,
+    api_key: &str,
+) -> anyhow::Result<(
+    login_requests::GetUserDetails,
+    login_requests::LoginServerRequest,
+    login_requests::GetApiDetails,
+    bool,
+)> {
+    call_verify_key(server, api_key).await?;
+    let user_id = login_requests::call_get_user_id(server, api_key)
+        .await?
+        .retrieved_id
+        .ok_or_else(|| anyhow::anyhow!("the server found no user for this key"))?;
+    let user_details = login_requests::call_get_user_details(server, api_key, &user_id).await?;
+    let server_details = login_requests::call_get_api_config(server, api_key).await?;
+    let setup_done = call_first_login_done(server.to_string(), api_key.to_string(), &user_id).await?;
+    let login_request = login_requests::LoginServerRequest {
+        server_name: server.to_string(),
+        username: None,
+        password: None,
+        api_key: Some(api_key.to_string()),
+    };
+    Ok((user_details, login_request, server_details, setup_done))
 }
 
 #[function_component(ChangeServer)]
@@ -2090,6 +2125,81 @@ pub fn login() -> Html {
     let submitting = use_state(|| false);
     let user_language = use_state(|| "en".to_string());
     let available_languages: UseStateHandle<Vec<AvailableLanguage>> = use_state(Vec::new);
+
+    // OIDC in the desktop app: the providers of the server typed in, and sign-ins that finish
+    // in the system browser and come back as a pinepods:// link.
+    let oidc_server = server_name.trim().trim_end_matches('/').to_string();
+    let oidc_providers: UseStateHandle<(String, Vec<login_requests::OIDCProvider>)> =
+        use_state(Default::default);
+    {
+        let oidc_providers = oidc_providers.clone();
+        use_effect_with(oidc_server.clone(), move |server| {
+            let server = server.clone();
+            let looks_like_url = server.starts_with("http://") || server.starts_with("https://");
+            // Wait for typing to pause before asking the server.
+            let timeout = (crate::desktop::is_desktop() && looks_like_url).then(|| {
+                gloo_timers::callback::Timeout::new(500, move || {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let providers = call_get_public_oidc_providers(server.clone())
+                            .await
+                            .map(|r| r.providers)
+                            .unwrap_or_default();
+                        oidc_providers.set((server, providers));
+                    });
+                })
+            });
+            move || drop(timeout)
+        });
+    }
+    let shown_providers = if oidc_providers.0 == oidc_server { oidc_providers.1.clone() } else { Vec::new() };
+    let waiting_for_browser =
+        use_selector(|s: &crate::desktop::BrowserSignIn| s.pending.is_some());
+    let returned_link = use_selector(|s: &crate::desktop::BrowserSignIn| s.returned.clone());
+
+    let on_desktop_oidc = {
+        let i18n_oidc_login_failed = i18n.t("login.oidc_login_failed").to_string();
+        let i18n_browser_failed = i18n.t("desktop.sign_in_browser_failed").to_string();
+        let server = oidc_server.clone();
+        Callback::from(move |provider: login_requests::OIDCProvider| {
+            let server = server.clone();
+            let (state, code_verifier, code_challenge) = oidc_secrets();
+            let (i18n_oidc_login_failed, i18n_browser_failed) =
+                (i18n_oidc_login_failed.clone(), i18n_browser_failed.clone());
+            wasm_bindgen_futures::spawn_local(async move {
+                let redirect_uri = format!("{server}/api/auth/callback");
+                let sign_in = Dispatch::<crate::desktop::BrowserSignIn>::global();
+                let stored = call_store_oidc_state(
+                    server.clone(),
+                    state.clone(),
+                    provider.client_id.clone(),
+                    Some(crate::desktop::SIGN_IN_LINK.to_string()),
+                    Some(code_verifier),
+                    Some(redirect_uri.clone()),
+                )
+                .await;
+                let result = match stored {
+                    Err(e) => Err(format!("{i18n_oidc_login_failed}: {e}")),
+                    Ok(()) => {
+                        let pending = crate::desktop::PendingSignIn { server, state: state.clone() };
+                        sign_in.reduce_mut(move |s| s.pending = Some(pending));
+                        let url = oidc_authorization_url(&provider, &redirect_uri, &state, &code_challenge);
+                        crate::desktop::open_in_browser(url)
+                            .await
+                            .map_err(|e| format!("{i18n_browser_failed}: {e}"))
+                    }
+                };
+                if let Err(message) = result {
+                    sign_in.reduce_mut(|s| s.pending = None);
+                    crate::desktop::log_error(format!("OIDC sign-in: {message}"));
+                    Dispatch::<NotificationState>::global()
+                        .reduce_mut(move |s| s.error_message = Some(message));
+                }
+            });
+        })
+    };
+    let on_cancel_sign_in = Callback::from(|_: MouseEvent| {
+        Dispatch::<crate::desktop::BrowserSignIn>::global().reduce_mut(|s| s.pending = None);
+    });
 
 
     // Load available languages
@@ -2869,6 +2979,105 @@ pub fn login() -> Html {
         })
     };
 
+    // A sign-in link came back from the browser: check it belongs to the sign-in started here,
+    // then finish signing in like the web app's OIDC callback.
+    {
+        let dispatch = dispatch.clone();
+        let page_state = page_state.clone();
+        let submitting = submitting.clone();
+        let (temp_server_name, temp_api_key, temp_user_id) =
+            (temp_server_name.clone(), temp_api_key.clone(), temp_user_id.clone());
+        let messages = [
+            "desktop.sign_in_mismatch",
+            "oauth_callback.username_conflict",
+            "oauth_callback.no_access",
+            "oauth_callback.invalid_provider",
+            "oauth_callback.authentication_failed",
+        ]
+        .map(|key| i18n.t(key).to_string());
+        use_effect_with((*returned_link).clone(), move |link| {
+            if let Some(link) = link.clone() {
+                use crate::desktop::{read_sign_in_link, BrowserSignIn, SignInResult};
+                let sign_in = Dispatch::<BrowserSignIn>::global();
+                let pending = sign_in.get().pending.clone();
+                sign_in.reduce_mut(|s| {
+                    s.returned = None;
+                    s.pending = None;
+                });
+                let [mismatch, conflict, no_access, invalid_provider, failed] = messages;
+                let error = match read_sign_in_link(&link, pending.as_ref()) {
+                    SignInResult::NotStarted => {
+                        crate::desktop::log_error("ignored a sign-in link: no sign-in was started here".into());
+                        None
+                    }
+                    SignInResult::Mismatch => {
+                        crate::desktop::log_error("ignored a sign-in link that doesn't match the sign-in started here".into());
+                        Some(mismatch)
+                    }
+                    SignInResult::Failed(code) => {
+                        crate::desktop::log_error(format!("OIDC sign-in failed: {code}"));
+                        Some(match code.as_str() {
+                            "username_conflict" => conflict,
+                            "no_access" => no_access,
+                            "invalid_provider" => invalid_provider,
+                            _ => failed,
+                        })
+                    }
+                    SignInResult::SignedIn { server, api_key } => {
+                        submitting.set(true);
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match load_oidc_login(&server, &api_key).await {
+                                Ok((user_details, login_request, server_details, true)) => {
+                                    finish_verified_login(&dispatch, user_details, login_request, server_details).await;
+                                }
+                                Ok((user_details, login_request, server_details, false)) => {
+                                    // First sign-in: ask for the time zone, as a password login does.
+                                    temp_server_name.set(server);
+                                    temp_api_key.set(api_key);
+                                    temp_user_id.set(user_details.UserID);
+                                    dispatch.reduce_mut(move |state| {
+                                        state.user_details = Some(user_details);
+                                        state.auth_details = Some(login_request);
+                                        state.server_details = Some(server_details);
+                                        state.store_app_state();
+                                    });
+                                    page_state.set(PageState::TimeZone);
+                                }
+                                Err(e) => {
+                                    submitting.set(false);
+                                    crate::desktop::log_error(format!("OIDC sign-in: could not load the account: {e}"));
+                                    Dispatch::<NotificationState>::global()
+                                        .reduce_mut(move |s| s.error_message = Some(failed));
+                                }
+                            }
+                        });
+                        None
+                    }
+                };
+                if let Some(message) = error {
+                    Dispatch::<NotificationState>::global()
+                        .reduce_mut(move |s| s.error_message = Some(message));
+                }
+            }
+            || ()
+        });
+    }
+
+    let waiting_panel = html! {
+        <div class="lp-panel" key="oidc-wait">
+            <CardHead
+                title={i18n.t("desktop.sign_in_waiting_title")}
+                subtitle={Some(AttrValue::from(i18n.t("desktop.sign_in_waiting_subtitle")))}
+                on_back={Some(on_cancel_sign_in.clone())}
+            />
+            <p class="lp-note">
+                <button type="button" class="lp-link" onclick={on_cancel_sign_in}>
+                    { i18n.t("desktop.sign_in_cancel") }
+                </button>
+            </p>
+        </div>
+    };
+
     let mfa_code_modal = html! {
         <div class="lp-panel" key="mfa">
             <CardHead
@@ -2932,11 +3141,13 @@ pub fn login() -> Html {
                 />
                 <PlayButton label={i18n_login_button.clone()} busy={busy} />
             </form>
+            <OidcButtons providers={shown_providers} divider=true onclick={on_desktop_oidc} />
         </div>
     };
 
     let card_body = match *page_state {
         PageState::MFAPrompt => mfa_code_modal,
+        _ if *waiting_for_browser => waiting_panel,
         _ => main_panel,
     };
 
