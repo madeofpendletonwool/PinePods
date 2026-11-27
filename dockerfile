@@ -29,6 +29,9 @@ COPY ./web/static /app/static
 WORKDIR /app
 # Build the Yew application in release mode
 RUN RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"" trunk build --features server_build --release
+# Compressed copies for nginx's gzip_static
+RUN find dist -type f \( -name '*.wasm' -o -name '*.js' -o -name '*.css' -o -name '*.json' -o -name '*.html' -o -name '*.svg' \) \
+    -size +1k -exec gzip -9 -k {} \;
 
 # uv, mounted into the Python builder stage
 FROM ghcr.io/astral-sh/uv:0.13.6 AS uv

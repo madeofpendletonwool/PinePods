@@ -134,7 +134,7 @@ fn short_duration(secs: i32) -> String {
     }
 }
 
-fn ago(i18n: &i18nrs::I18n, published: i64) -> String {
+fn ago(i18n: &crate::components::i18n::I18n, published: i64) -> String {
     let now = (js_sys::Date::now() / 1000.0) as i64;
     let secs = (now - published).max(0);
     let (key, n) = if secs < 3600 {

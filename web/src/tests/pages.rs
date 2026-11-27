@@ -5,7 +5,6 @@
 use gloo_timers::future::TimeoutFuture;
 use crate::components::i18n::TranslationProvider;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
 use yew::prelude::*;
@@ -56,7 +55,6 @@ struct HarnessProps {
 
 #[function_component(Harness)]
 fn harness(props: &HarnessProps) -> Html {
-    let translations = HashMap::from([("en", include_str!("../translations/en.json"))]);
     let page = match props.page {
         Page::Discover => html! { <Discover /> },
         Page::Downloads => html! { <Downloads /> },
@@ -74,7 +72,7 @@ fn harness(props: &HarnessProps) -> Html {
         Page::Stats => html! { <UserStats /> },
     };
     html! {
-        <TranslationProvider translations={translations}>
+        <TranslationProvider>
             <BrowserRouter>{ page }</BrowserRouter>
         </TranslationProvider>
     }

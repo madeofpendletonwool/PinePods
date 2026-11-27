@@ -1084,16 +1084,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "i18nrs"
-version = "0.1.10"
-source = "git+https://github.com/madeofpendletonwool/i18n-rs#2884414b1b103e43e827b7b92a764a7e1889274b"
-dependencies = [
- "serde_json",
- "web-sys",
- "yew",
-]
-
-[[package]]
 name = "iana-time-zone"
 version = "0.1.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2314,7 +2304,6 @@ dependencies = [
  "gloo-timers 0.4.0",
  "gloo-utils 0.3.0",
  "htmlentity",
- "i18nrs",
  "js-sys",
  "log",
  "md5",

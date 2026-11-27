@@ -66,7 +66,7 @@ impl Reducer<PodcastFeedState> for AppStateMsg {
 fn render_layout_toggle(
     dispatch: Dispatch<UserPreferencesState>,
     current_layout: Option<PodcastLayout>,
-    i18n: &i18nrs::I18n,
+    i18n: &crate::components::i18n::I18n,
 ) -> Html {
     let onclick = dispatch.reduce_mut_callback(|state| {
         state.podcast_layout = match state.podcast_layout {
@@ -102,7 +102,7 @@ fn render_podcasts(
     desc_state: Rc<ExpandedDescriptions>,
     desc_dispatch: Dispatch<ExpandedDescriptions>,
     toggle_delete: Callback<(i32, std::string::String)>,
-    i18n: &i18nrs::I18n,
+    i18n: &crate::components::i18n::I18n,
     on_toggle_favorite: Callback<(i32, bool)>,
     show_unplayed: bool,
 ) -> Html {
