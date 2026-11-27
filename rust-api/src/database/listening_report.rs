@@ -58,6 +58,8 @@ pub(crate) struct ReportInput {
     pub podcasts: HashSet<i64>,
     /// Every day with listening in the log, for the period picker.
     pub logged_days: Vec<NaiveDate>,
+    /// Rewind only: when each podcast (by id) was first played, from the history.
+    pub first_heard: HashMap<i64, NaiveDateTime>,
 }
 
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
@@ -203,19 +205,17 @@ fn top<T>(mut v: Vec<T>, key: impl Fn(&T) -> i64) -> Vec<T> {
 pub(crate) fn build_report(input: &ReportInput, range: Option<(NaiveDate, NaiveDate)>, tz: Tz) -> ListeningReport {
     let log = &input.log;
 
-    // Seconds per item: the log's, or for all time the larger of that and the history's
+    // Seconds per item: the log's, or the larger of that and the history's when it was loaded
     // (history counts each episode's whole listening, from before the log too).
     let mut item_seconds: HashMap<(i64, i64), i64> = HashMap::new();
     for r in log {
         *item_seconds.entry((r.kind, r.item)).or_insert(0) += r.seconds.max(0);
     }
     let mut info: HashMap<(i64, i64), ItemInfo> = input.items.clone();
-    if range.is_none() {
-        for (key, secs, item) in &input.history {
-            let e = item_seconds.entry(*key).or_insert(0);
-            *e = (*e).max(*secs);
-            info.entry(*key).or_insert_with(|| item.clone());
-        }
+    for (key, secs, item) in &input.history {
+        let e = item_seconds.entry(*key).or_insert(0);
+        *e = (*e).max(*secs);
+        info.entry(*key).or_insert_with(|| item.clone());
     }
     let empty = ItemInfo::default();
     let info_of = |key: &(i64, i64)| info.get(key).unwrap_or(&empty);
@@ -426,6 +426,28 @@ fn utc_bounds(range: Option<(NaiveDate, NaiveDate)>, tz: Tz) -> (NaiveDateTime, 
     }
 }
 
+/// Which history rows count: last played in `[from, to)`, and those never dated when `.2`.
+/// All time takes every row; a filled period takes the rows from before the first logged day.
+/// The second value is that day, when a period was filled.
+fn history_window(
+    range: Option<(NaiveDate, NaiveDate)>,
+    fill: bool,
+    logged: &[String],
+    tz: Tz,
+    (start_utc, end_utc): (NaiveDateTime, NaiveDateTime),
+) -> (Option<(NaiveDateTime, NaiveDateTime, bool)>, Option<NaiveDate>) {
+    let Some((_, end)) = range else { return (Some((start_utc, end_utc, true)), None) };
+    if !fill {
+        return (None, None);
+    }
+    let first = logged.iter().filter_map(|d| parse_day(d)).min();
+    let cutoff = first.map(|d| utc_bounds(Some((d, d)), tz).0).map_or(end_utc, |c| c.min(end_utc));
+    if start_utc >= cutoff {
+        return (None, None);
+    }
+    (Some((start_utc, cutoff, false)), Some(first.unwrap_or(end + Duration::days(1)).min(end + Duration::days(1))))
+}
+
 fn parse_day(s: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(s.get(..10)?, "%Y-%m-%d").ok()
 }
@@ -433,6 +455,14 @@ fn parse_day(s: &str) -> Option<NaiveDate> {
 impl DatabasePool {
     /// What `user_id` listened to over local days `start..=end` (both or neither).
     pub async fn listening_report(&self, user_id: i32, range: Option<(NaiveDate, NaiveDate)>) -> AppResult<ListeningReport> {
+        let (input, tz, _) = self.report_input(user_id, range, false).await?;
+        Ok(build_report(&input, range, tz))
+    }
+
+    /// The report's input. All time counts the history; with `fill`, so does a period that
+    /// starts before the log does, for items last played before the log began. The third
+    /// value is the first logged day when the history was counted for a period.
+    pub(crate) async fn report_input(&self, user_id: i32, range: Option<(NaiveDate, NaiveDate)>, fill: bool) -> AppResult<(ReportInput, Tz, Option<NaiveDate>)> {
         let (from, to) = match range {
             Some(r) => r,
             None => (NaiveDate::from_ymd_opt(1900, 1, 1).unwrap(), NaiveDate::from_ymd_opt(9999, 1, 1).unwrap()),
@@ -449,6 +479,8 @@ impl DatabasePool {
         let mut podcast_credits: Vec<(i64, i64, String, Option<String>)> = Vec::new();
         let log_days: Vec<String>;
         let (start_utc, end_utc);
+        let filled_before: Option<NaiveDate>;
+        let mut first_heard: Vec<(i64, Option<NaiveDateTime>)> = Vec::new();
 
         dialect_match!(self, {
             pg(pool) => {
@@ -487,7 +519,9 @@ impl DatabasePool {
                     item_rows.push((r.try_get("kind")?, r.try_get("item")?, r.try_get("pid")?, r.try_get("podcastname")?, r.try_get("feedurl")?,
                         r.try_get("itemtitle")?, r.try_get("artwork")?, r.try_get("categories")?, r.try_get("pubdate").ok().flatten(), r.try_get("firstlistened").ok().flatten()));
                 }
-                if range.is_none() {
+                let window;
+                (window, filled_before) = history_window(range, fill, &log_days, zone, (start_utc, end_utc));
+                if let Some((lo, hi, undated)) = window {
                     for r in q::query(r#"
                         SELECT 0 AS kind, CAST(h.episodeid AS BIGINT) AS item, CAST(h.listenedseconds AS BIGINT) AS secs, CAST(p.podcastid AS BIGINT) AS pid,
                                p.podcastname, p.feedurl, e.episodetitle AS title, COALESCE(NULLIF(e.episodeartwork, ''), p.artworkurl) AS art, p.categories
@@ -495,6 +529,7 @@ impl DatabasePool {
                         JOIN "Episodes" e ON e.episodeid = h.episodeid
                         JOIN "Podcasts" p ON p.feedid = e.feedid AND p.userid = h.userid
                         WHERE h.userid = $1 AND h.listenedseconds > 0
+                          AND ((h.listendate >= $2 AND h.listendate < $3) OR (h.listendate IS NULL AND $4))
                         UNION ALL
                         SELECT 1 AS kind, CAST(h.videoid AS BIGINT) AS item, CAST(h.listenedseconds AS BIGINT) AS secs, CAST(p.podcastid AS BIGINT) AS pid,
                                p.podcastname, p.feedurl, v.videotitle AS title, COALESCE(NULLIF(v.thumbnailurl, ''), p.artworkurl) AS art, p.categories
@@ -502,9 +537,26 @@ impl DatabasePool {
                         JOIN "YouTubeVideos" v ON v.videoid = h.videoid
                         JOIN "Podcasts" p ON p.podcastid = v.podcastid AND p.userid = h.userid
                         WHERE h.userid = $1 AND h.listenedseconds > 0
-                    "#).bind(user_id).fetch_all(pool).await? {
+                          AND ((h.listendate >= $2 AND h.listendate < $3) OR (h.listendate IS NULL AND $4))
+                    "#).bind(user_id).bind(lo).bind(hi).bind(undated).fetch_all(pool).await? {
                         history_rows.push((r.try_get::<i32, _>("kind").map(i64::from).or_else(|_| r.try_get::<i64, _>("kind"))?, r.try_get("item")?, r.try_get("secs")?,
                             r.try_get("pid")?, r.try_get("podcastname")?, r.try_get("feedurl")?, r.try_get("title")?, r.try_get("art")?, r.try_get("categories")?));
+                    }
+                }
+                if fill {
+                    for r in q::query(r#"
+                        SELECT pid, MIN(at) AS at FROM (
+                            SELECT CAST(p.podcastid AS BIGINT) AS pid, h.listendate AS at FROM "UserEpisodeHistory" h
+                            JOIN "Episodes" e ON e.episodeid = h.episodeid
+                            JOIN "Podcasts" p ON p.feedid = e.feedid AND p.userid = h.userid
+                            WHERE h.userid = $1 AND h.listendate IS NOT NULL
+                            UNION ALL
+                            SELECT CAST(v.podcastid AS BIGINT) AS pid, h.listendate AS at FROM "UserVideoHistory" h
+                            JOIN "YouTubeVideos" v ON v.videoid = h.videoid
+                            WHERE h.userid = $1 AND h.listendate IS NOT NULL
+                        ) heard GROUP BY pid
+                    "#).bind(user_id).fetch_all(pool).await? {
+                        first_heard.push((r.try_get("pid")?, r.try_get("at").ok().flatten()));
                     }
                 }
                 for r in q::query(r#"
@@ -576,7 +628,9 @@ impl DatabasePool {
                     item_rows.push((r.try_get("kind")?, r.try_get("item")?, r.try_get("pid")?, r.try_get("podcastname")?, r.try_get("feedurl")?,
                         r.try_get("itemtitle")?, r.try_get("artwork")?, r.try_get("categories")?, r.try_get("pubdate").ok().flatten(), r.try_get("firstlistened").ok().flatten()));
                 }
-                if range.is_none() {
+                let window;
+                (window, filled_before) = history_window(range, fill, &log_days, zone, (start_utc, end_utc));
+                if let Some((lo, hi, undated)) = window {
                     for r in sqlx::query(
                         "SELECT CAST(0 AS SIGNED) AS kind, CAST(h.EpisodeID AS SIGNED) AS item, CAST(h.ListenedSeconds AS SIGNED) AS secs, CAST(p.PodcastID AS SIGNED) AS pid,
                                 p.PodcastName AS podcastname, p.FeedURL AS feedurl, e.EpisodeTitle AS title,
@@ -585,6 +639,7 @@ impl DatabasePool {
                          JOIN Episodes e ON e.EpisodeID = h.EpisodeID
                          JOIN Podcasts p ON p.FeedID = e.FeedID AND p.UserID = h.UserID
                          WHERE h.UserID = ? AND h.ListenedSeconds > 0
+                           AND ((h.ListenDate >= ? AND h.ListenDate < ?) OR (h.ListenDate IS NULL AND ?))
                          UNION ALL
                          SELECT CAST(1 AS SIGNED) AS kind, CAST(h.VideoID AS SIGNED) AS item, CAST(h.ListenedSeconds AS SIGNED) AS secs, CAST(p.PodcastID AS SIGNED) AS pid,
                                 p.PodcastName AS podcastname, p.FeedURL AS feedurl, v.VideoTitle AS title,
@@ -592,10 +647,27 @@ impl DatabasePool {
                          FROM UserVideoHistory h
                          JOIN YouTubeVideos v ON v.VideoID = h.VideoID
                          JOIN Podcasts p ON p.PodcastID = v.PodcastID AND p.UserID = h.UserID
-                         WHERE h.UserID = ? AND h.ListenedSeconds > 0"
-                    ).bind(user_id).bind(user_id).fetch_all(pool).await? {
+                         WHERE h.UserID = ? AND h.ListenedSeconds > 0
+                           AND ((h.ListenDate >= ? AND h.ListenDate < ?) OR (h.ListenDate IS NULL AND ?))"
+                    ).bind(user_id).bind(lo).bind(hi).bind(undated).bind(user_id).bind(lo).bind(hi).bind(undated).fetch_all(pool).await? {
                         history_rows.push((r.try_get("kind")?, r.try_get("item")?, r.try_get("secs")?, r.try_get("pid")?, r.try_get("podcastname")?,
                             r.try_get("feedurl")?, r.try_get("title")?, r.try_get("art")?, r.try_get("categories")?));
+                    }
+                }
+                if fill {
+                    for r in sqlx::query(
+                        "SELECT pid, CAST(MIN(at) AS DATETIME) AS at FROM (
+                            SELECT CAST(p.PodcastID AS SIGNED) AS pid, h.ListenDate AS at FROM UserEpisodeHistory h
+                            JOIN Episodes e ON e.EpisodeID = h.EpisodeID
+                            JOIN Podcasts p ON p.FeedID = e.FeedID AND p.UserID = h.UserID
+                            WHERE h.UserID = ? AND h.ListenDate IS NOT NULL
+                            UNION ALL
+                            SELECT CAST(v.PodcastID AS SIGNED) AS pid, h.ListenDate AS at FROM UserVideoHistory h
+                            JOIN YouTubeVideos v ON v.VideoID = h.VideoID
+                            WHERE h.UserID = ? AND h.ListenDate IS NOT NULL
+                        ) heard GROUP BY pid"
+                    ).bind(user_id).bind(user_id).fetch_all(pool).await? {
+                        first_heard.push((r.try_get("pid")?, r.try_get("at").ok().flatten()));
                     }
                 }
                 for r in sqlx::query(
@@ -679,9 +751,118 @@ impl DatabasePool {
         input.episode_people = credit(episode_credits);
         input.podcast_people = credit(podcast_credits);
         input.logged_days = log_days.iter().filter_map(|d| parse_day(d)).collect();
+        input.first_heard = first_heard.into_iter().filter_map(|(p, at)| Some((p, at?))).collect();
 
         let tz = tz.and_then(|t| t.parse::<Tz>().ok()).unwrap_or(Tz::UTC);
-        Ok(build_report(&input, range, tz))
+        Ok((input, tz, filled_before))
+    }
+}
+
+/// A Rewind: a month's or a year's listening told as a story.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct Rewind {
+    /// `YYYY` or `YYYY-MM`.
+    pub period: String,
+    pub report: ListeningReport,
+    /// Listening in the period before, for comparison.
+    pub previous_seconds: i64,
+    /// When the period starts before the listening log: listening before this day is counted
+    /// from the history, which has totals and top lists but no days or times.
+    pub history_until: Option<String>,
+    /// The first thing played in the period; null when part of it comes from the history.
+    pub first_play: Option<ReportEpisode>,
+    /// Podcasts first played in the period, most listened first.
+    pub new_podcasts: Vec<ReportPodcast>,
+    pub new_podcast_count: i64,
+}
+
+/// A Rewind's period: `YYYY` or `YYYY-MM`, its days, and the period before.
+pub fn rewind_period(period: &str) -> Option<((NaiveDate, NaiveDate), (NaiveDate, NaiveDate))> {
+    let month = |y: i32, m: u32| {
+        let first = NaiveDate::from_ymd_opt(y, m, 1)?;
+        Some((first, first.checked_add_months(chrono::Months::new(1))?.pred_opt()?))
+    };
+    let year = |y: i32| Some((NaiveDate::from_ymd_opt(y, 1, 1)?, NaiveDate::from_ymd_opt(y, 12, 31)?));
+    match period.split_once('-') {
+        None if period.len() == 4 => {
+            let y: i32 = period.parse().ok()?;
+            Some((year(y)?, year(y - 1)?))
+        }
+        Some((y, m)) if y.len() == 4 && m.len() == 2 => {
+            let (y, m): (i32, u32) = (y.parse().ok()?, m.parse().ok()?);
+            let this = month(y, m)?;
+            let before = this.0.pred_opt()?;
+            Some((this, month(before.year(), before.month())?))
+        }
+        _ => None,
+    }
+}
+
+/// The parts of a Rewind the report doesn't have.
+fn rewind_extras(input: &ReportInput, range: (NaiveDate, NaiveDate), tz: Tz, filled: bool) -> (Option<ReportEpisode>, Vec<ReportPodcast>, i64) {
+    let first_play = if filled {
+        None
+    } else {
+        input.log.iter().filter(|r| r.seconds > 0).min_by_key(|r| (r.day, r.hour)).map(|r| {
+            let i = input.items.get(&(r.kind, r.item)).cloned().unwrap_or_default();
+            let live = i.podcast_id.filter(|id| input.podcasts.contains(id));
+            ReportEpisode { episode_id: live.map(|_| r.item), is_youtube: r.kind == 1, title: i.title, podcast: i.podcast, artwork: i.artwork, seconds: r.seconds }
+        })
+    };
+
+    // When each podcast was first played: the history's, or the log's if earlier.
+    let mut heard = input.first_heard.clone();
+    for i in input.items.values() {
+        if let (Some(id), Some(at)) = (i.podcast_id, i.first_listened) {
+            let e = heard.entry(id).or_insert(at);
+            *e = (*e).min(at);
+        }
+    }
+    let start = utc_bounds(Some(range), tz).0;
+    // Every podcast played in the period, not just the top ten.
+    let mut info: HashMap<(i64, i64), &ItemInfo> = input.history.iter().map(|(k, _, i)| (*k, i)).collect();
+    info.extend(input.items.iter().map(|(k, i)| (*k, i)));
+    let mut per_item: HashMap<(i64, i64), i64> = HashMap::new();
+    for r in &input.log {
+        *per_item.entry((r.kind, r.item)).or_insert(0) += r.seconds.max(0);
+    }
+    for (key, secs, _) in &input.history {
+        let e = per_item.entry(*key).or_insert(0);
+        *e = (*e).max(*secs);
+    }
+    let mut played: HashMap<i64, ReportPodcast> = HashMap::new();
+    for (key, secs) in per_item.into_iter().filter(|(_, s)| *s > 0) {
+        let Some(i) = info.get(&key) else { continue };
+        let Some(id) = i.podcast_id.filter(|id| input.podcasts.contains(id)) else { continue };
+        let p = played.entry(id).or_insert_with(|| ReportPodcast { podcast_id: Some(id), name: i.podcast.clone(), artwork: i.artwork.clone(), seconds: 0, episodes: 0 });
+        p.seconds += secs;
+        p.episodes += 1;
+    }
+    let mut new: Vec<ReportPodcast> = played.into_values().filter(|p| p.podcast_id.and_then(|id| heard.get(&id)).is_some_and(|at| *at >= start)).collect();
+    let count = new.len() as i64;
+    new.sort_by_key(|p| std::cmp::Reverse(p.seconds));
+    new.truncate(5);
+    (first_play, new, count)
+}
+
+impl DatabasePool {
+    /// `user_id`'s Rewind for `period` (`YYYY` or `YYYY-MM`); None for a malformed period.
+    pub async fn rewind(&self, user_id: i32, period: &str) -> AppResult<Option<Rewind>> {
+        let Some((range, before)) = rewind_period(period) else { return Ok(None) };
+        let (input, tz, filled) = self.report_input(user_id, Some(range), true).await?;
+        let report = build_report(&input, Some(range), tz);
+        let (first_play, new_podcasts, new_podcast_count) = rewind_extras(&input, range, tz, filled.is_some());
+        let (prev, prev_tz, _) = self.report_input(user_id, Some(before), true).await?;
+        let previous_seconds = build_report(&prev, Some(before), prev_tz).seconds;
+        Ok(Some(Rewind {
+            period: period.to_string(),
+            report,
+            previous_seconds,
+            history_until: filled.map(day_string),
+            first_play,
+            new_podcasts,
+            new_podcast_count,
+        }))
     }
 }
 
@@ -775,5 +956,50 @@ mod tests {
         let lag = r.release_lag.unwrap();
         assert_eq!((lag.episodes, lag.within_day, lag.within_week), (2, 0.5, 0.5));
         assert_eq!(lag.median_days, 17.6);
+    }
+
+    #[test]
+    fn rewind_periods() {
+        let d = |y, m, dd| NaiveDate::from_ymd_opt(y, m, dd).unwrap();
+        assert_eq!(rewind_period("2026"), Some(((d(2026, 1, 1), d(2026, 12, 31)), (d(2025, 1, 1), d(2025, 12, 31)))));
+        assert_eq!(rewind_period("2026-01"), Some(((d(2026, 1, 1), d(2026, 1, 31)), (d(2025, 12, 1), d(2025, 12, 31)))));
+        assert_eq!(rewind_period("2028-03").unwrap().1, (d(2028, 2, 1), d(2028, 2, 29)));
+        for bad in ["26", "2026-13", "2026-1", "x", "2026-11-01"] {
+            assert_eq!(rewind_period(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_filled_period_counts_history_from_before_the_log() {
+        let logged = vec!["2026-11-21".to_string()];
+        let range = Some((day(11, 1), day(11, 30)));
+        let bounds = utc_bounds(range, Tz::UTC);
+        let (window, until) = history_window(range, true, &logged, Tz::UTC, bounds);
+        let (lo, hi, undated) = window.unwrap();
+        assert_eq!((lo, hi, undated), (bounds.0, day(11, 21).and_hms_opt(0, 0, 0).unwrap(), false));
+        assert_eq!(until, Some(day(11, 21)));
+        // A period inside the log, or not filled, doesn't.
+        assert_eq!(history_window(Some((day(12, 1), day(12, 31))), true, &logged, Tz::UTC, utc_bounds(Some((day(12, 1), day(12, 31))), Tz::UTC)), (None, None));
+        assert_eq!(history_window(range, false, &logged, Tz::UTC, bounds), (None, None));
+        // No log at all: the whole period.
+        assert_eq!(history_window(range, true, &[], Tz::UTC, bounds).1, Some(day(12, 1)));
+    }
+
+    #[test]
+    fn rewind_first_play_and_new_podcasts() {
+        let mut i = input();
+        i.items.insert((0, 4), item("Beta", Some(11), "B1"));
+        i.log.push(row(day(11, 20), 7, 4, "web", 900));
+        i.podcasts = [10, 11].into_iter().collect();
+        let at = |d: NaiveDate| d.and_hms_opt(12, 0, 0).unwrap();
+        // Alpha was first heard in October; Beta this month.
+        i.first_heard.insert(10, at(day(10, 5)));
+        i.items.get_mut(&(0, 4)).unwrap().first_listened = Some(at(day(11, 20)));
+        let range = (day(11, 1), day(11, 30));
+        let (first, new, count) = rewind_extras(&i, range, Tz::UTC, false);
+        assert_eq!(first.unwrap().title, "A1");
+        assert_eq!(count, 1);
+        assert_eq!((new[0].name.as_str(), new[0].seconds, new[0].episodes), ("Beta", 900, 1));
+        assert!(rewind_extras(&i, range, Tz::UTC, true).0.is_none(), "no first play when filled from history");
     }
 }

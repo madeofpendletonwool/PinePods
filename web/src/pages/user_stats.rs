@@ -4,6 +4,7 @@ use crate::components::context::{AppState, UIState, UserPreferencesState, UserSt
 use crate::components::gen_components::{FallbackImage, Search_nav};
 use crate::components::gen_funcs::{format_date, format_time};
 use crate::components::i18n::use_translation;
+use crate::components::rewind::{period_label, RewindPlayer};
 use crate::requests::pod_req::call_get_pinepods_version;
 use crate::requests::stat_reqs::{self, DayStat, ExtendedUserStats, ListeningReport, MonthStat, NamedSeconds};
 use chrono::{Datelike, Duration, NaiveDate};
@@ -14,7 +15,7 @@ use yewdux::prelude::*;
 const HEATMAP_DAYS: i64 = 182;
 
 /// "3h 12m", "12m", or "0m".
-fn fmt_secs(secs: i64) -> String {
+pub(crate) fn fmt_secs(secs: i64) -> String {
     let (h, m) = (secs / 3600, (secs % 3600) / 60);
     if h > 0 { format!("{h}h {m}m") } else { format!("{m}m") }
 }
@@ -25,7 +26,7 @@ fn fmt_total(secs: i64) -> String {
 }
 
 /// 12345 -> "12,345"
-fn group(n: i64) -> String {
+pub(crate) fn group(n: i64) -> String {
     let digits = n.abs().to_string();
     let mut out = String::new();
     for (i, c) in digits.chars().enumerate() {
@@ -37,7 +38,7 @@ fn group(n: i64) -> String {
     if n < 0 { format!("-{out}") } else { out }
 }
 
-fn hour_label(h: i32) -> String {
+pub(crate) fn hour_label(h: i32) -> String {
     match h {
         0 => "12 AM".into(),
         12 => "12 PM".into(),
@@ -191,15 +192,15 @@ fn shares(rows: &[(String, i64)]) -> Html {
     }
 }
 
-fn parse_day(s: &str) -> Option<NaiveDate> {
+pub(crate) fn parse_day(s: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(s.get(..10)?, "%Y-%m-%d").ok()
 }
 
-fn fmt_day(s: &str) -> String {
+pub(crate) fn fmt_day(s: &str) -> String {
     parse_day(s).map(|d| d.format("%b %-d, %Y").to_string()).unwrap_or_default()
 }
 
-fn peak(values: &[i64]) -> Option<usize> {
+pub(crate) fn peak(values: &[i64]) -> Option<usize> {
     values.iter().enumerate().filter(|(_, v)| **v > 0).max_by_key(|(_, v)| **v).map(|(i, _)| i)
 }
 
@@ -285,6 +286,15 @@ impl Period {
         Some((first, last))
     }
 
+    /// The Rewind for this period: `YYYY` or `YYYY-MM`.
+    fn rewind_key(self) -> Option<String> {
+        match self {
+            Period::All => None,
+            Period::Year(y) => Some(y.to_string()),
+            Period::Month(y, m) => Some(format!("{y}-{m:02}")),
+        }
+    }
+
     fn title(self, t: &dyn Fn(&str) -> String) -> String {
         match self {
             Period::All => t("period_all"),
@@ -294,7 +304,7 @@ impl Period {
     }
 }
 
-fn full_month(m: u32) -> String {
+pub(crate) fn full_month(m: u32) -> String {
     const NAMES: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     NAMES.get(m.wrapping_sub(1) as usize).map(|s| s.to_string()).unwrap_or_default()
 }
@@ -628,6 +638,35 @@ fn report_sections(r: &ListeningReport, t: &dyn Fn(&str) -> String) -> Html {
     }
 }
 
+/// The Rewinds to play: the latest year and the last two months with listening.
+fn rewind_banner(months: &[String], play: Callback<String>, t: &dyn Fn(&str) -> String) -> Html {
+    let mut picks: Vec<String> = months.iter().take(2).cloned().collect();
+    if let Some(year) = months.first().and_then(|m| m.get(..4)) {
+        picks.insert(0, year.to_string());
+    }
+    html! {
+        <section class="us-rewind">
+            <div class="us-rewind-body">
+                <span class="us-rewind-kicker"><i class="ph ph-sparkle"></i>{ t("rewind") }</span>
+                <h2 class="us-rewind-title">{ t("rewind_title") }</h2>
+                <p class="us-rewind-sub">{ t("rewind_sub") }</p>
+            </div>
+            <div class="us-rewind-picks">
+                { for picks.into_iter().map(|key| {
+                    let play = play.clone();
+                    let label = period_label(&key);
+                    let k = key.clone();
+                    html! {
+                        <button type="button" class="us-rewind-pick" onclick={Callback::from(move |_| play.emit(k.clone()))}>
+                            <i class="ph ph-play"></i>{ label }
+                        </button>
+                    }
+                })}
+            </div>
+        </section>
+    }
+}
+
 /// All time, then each year with listening, and that year's months.
 fn period_picker(months: &[String], period: Period, set: Callback<Period>, t: &dyn Fn(&str) -> String) -> Html {
     let parsed: Vec<(i32, u32)> = months
@@ -680,6 +719,15 @@ pub fn user_stats() -> Html {
     // The report for `period`, and the months with listening (kept while another loads).
     let report = use_state(|| None::<(Period, ListeningReport)>);
     let months = use_state(Vec::<String>::new);
+    let rewind = use_state(|| None::<String>);
+    let play_rewind = {
+        let rewind = rewind.clone();
+        Callback::from(move |key: String| rewind.set(Some(key)))
+    };
+    let close_rewind = {
+        let rewind = rewind.clone();
+        Callback::from(move |_| rewind.set(None))
+    };
 
     {
         let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -854,6 +902,7 @@ pub fn user_stats() -> Html {
                 <h1 class="us-page-title">{ t("user_statistics") }</h1>
                 { hero }
                 if !months.is_empty() {
+                    { rewind_banner(&months, play_rewind.clone(), &t) }
                     { period_picker(&months, *period, set_period, &t) }
                 }
                 if *period == Period::All {
@@ -861,7 +910,14 @@ pub fn user_stats() -> Html {
                         { all_time(ext, shown, &t) }
                     }
                 } else {
-                    <h2 class="us-period-title">{ period.title(&t) }</h2>
+                    <div class="us-period-head">
+                        <h2 class="us-period-title">{ period.title(&t) }</h2>
+                        if let Some(key) = period.rewind_key().filter(|_| shown.is_some_and(|r| r.seconds > 0)) {
+                            <button type="button" class="us-rewind-play" onclick={let play = play_rewind.clone(); Callback::from(move |_| play.emit(key.clone()))}>
+                                <i class="ph ph-play"></i>{ t("play_rewind") }
+                            </button>
+                        }
+                    </div>
                     if let Some(r) = shown {
                         { period_view(r, *period, &t) }
                     } else {
@@ -910,6 +966,9 @@ pub fn user_stats() -> Html {
             }
         </div>
         <App_drawer />
+        if let Some(key) = (*rewind).clone() {
+            <RewindPlayer period={key} on_close={close_rewind} />
+        }
         </>
     }
 }
@@ -937,5 +996,7 @@ mod tests {
         assert_eq!(Period::Year(2026).range(), Some((d(2026, 1, 1), d(2026, 12, 31))));
         assert_eq!(Period::Month(2028, 2).range(), Some((d(2028, 2, 1), d(2028, 2, 29))));
         assert_eq!(Period::Month(2026, 12).range(), Some((d(2026, 12, 1), d(2026, 12, 31))));
+        assert_eq!(Period::Month(2026, 3).rewind_key().as_deref(), Some("2026-03"));
+        assert_eq!(Period::Year(2026).rewind_key().as_deref(), Some("2026"));
     }
 }

@@ -234,6 +234,42 @@ class ListeningReport {
       );
 }
 
+/// A month's or a year's listening for the Rewind story (`/api/data/rewind`).
+class Rewind {
+  /// `YYYY` or `YYYY-MM`.
+  final String period;
+  final ListeningReport report;
+  final int previousSeconds;
+
+  /// Listening before this day comes from the history, which has no days or times.
+  final String? historyUntil;
+  final ReportEpisode? firstPlay;
+  final List<ReportPodcast> newPodcasts;
+  final int newPodcastCount;
+
+  const Rewind({
+    required this.period,
+    required this.report,
+    this.previousSeconds = 0,
+    this.historyUntil,
+    this.firstPlay,
+    this.newPodcasts = const [],
+    this.newPodcastCount = 0,
+  });
+
+  bool get isYear => !period.contains('-');
+
+  factory Rewind.fromJson(Map<String, dynamic> j) => Rewind(
+        period: _str(j['period']),
+        report: j['report'] is Map<String, dynamic> ? ListeningReport.fromJson(j['report']) : const ListeningReport(),
+        previousSeconds: _int(j['previous_seconds']),
+        historyUntil: j['history_until'] as String?,
+        firstPlay: j['first_play'] is Map<String, dynamic> ? ReportEpisode.fromJson(j['first_play']) : null,
+        newPodcasts: _list(j['new_podcasts'], ReportPodcast.fromJson),
+        newPodcastCount: _int(j['new_podcast_count']),
+      );
+}
+
 class LongestEpisode {
   final String title;
   final int duration;
