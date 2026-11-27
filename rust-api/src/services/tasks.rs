@@ -212,6 +212,10 @@ async fn record_youtube_download(
                     .bind(output_path)
                     .execute(pool)
                     .await?;
+                q::query(r#"UPDATE "UserStats" SET episodesdownloaded = episodesdownloaded + 1 WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
             }
         },
         mysql(pool) => {
@@ -226,6 +230,10 @@ async fn record_youtube_download(
                     .bind(video_id)
                     .bind(file_size)
                     .bind(output_path)
+                    .execute(pool)
+                    .await?;
+                sqlx::query("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = ?")
+                    .bind(user_id)
                     .execute(pool)
                     .await?;
             }

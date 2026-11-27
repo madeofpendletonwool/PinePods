@@ -794,9 +794,7 @@ impl DatabasePool {
                     Vec::new()
                 } else {
                     q::query_scalar(sqlx::AssertSqlSafe(format!(
-                        r#"SELECT downloadedlocation FROM "DownloadedEpisodes" WHERE userid = $1 AND episodeid IN ({episodes})
-                           UNION ALL
-                           SELECT downloadedlocation FROM "DownloadedVideos" WHERE userid = $1 AND videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = {podcast_id})"#
+                        r#"SELECT downloadedlocation FROM "DownloadedEpisodes" WHERE userid = $1 AND episodeid IN ({episodes})"#
                     )))
                     .bind(user_id)
                     .fetch_all(&mut *tx)
@@ -873,11 +871,8 @@ impl DatabasePool {
                     Vec::new()
                 } else {
                     sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
-                        "SELECT DownloadedLocation FROM DownloadedEpisodes WHERE UserID = ? AND EpisodeID IN ({episodes})
-                         UNION ALL
-                         SELECT DownloadedLocation FROM DownloadedVideos WHERE UserID = ? AND VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = {podcast_id})"
+                        "SELECT DownloadedLocation FROM DownloadedEpisodes WHERE UserID = ? AND EpisodeID IN ({episodes})"
                     )))
-                    .bind(user_id)
                     .bind(user_id)
                     .fetch_all(&mut *tx)
                     .await?

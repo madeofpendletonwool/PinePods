@@ -358,3 +358,42 @@ async fn a_members_only_newest_video_does_not_block_subscribing() {
     assert_eq!(text(&app, &column("ArtworkURL")).await, Some(format!("https://yt3.example/{}/avatar", channel.id)));
     assert_eq!(app.video_ids(pod).await, vec![channel.video_id(1)]);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn downloading_a_video_lists_it_and_deleting_it_keeps_the_shared_audio() {
+    let app = TestApp::new().await;
+    let user = app.user("watcher").await;
+    let channel = app.youtube_channel("dl").video(1, 1);
+    app.publish_channel(&channel);
+    let pod = app.subscribe_channel(&user, &channel, 30).await;
+    let yt_id = channel.video_id(1);
+    let video = int(&app, &format!(r#"SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = {pod} AND YouTubeVideoID = '{yt_id}'"#))
+        .await
+        .unwrap();
+    // The refresh keeps every video's audio on disk for streaming; stand in for that copy.
+    let dir = crate::harness::files::data_dir().join("downloads").join("youtube");
+    std::fs::create_dir_all(&dir).unwrap();
+    let audio = dir.join(format!("{yt_id}.mp3"));
+    std::fs::write(&audio, crate::harness::files::mp3_bytes()).unwrap();
+
+    let rows = format!(r#"SELECT COUNT(*) FROM "DownloadedVideos" WHERE UserID = {} AND VideoID = {video}"#, user.id);
+    let counted = format!(r#"SELECT EpisodesDownloaded FROM "UserStats" WHERE UserID = {}"#, user.id);
+    app.post("/api/data/download_podcast")
+        .key(&user)
+        .json(&json!({ "episode_id": video, "user_id": user.id, "is_youtube": true }))
+        .send()
+        .await
+        .assert_ok();
+    eventually("the download is recorded", || async { (int(&app, &rows).await == Some(1)).then_some(()) }).await;
+    assert_eq!(int(&app, &counted).await, Some(1));
+
+    app.post("/api/data/delete_episode")
+        .key(&user)
+        .json(&json!({ "episode_id": video, "user_id": user.id, "is_youtube": true }))
+        .send()
+        .await
+        .assert_ok();
+    assert_eq!(int(&app, &rows).await, Some(0));
+    assert_eq!(int(&app, &counted).await, Some(0));
+    assert!(audio.exists(), "the audio other subscribers stream from stays");
+}
