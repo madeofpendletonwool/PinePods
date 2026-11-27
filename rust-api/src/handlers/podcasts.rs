@@ -2701,6 +2701,49 @@ pub async fn get_listening_report(
     Ok(Json(state.db_pool.listening_report(query.user_id, range).await?))
 }
 
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct RewindQuery {
+    pub user_id: i32,
+    /// `YYYY` for a year, `YYYY-MM` for a month (the user's timezone).
+    pub period: String,
+}
+
+/// A month's or a year's listening for the Rewind story: the period's listening report, the
+/// period before's total, the first play and the podcasts first played in it.
+#[utoipa::path(
+    get,
+    path = "/rewind",
+    tag = "podcasts",
+    summary = "Get a Rewind",
+    params(RewindQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "The Rewind", body = crate::database::Rewind),
+        (status = 400, description = "A malformed period"),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Another user's Rewind"),
+    ),
+)]
+pub async fn get_rewind(
+    Query(query): Query<RewindQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<crate::database::Rewind>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only get stats for your own account."));
+    }
+    match state.db_pool.rewind(query.user_id, &query.period).await? {
+        Some(rewind) => Ok(Json(rewind)),
+        None => Err(AppError::bad_request("The period is YYYY or YYYY-MM")),
+    }
+}
+
 // Get PinePods version - matches Python get_pinepods_version endpoint exactly
 #[utoipa::path(
     get,

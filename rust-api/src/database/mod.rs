@@ -32,7 +32,7 @@ mod progress;
 pub use progress::{ListenClient, Observed, ProgressOutcome, ProgressWrite, TimeSaved, WriteRule};
 mod stats;
 mod listening_report;
-pub use listening_report::ListeningReport;
+pub use listening_report::{ListeningReport, Rewind};
 mod home;
 mod playlists;
 mod collections;

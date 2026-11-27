@@ -15,6 +15,7 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/ui/pinepods/people/person_page.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
+import 'package:pinepods_mobile/ui/pinepods/rewind_player.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
@@ -49,6 +50,13 @@ class _Period {
 
   @override
   int get hashCode => Object.hash(year, month);
+
+  /// The Rewind for this period: `YYYY` or `YYYY-MM`.
+  String? get rewindKey {
+    if (year == null) return null;
+    if (month == null) return '$year';
+    return '$year-${month.toString().padLeft(2, '0')}';
+  }
 }
 
 String _ymd(DateTime d) => DateFormat('yyyy-MM-dd').format(d); // i18n-ignore
@@ -685,6 +693,52 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
     );
   }
 
+  void _playRewind(String period) {
+    final userId = _userId;
+    if (userId == null) return;
+    RewindPlayer.open(context, period: period, service: _pinepodsService, userId: userId);
+  }
+
+  /// The Rewinds to play: the latest year and the last two months with listening.
+  Widget _rewindBanner() {
+    final l = L.of(context)!;
+    final picks = <String>[if (_months.first.length >= 4) _months.first.substring(0, 4), ..._months.take(2)];
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: const LinearGradient(colors: [Color(0xFF3B1D6E), Color(0xFF8A2B6D), Color(0xFFD9583C)]),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(PhosphorIconsRegular.sparkle, size: 14, color: Colors.white70),
+            const SizedBox(width: 6),
+            Text(l.rewind.toUpperCase(),
+                style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)),
+          ]),
+          const SizedBox(height: 4),
+          Text(l.rewind_banner_title, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 2),
+          Text(l.rewind_banner_body, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final p in picks)
+              FilledButton.icon(
+                onPressed: () => _playRewind(p),
+                style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: const Color(0xFF2A1240), visualDensity: VisualDensity.compact),
+                icon: const Icon(PhosphorIconsFill.play, size: 16),
+                label: Text(rewindPeriodLabel(p, _locale), style: const TextStyle(fontWeight: FontWeight.w700)),
+              ),
+          ]),
+        ],
+      ),
+    );
+  }
+
   Widget _periodPicker() {
     final parsed = <(int, int)>[];
     for (final m in _months) {
@@ -1104,13 +1158,23 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
     final report = _shownReport;
     final children = <Widget>[
       _hero(),
-      if (_months.isNotEmpty) _periodPicker(),
+      if (_months.isNotEmpty) ...[_rewindBanner(), _periodPicker()],
       if (_period.isAll) ...[
         if (_extended != null) ..._allTime(_extended!, report),
       ] else ...[
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: Text(_periodTitle(_period), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+          child: Row(children: [
+            Expanded(
+              child: Text(_periodTitle(_period), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            ),
+            if (_period.rewindKey != null && (report?.seconds ?? 0) > 0)
+              FilledButton.tonalIcon(
+                onPressed: () => _playRewind(_period.rewindKey!),
+                icon: const Icon(PhosphorIconsFill.play, size: 16),
+                label: Text(L.of(context)!.rewind_play),
+              ),
+          ]),
         ),
         if (report != null)
           ..._periodView(report, _period)

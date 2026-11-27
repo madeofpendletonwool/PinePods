@@ -36,5 +36,6 @@ pub(crate) mod gen_components;
 pub(crate) mod i18n;
 pub mod gen_funcs;
 pub mod home_cards;
+pub(crate) mod rewind;
 pub mod playlist_overview;
 pub mod setting_components;

@@ -2684,5 +2684,217 @@
   },
   "labels_description": "Your own tags for sorting episodes. Filter the inbox by them, or build smart playlists from them.",
   "playlist_label_filter": "Only episodes with these labels",
-  "playlist_label_none": "Make labels in Settings → Inbox & labels to filter by them here."
+  "playlist_label_none": "Make labels in Settings → Inbox & labels to filter by them here.",
+  "rewind": "Rewind",
+  "rewind_banner_title": "Your listening, as a story",
+  "rewind_banner_body": "Play back a month or a year: your top shows, episodes, voices and habits.",
+  "rewind_play": "Play Rewind",
+  "rewind_title": "{period} Rewind",
+  "@rewind_title": {
+    "placeholders": {
+      "period": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_error": "Your Rewind couldn't be loaded.",
+  "rewind_replay": "Replay",
+  "rewind_done": "Done",
+  "rewind_hours": "hours",
+  "rewind_minutes": "minutes",
+  "rewind_intro_kicker": "Pinepods Rewind",
+  "rewind_intro_title": "Your {period}",
+  "@rewind_intro_title": {
+    "placeholders": {
+      "period": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_intro_sub": "Let's look back at what you listened to.",
+  "rewind_empty_title": "Nothing to rewind yet",
+  "rewind_empty_sub": "There's no listening recorded for {period}. Press play on something and check back.",
+  "@rewind_empty_sub": {
+    "placeholders": {
+      "period": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_time_kicker": "You spent",
+  "rewind_time_days": "That's more than {days} full days of listening.",
+  "@rewind_time_days": {
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_n_podcasts": "{n} podcasts",
+  "@rewind_n_podcasts": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_n_episodes": "{n} episodes",
+  "@rewind_n_episodes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_n_finished": "{n} finished",
+  "@rewind_n_finished": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_more_than": "{pct}% more than {period}",
+  "@rewind_more_than": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      },
+      "period": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_less_than": "{pct}% less than {period}",
+  "@rewind_less_than": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      },
+      "period": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_first_kicker": "{period} started with",
+  "@rewind_first_kicker": {
+    "placeholders": {
+      "period": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_top_show_kicker": "Your top podcast",
+  "rewind_top_show_sub": "{time} across {n} episodes",
+  "@rewind_top_show_sub": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_top_show_share": "{pct}% of everything you played",
+  "@rewind_top_show_share": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_top_shows_kicker": "Your top podcasts",
+  "rewind_top_episode_kicker": "The episode you spent the most time with",
+  "rewind_top_episode_sub": "{time} of listening",
+  "@rewind_top_episode_sub": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_new_kicker": "You discovered",
+  "rewind_new_show": "new podcast",
+  "rewind_new_shows": "new podcasts",
+  "rewind_new_sub": "Your favourite find: {name}",
+  "@rewind_new_sub": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_genres_kicker": "Your top genre",
+  "rewind_people_kicker": "The voices you spent the most time with",
+  "rewind_when_kicker": "You're",
+  "rewind_kind_early_riser": "An early riser",
+  "rewind_kind_morning": "A morning listener",
+  "rewind_kind_afternoon": "An afternoon listener",
+  "rewind_kind_evening": "An evening listener",
+  "rewind_kind_night_owl": "A night owl",
+  "rewind_when_sub": "You listened most around {hour}.",
+  "@rewind_when_sub": {
+    "placeholders": {
+      "hour": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_when_day": "{day} was your biggest day of the week.",
+  "@rewind_when_day": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_times_from": "Days and times count from {date}, when Pinepods began recording them.",
+  "@rewind_times_from": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_streak_kicker": "Your longest streak",
+  "rewind_days_in_a_row": "days in a row",
+  "rewind_biggest_day": "Your biggest day was {date}: {time}.",
+  "@rewind_biggest_day": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_active_days": "You listened on {n} days.",
+  "@rewind_active_days": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_months_kicker": "Your biggest month",
+  "rewind_habits_kicker": "How you listen",
+  "rewind_habit_speed": "average playback speed",
+  "rewind_habit_saved": "saved by speed, trimmed silence and skipped ads",
+  "rewind_habit_day_one": "of new episodes played within a day of release",
+  "rewind_card_title": "My {period} Rewind",
+  "@rewind_card_title": {
+    "placeholders": {
+      "period": {
+        "type": "String"
+      }
+    }
+  },
+  "rewind_card_top_show": "Top podcast",
+  "rewind_card_listened": "Listened",
+  "rewind_card_episodes": "Episodes",
+  "rewind_card_shows": "Podcasts",
+  "rewind_card_genre": "Top genre",
+  "rewind_card_days": "Days listened"
 }

@@ -2958,6 +2958,23 @@ class PinepodsService {
     }
   }
 
+  /// The Rewind for [period] (`YYYY` or `YYYY-MM`). Null on servers without it.
+  Future<Rewind?> getRewind(int userId, String period) async {
+    if (_server == null || _apiKey == null) return null;
+    final url = Uri.parse('$_server/api/data/rewind').replace(queryParameters: {
+      'user_id': userId.toString(),
+      'period': period,
+    });
+    try {
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
+      if (response.statusCode != 200) return null;
+      return Rewind.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    } catch (e) {
+      _devLog('Error getting Rewind: $e');
+      return null;
+    }
+  }
+
   // Get PinePods version
   Future<String> getPinepodsVersion() async {
     if (_server == null || _apiKey == null) {

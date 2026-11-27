@@ -10038,6 +10038,61 @@
         ]
       }
     },
+    "/api/data/rewind": {
+      "get": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Get a Rewind",
+        "operationId": "get_rewind",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "description": "`YYYY` for a year, `YYYY-MM` for a month (the user's timezone).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The Rewind",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Rewind"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed period"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Another user's Rewind"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/rss_feed_status": {
       "get": {
         "tags": [
@@ -20228,6 +20283,60 @@
         "properties": {
           "backup_filename": {
             "type": "string"
+          }
+        }
+      },
+      "Rewind": {
+        "type": "object",
+        "description": "A Rewind: a month's or a year's listening told as a story.",
+        "required": [
+          "period",
+          "report",
+          "previous_seconds",
+          "new_podcasts",
+          "new_podcast_count"
+        ],
+        "properties": {
+          "period": {
+            "type": "string",
+            "description": "`YYYY` or `YYYY-MM`."
+          },
+          "report": {
+            "$ref": "#/components/schemas/ListeningReport"
+          },
+          "previous_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Listening in the period before, for comparison."
+          },
+          "history_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the period starts before the listening log: listening before this day is counted\nfrom the history, which has totals and top lists but no days or times."
+          },
+          "first_play": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ReportEpisode",
+                "description": "The first thing played in the period; null when part of it comes from the history."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "new_podcasts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportPodcast"
+            },
+            "description": "Podcasts first played in the period, most listened first."
+          },
+          "new_podcast_count": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },

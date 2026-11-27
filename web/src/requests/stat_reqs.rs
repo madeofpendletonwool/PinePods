@@ -288,3 +288,27 @@ pub async fn call_get_stats(
         Err(_e) => Err(anyhow::Error::msg("Failed to deserialize response")),
     }
 }
+
+/// `GET /api/data/rewind`: a month's or a year's listening, for the Rewind story.
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone, Default)]
+#[serde(default)]
+pub struct Rewind {
+    pub period: String,
+    pub report: ListeningReport,
+    pub previous_seconds: i64,
+    /// Listening before this day comes from the history: no days or times.
+    pub history_until: Option<String>,
+    pub first_play: Option<ReportEpisode>,
+    pub new_podcasts: Vec<ReportPodcast>,
+    pub new_podcast_count: i64,
+}
+
+/// The Rewind for `period` (`YYYY` or `YYYY-MM`).
+pub async fn call_get_rewind(server_name: &str, api_key: &str, user_id: i32, period: &str) -> Result<Rewind, anyhow::Error> {
+    let url = format!("{server_name}/api/data/rewind?user_id={user_id}&period={period}");
+    let response = Request::get(&url).header("Api-Key", api_key).send().await?;
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!("Failed to get the Rewind: {}", response.status())));
+    }
+    Ok(response.json::<Rewind>().await?)
+}
