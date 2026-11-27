@@ -173,3 +173,68 @@ async fn discovery_fills_endpoints_for_admins() {
     missing.assert_status(400);
     assert!(missing.text().contains("404"), "{}", missing.text());
 }
+
+/// A provider that gates login on `sub` and makes one exact subject an admin; returns the
+/// callback's redirect location.
+async fn login_with_subject(app: &TestApp, email: &str, sub: &str) -> String {
+    let admin = app.admin().await;
+    let fx = app.fixtures();
+    let token_url = fx.serve(
+        "idp/token",
+        Fixture::new("application/json", r#"{"access_token":"fixture-token","token_type":"Bearer"}"#),
+    );
+    let userinfo_url = fx.serve(
+        "idp/userinfo",
+        Fixture::new("application/json", json!({ "email": email, "name": "Oidc User", "sub": sub }).to_string()),
+    );
+    let client_id = format!("pinepods-{}", fx.namespace);
+    app.post("/api/data/add_oidc_provider")
+        .key(admin)
+        .json(&json!({
+            "provider_name": "Fixture IdP",
+            "client_id": client_id,
+            "client_secret": "fixture-secret",
+            "authorization_url": fx.url("idp/authorize"),
+            "token_url": token_url,
+            "user_info_url": userinfo_url,
+            "button_text": "Fixture",
+            "scope": "openid email profile",
+            "button_color": "#000000",
+            "button_text_color": "#ffffff",
+            "roles_claim": "sub",
+            "user_role": "owner-subject",
+            "admin_role": "owner-subject",
+        }))
+        .send()
+        .await
+        .assert_ok();
+    let state = format!("state-{}", fx.namespace);
+    app.post("/api/auth/store_state")
+        .json(&json!({ "state": state, "client_id": client_id, "origin_url": "https://pods.example.test" }))
+        .send()
+        .await
+        .assert_ok();
+    let resp = app
+        .get("/api/auth/callback")
+        .header("host", "pods.example.test")
+        .header("x-forwarded-proto", "https")
+        .query("code", "fixture-code")
+        .query("state", &state)
+        .send()
+        .await;
+    resp.headers.get("location").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_scalar_role_claim_must_match_exactly() {
+    let app = TestApp::new().await;
+    let location = login_with_subject(&app, "owner@example.test", "owner-subject").await;
+    assert!(location.contains("api_key="), "{location}");
+    let admin = int(&app, r#"SELECT CASE WHEN IsAdmin THEN 1 ELSE 0 END FROM "Users" WHERE Email = 'owner@example.test'"#).await;
+    assert_eq!(admin, Some(1), "the admin role matches the subject");
+
+    let app = TestApp::new().await;
+    let location = login_with_subject(&app, "other@example.test", "owner-subject-2").await;
+    assert!(location.contains("error=no_access"), "{location}");
+    assert!(!location.contains("api_key="), "{location}");
+}
