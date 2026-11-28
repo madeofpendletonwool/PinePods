@@ -96,6 +96,9 @@ jobs:
       - name: Set up uv (schema migrations)
         uses: ./.github/actions/setup-uv
 
+      - name: Database startup unit tests
+        run: python -m unittest discover -s startup -p 'test_*.py'
+
       - name: Install migration dependencies
         run: |
           # Backup tests run the real dump tools, which must match the server's major version.
