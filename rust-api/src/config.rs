@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::env;
+use std::env::{self, VarError};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
+use std::str::FromStr;
 use crate::error::{AppError, AppResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,8 +69,56 @@ pub struct RedisConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
-    pub port: u16,
-    pub host: String,
+    pub listen: Listen,
+}
+
+pub const DEFAULT_LISTEN: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 8032);
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Listen {
+    Tcp(SocketAddr),
+    #[cfg(unix)]
+    Unix(PathBuf),
+    #[cfg(target_os = "linux")]
+    Systemd,
+}
+
+impl FromStr for Listen {
+    type Err = AppError;
+
+    fn from_str(s: &str) -> AppResult<Self> {
+        match s {
+            "systemd" => cfg_select! {
+                target_os = "linux" => Ok(Listen::Systemd),
+                _ => Err(AppError::Config(format!(
+                    "PINEPODS_LISTEN '{s}': systemd socket activation is not supported on this platform"
+                ))),
+            },
+            _ if let Ok(addr) = s.parse::<SocketAddr>() => Ok(Listen::Tcp(addr)),
+            _ if Path::new(s).is_absolute() => cfg_select! {
+                unix => Ok(Listen::Unix(PathBuf::from(s))),
+                _ => Err(AppError::Config(format!(
+                    "PINEPODS_LISTEN '{s}': unix sockets are not supported on this platform"
+                ))),
+            },
+            _ => Err(AppError::Config(format!(
+                "Invalid PINEPODS_LISTEN '{s}': expected IP:PORT, [IPv6]:PORT, an absolute unix socket path, or systemd"
+            ))),
+        }
+    }
+}
+
+fn parse_listen(value: Result<String, VarError>) -> AppResult<Listen> {
+    match value {
+        Err(VarError::NotPresent) => Ok(Listen::Tcp(DEFAULT_LISTEN)),
+        Err(VarError::NotUnicode(_)) => Err(AppError::Config(
+            "PINEPODS_LISTEN is not valid UTF-8".to_string(),
+        )),
+        Ok(s) => match s.trim() {
+            "" => Ok(Listen::Tcp(DEFAULT_LISTEN)),
+            trimmed => trimmed.parse(),
+        },
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -233,8 +286,7 @@ impl Config {
         let redis = Self::redis_from_env(is_sqlite)?;
 
         let server = ServerConfig {
-            port: 8032, // Fixed port for internal API
-            host: "0.0.0.0".to_string(),
+            listen: parse_listen(env::var("PINEPODS_LISTEN"))?,
         };
 
         let security = SecurityConfig {
@@ -414,5 +466,70 @@ impl Config {
         }
         
         Some(url)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv6Addr;
+
+    #[test]
+    fn listen_accepts_ipv4() {
+        assert_eq!(
+            parse_listen(Ok("127.0.0.1:8032".to_string())).unwrap(),
+            Listen::Tcp(SocketAddr::from((Ipv4Addr::LOCALHOST, 8032))),
+        );
+    }
+
+    #[test]
+    fn listen_accepts_ipv6() {
+        assert_eq!(
+            parse_listen(Ok("[::1]:8032".to_string())).unwrap(),
+            Listen::Tcp(SocketAddr::from((Ipv6Addr::LOCALHOST, 8032))),
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn listen_accepts_an_absolute_path() {
+        assert_eq!(
+            parse_listen(Ok("/run/pinepods/api.sock".to_string())).unwrap(),
+            Listen::Unix(PathBuf::from("/run/pinepods/api.sock")),
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn listen_accepts_systemd() {
+        assert_eq!(parse_listen(Ok("systemd".to_string())).unwrap(), Listen::Systemd);
+    }
+
+    #[test]
+    fn listen_rejects_anything_else() {
+        for value in ["localhost:8032", "8032", "0.0.0.0", "::1:8032", "api.sock"] {
+            assert!(
+                matches!(parse_listen(Ok(value.to_string())), Err(AppError::Config(_))),
+                "{value}",
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn listen_rejects_non_unicode() {
+        use std::os::unix::ffi::OsStringExt;
+        let value = std::ffi::OsString::from_vec(vec![b'/', 0xff]);
+        assert!(matches!(
+            parse_listen(Err(VarError::NotUnicode(value))),
+            Err(AppError::Config(_)),
+        ));
+    }
+
+    #[test]
+    fn listen_defaults_when_unset_or_empty() {
+        for value in [Err(VarError::NotPresent), Ok(String::new()), Ok("  ".to_string())] {
+            assert_eq!(parse_listen(value).unwrap(), Listen::Tcp(DEFAULT_LISTEN));
+        }
     }
 }

@@ -6,6 +6,7 @@
 //! test exercises routing, extractors, auth checks, handlers and SQL exactly as production
 //! does — minus background schedulers, which tests trigger explicitly when they need them.
 
+use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
@@ -16,7 +17,7 @@ use serde_json::json;
 use sqlx::{Connection, Executor, MySqlConnection, PgConnection};
 
 use pinepods_api::config::{
-    ApiConfig, Config, DatabaseConfig, EmailConfig, OIDCConfig, RedisConfig, SecurityConfig, ServerConfig,
+    ApiConfig, Config, DatabaseConfig, EmailConfig, Listen, OIDCConfig, RedisConfig, SecurityConfig, ServerConfig,
 };
 use pinepods_api::database::DatabasePool;
 use pinepods_api::redis_client::RedisClient;
@@ -96,7 +97,7 @@ impl TestApp {
                 username: None,
                 database: None,
             }),
-            server: ServerConfig { port: 0, host: "127.0.0.1".into() },
+            server: ServerConfig { listen: Listen::Tcp(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))) },
             security: SecurityConfig {
                 api_key_header: "pinepods_api".into(),
                 jwt_secret: "integration-test-secret".into(),
