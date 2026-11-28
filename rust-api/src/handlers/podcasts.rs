@@ -1466,8 +1466,8 @@ pub async fn delete_episode(
     })))
 }
 
-// Remove a user's download of an episode or video: the row, then the file. Returns whether a
-// download was removed. Local podcast files are managed on disk, so those are refused.
+// Remove a user's download of an episode (the row, then the file) or video (the row). Returns
+// whether a download was removed. Local podcast files are managed on disk, so those are refused.
 pub(crate) async fn delete_download(state: &AppState, user_id: i32, episode_id: i32, is_youtube: bool) -> Result<bool, AppError> {
     if !is_youtube {
         if let Ok(Some(feed_url)) = state.db_pool.get_feed_url_for_episode(episode_id).await {
@@ -1479,9 +1479,10 @@ pub(crate) async fn delete_download(state: &AppState, user_id: i32, episode_id: 
         }
     }
 
-    // Capture the file path before removing the DB record
+    // Capture the file path before removing the DB record. A video's audio is the shared copy
+    // every subscriber streams from, so only its row goes.
     let file_path = if is_youtube {
-        state.db_pool.get_video_download_location(user_id, episode_id).await.ok().flatten()
+        None
     } else {
         state.db_pool.get_download_location(episode_id, user_id).await.ok().flatten()
     };

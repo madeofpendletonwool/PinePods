@@ -182,6 +182,66 @@ async fn download_episode_and_wait(
     Ok(episode_title)
 }
 
+/// Record a completed YouTube download in `DownloadedVideos` so it appears on the
+/// Downloads page and in the per-video "downloaded" badge. This mirrors the podcast
+/// episode path (which inserts into `DownloadedEpisodes`); the YouTube download workers
+/// previously wrote the audio file to disk but never registered it, leaving the download
+/// orphaned. Idempotent: no-op when the row already exists.
+async fn record_youtube_download(
+    db_pool: &crate::database::DatabasePool,
+    user_id: i32,
+    video_id: i32,
+    output_path: &str,
+) -> AppResult<()> {
+    let file_size = tokio::fs::metadata(output_path)
+        .await
+        .map(|m| m.len() as i64)
+        .unwrap_or(0);
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            let existing = q::query(r#"SELECT 1 FROM "DownloadedVideos" WHERE userid = $1 AND videoid = $2"#)
+                .bind(user_id)
+                .bind(video_id)
+                .fetch_optional(pool)
+                .await?;
+            if existing.is_none() {
+                q::query(r#"INSERT INTO "DownloadedVideos" (userid, videoid, downloadedsize, downloadedlocation) VALUES ($1, $2, $3, $4)"#)
+                    .bind(user_id)
+                    .bind(video_id)
+                    .bind(file_size)
+                    .bind(output_path)
+                    .execute(pool)
+                    .await?;
+                q::query(r#"UPDATE "UserStats" SET episodesdownloaded = episodesdownloaded + 1 WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        },
+        mysql(pool) => {
+            let existing = sqlx::query("SELECT 1 FROM DownloadedVideos WHERE UserID = ? AND VideoID = ?")
+                .bind(user_id)
+                .bind(video_id)
+                .fetch_optional(pool)
+                .await?;
+            if existing.is_none() {
+                sqlx::query("INSERT INTO DownloadedVideos (UserID, VideoID, DownloadedSize, DownloadedLocation) VALUES (?, ?, ?, ?)")
+                    .bind(user_id)
+                    .bind(video_id)
+                    .bind(file_size)
+                    .bind(output_path)
+                    .execute(pool)
+                    .await?;
+                sqlx::query("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        },
+    });
+    Ok(())
+}
+
 /// Run one transcription under an existing task, publishing live progress from the AI sidecar.
 async fn run_transcribe_task(
     db_pool: &DatabasePool,
@@ -963,6 +1023,9 @@ impl TaskSpawner {
                 // Check if file already exists
                 if tokio::fs::metadata(&output_path).await.is_ok() {
                     tracing::info!("Video {} already downloaded", video_title);
+                    // The file may predate download recording; make sure the download is
+                    // registered so it appears on the Downloads page.
+                    record_youtube_download(&db_pool, user_id, video_id, &output_path).await?;
                     return Ok(serde_json::json!({
                         "video_id": video_id,
                         "status": "already_downloaded",
@@ -985,7 +1048,11 @@ impl TaskSpawner {
                         } else {
                             tracing::warn!("Could not read duration from MP3 file: {}", output_path);
                         }
-                        
+
+                        // Record the download so it appears on the Downloads page and
+                        // in the per-video "downloaded" badge.
+                        record_youtube_download(&db_pool, user_id, video_id, &output_path).await?;
+
                         Ok(serde_json::json!({
                             "video_id": video_id,
                             "user_id": user_id,
@@ -1167,12 +1234,14 @@ impl TaskSpawner {
                             .map_err(|e| crate::error::AppError::internal(&format!("Failed to get videos: {}", e)))?;
                         
                         rows.into_iter().map(|row| {
+                            let video_id: i32 = row.try_get("videoid")
+                                .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video ID: {}", e)))?;
                             let youtube_video_id: String = row.try_get("youtubevideoid")
                                 .map_err(|e| crate::error::AppError::internal(&format!("Failed to get YouTube video ID: {}", e)))?;
                             let video_title: String = row.try_get("videotitle")
                                 .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video title: {}", e)))?;
-                            Ok((youtube_video_id, video_title))
-                        }).collect::<Result<Vec<(String, String)>, crate::error::AppError>>()?
+                            Ok((video_id, youtube_video_id, video_title))
+                        }).collect::<Result<Vec<(i32, String, String)>, crate::error::AppError>>()?
                     },
                     mysql(pool) => {
                         let rows = sqlx::query("SELECT VideoID, YouTubeVideoID, VideoTitle FROM YouTubeVideos WHERE PodcastID = ?")
@@ -1182,12 +1251,14 @@ impl TaskSpawner {
                             .map_err(|e| crate::error::AppError::internal(&format!("Failed to get videos: {}", e)))?;
                         
                         rows.into_iter().map(|row| {
+                            let video_id: i32 = row.try_get("VideoID")
+                                .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video ID: {}", e)))?;
                             let youtube_video_id: String = row.try_get("YouTubeVideoID")
                                 .map_err(|e| crate::error::AppError::internal(&format!("Failed to get YouTube video ID: {}", e)))?;
                             let video_title: String = row.try_get("VideoTitle")
                                 .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video title: {}", e)))?;
-                            Ok((youtube_video_id, video_title))
-                        }).collect::<Result<Vec<(String, String)>, crate::error::AppError>>()?
+                            Ok((video_id, youtube_video_id, video_title))
+                        }).collect::<Result<Vec<(i32, String, String)>, crate::error::AppError>>()?
                     },
                 });
                 
@@ -1196,7 +1267,7 @@ impl TaskSpawner {
                 let mut already_downloaded = 0;
                 let mut failed = 0;
                 
-                for (index, (youtube_video_id, video_title)) in videos_data.iter().enumerate() {
+                for (index, (video_id, youtube_video_id, video_title)) in videos_data.iter().enumerate() {
                     
                     let output_path = format!("{}/{}.mp3", crate::paths::youtube_downloads_dir(), youtube_video_id);
                     
@@ -1207,6 +1278,9 @@ impl TaskSpawner {
                     // Check if file already exists
                     if tokio::fs::metadata(&output_path).await.is_ok() {
                         tracing::info!("Video {} already downloaded", video_title);
+                        // The file may predate download recording; register it so it
+                        // appears on the Downloads page.
+                        record_youtube_download(&db_pool, user_id, *video_id, &output_path).await?;
                         already_downloaded += 1;
                         continue;
                     }
@@ -1227,6 +1301,10 @@ impl TaskSpawner {
                             } else {
                                 tracing::warn!("Could not read duration from MP3 file: {}", output_path);
                             }
+
+                            // Record the download so it appears on the Downloads page and
+                            // in the per-video "downloaded" badge.
+                            record_youtube_download(&db_pool, user_id, *video_id, &output_path).await?;
                         }
                         Err(e) => {
                             tracing::error!("Failed to download {}: {}", video_title, e);

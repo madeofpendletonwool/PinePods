@@ -975,11 +975,11 @@ impl DatabasePool {
             }
         }
 
-        for (user_id, content_id, location, downloaded_date, feed_url, effective_days) in
+        // A video's audio is the shared copy streaming plays from; only the row goes.
+        for (user_id, content_id, _location, downloaded_date, feed_url, effective_days) in
             self.auto_delete_candidates_videos().await?
         {
             if Self::should_auto_delete(now, downloaded_date, effective_days, feed_url.as_deref()) {
-                Self::remove_download_file(location.as_deref()).await;
                 self.delete_episode(user_id, content_id, true).await?;
                 deleted += 1;
             }
